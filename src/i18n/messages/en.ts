@@ -111,6 +111,7 @@ const en = {
     expectedMove: "Expected move",
     driftPerDay: "Drift μ̂ / day",
     annVol: "Annualized σ",
+    shrinkNote: "P10–P90 zone from 1,000 bootstrap paths of the asset's own daily returns — fat tails preserved. Auto drift is shrunk ×n/(n+30): a 30-day estimate is mostly noise (±SE). Drag the vol slider to stress-test the zone.",
     today: "today",
     now: "now {price}",
   },

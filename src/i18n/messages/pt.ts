@@ -110,6 +110,7 @@ const pt: Messages = {
     expectedMove: "Movimento esperado",
     driftPerDay: "Deriva μ̂ / dia",
     annVol: "σ anualizada",
+    shrinkNote: "Zona P10–P90 a partir de 1.000 caminhos bootstrap dos retornos diários reais do ativo — caudas grossas preservadas. O drift automático é encolhido ×n/(n+30): uma estimativa de 30 dias é majoritariamente ruído (±SE). Arraste o controle de volatilidade para testar a zona sob estresse.",
     today: "hoje",
     now: "agora {price}",
   },

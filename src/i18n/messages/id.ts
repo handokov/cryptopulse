@@ -110,6 +110,7 @@ const id: Messages = {
     expectedMove: "Pergerakan ekspektasi",
     driftPerDay: "Drift μ̂ / hari",
     annVol: "σ terannualisasi",
+    shrinkNote: "Zona P10–P90 dari 1.000 simulasi bootstrap return riil aset — ekor tebal dipertahankan. Drift otomatis diperkecil ×n/(n+30): estimasi 30 hari itu didominasi noise (±SE). Geser slider vol untuk uji tekan zona.",
     today: "hari ini",
     now: "kini {price}",
   },

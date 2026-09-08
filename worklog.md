@@ -460,3 +460,20 @@ Work Log:
 
 Stage Summary:
 - All deployment work is now on GitHub. Third PAT exposed in chat — user must revoke ghp_PvPY… after this push; recommend fine-grained tokens with repo-scoped Contents:RW for future rounds.
+
+---
+Task ID: 16
+Agent: Super Z (main agent)
+Task: Honest-statistics upgrade of the Projection Lab — user approved: Monte Carlo band + drift shrinkage.
+
+Work Log:
+- New src/lib/monte-carlo.ts: (a) shrinkDrift — μ̂_eff = μ̂·n/(n+30) + SE = σ̂/√n reported; (b) bootstrapBand — 1,000 seeded (mulberry32) paths resampling the asset's own de-meaned daily log returns (empirical fat tails preserved) along the effective drift, nearest-rank P10/P50/P90 per timestep; degenerate guard for empty residuals; ~180k draws = few ms in the browser.
+- projection-lab.tsx: auto drift now flows through shrinkage before the user slider adds on top; chart band area switched from analytic ±e^(σ̂√t·volMult·0.9) to MC P10–P90; mono readout line extended with P10–P90@horizon endpoints and the full shrinkage audit trail (μ̂auto × n/(n+k) = μ̂eff (SE ±x) + slider → μ̂total); band tag now reads "P10–P90(1000×bootstrap)"; plain-language shrinkNote caption added. buildPath still supplies the wave path — the deterministic formula line is unchanged.
+- i18n ×6: projection.shrinkNote (en/id/zh/es/pt/ja); i18n-check 372/372 ×6 ALL CLEAN.
+- scripts/verify-monte-carlo.ts (bun): determinism, p10≤p50≤p90 at every step, band widens with horizon, MC P50→P90 half-width 10,560 vs analytic 8,781 (+20% — fat tails captured), shrinkage math exact (−0.554% → −0.277%, SE ±0.456% > |μ̂eff| — noise dominance made visible). ALL PASSED.
+- eslint clean; production build passed (21 routes); dev restored :3000.
+- Server analysis engine intentionally untouched (keeps raw driftAdj pipeline) — centralizing engine drift into the same helpers is a separate follow-up.
+- Committed and pushed to handokov/cryptopulse main.
+
+Stage Summary:
+- The Lab's uncertainty zone is now empirically honest: bootstrap fat tails instead of normal-σ̂√t, and a shrunk drift with visible SE so users can see when the trend estimate is noise. All numbers on screen remain reproducible (seeded) and verifiable against the mono audit line.

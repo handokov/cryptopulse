@@ -7,6 +7,7 @@ import { useCryptoStore } from "@/store/crypto-store";
 import { Slider } from "@/components/ui/slider";
 import { logReturns, stdev } from "@/lib/indicators";
 import { buildPath, projectPrice, substitutedExpr } from "@/lib/projection";
+import { bootstrapBand, shrinkDrift } from "@/lib/monte-carlo";
 import { fmtPrice, fmtPct } from "@/lib/format";
 import { SlidersHorizontal } from "lucide-react";
 
@@ -19,7 +20,10 @@ const TAIL = 60; // days of history shown
  * Projection Lab — a live function graph. Five sliders reshape the
  * projected price path P(t) in real time:
  *   P(t) = P0 · e^{μ̂·t} · (1 + A·sin(2πt/T)·e^{−t/τ})
- * with a lognormal confidence band scaled by the volatility multiplier.
+ * Uncertainty is a MONTE CARLO band (P10–P90 of 1,000 bootstrap paths over
+ * the asset's own daily returns — fat tails preserved), replacing the old
+ * analytic ±σ̂√t that understated crypto tail risk. The auto-drift estimate
+ * is shrunk toward zero (μ̂·n/(n+30)) and its standard error is shown.
  */
 export function ProjectionLab() {
   const t = useTranslations("projection");
@@ -43,7 +47,11 @@ export function ProjectionLab() {
     const muWindow = rets.slice(-30);
     const muHist = muWindow.reduce((a, b) => a + b, 0) / (muWindow.length || 1);
     const sdDaily = stdev(rets.slice(-30));
-    const mu = muHist + driftMod / 100;
+    /* Drift shrinkage: a 30-day estimate is mostly noise (SE = σ̂/√30, often
+       the same size as μ̂ itself), so it keeps only n/(n+30) of its weight;
+       the user's drift slider adds on top of the SHRUNK auto estimate. */
+    const shrink = shrinkDrift(muHist, sdDaily, muWindow.length);
+    const mu = shrink.muEff + driftMod / 100;
     const tau = wavePeriod * 2;
 
     /* Shared math: the curve samples and the summary endpoint come from the
@@ -57,14 +65,26 @@ export function ProjectionLab() {
       sdDaily,
       volMult,
     };
-    const { path, upper, lower } = buildPath(params);
+    const { path } = buildPath(params);
     const outcome = projectPrice(params);
-    return { hist, p0, mu, sdDaily, path, upper, lower, tau, outcome };
+    /* Monte Carlo band: bootstrap the asset's own de-meaned daily returns
+       (empirical fat tails preserved) along the effective drift. Seeded PRNG
+       → the band is stable while dragging sliders and reproducible. */
+    const residuals = muWindow.map((r) => r - muHist);
+    const band = bootstrapBand({
+      p0,
+      muDaily: mu,
+      residuals,
+      volMult,
+      horizonDays: horizon,
+      paths: 1000,
+    });
+    return { hist, p0, mu, sdDaily, path, band, shrink, tau, outcome, muHist };
   }, [asset, horizon, driftMod, volMult, waveAmp, wavePeriod]);
 
   const chart = useMemo(() => {
     if (!model) return null;
-    const all = [...model.hist, ...model.upper, ...model.lower];
+    const all = [...model.hist, ...model.band.p90, ...model.band.p10];
     const min = Math.min(...all);
     const max = Math.max(...all);
     const span = max - min || 1;
@@ -77,9 +97,9 @@ export function ProjectionLab() {
       vals.map((v, i) => `${i === 0 ? "M" : "L"}${sx(startT + i).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
 
     const bandArea =
-      model.upper.map((v, i) => `${i === 0 ? "M" : "L"}${sx(i + 1).toFixed(1)},${sy(v).toFixed(1)}`).join(" ") +
+      model.band.p90.map((v, i) => `${i === 0 ? "M" : "L"}${sx(i + 1).toFixed(1)},${sy(v).toFixed(1)}`).join(" ") +
       " " +
-      model.lower
+      model.band.p10
         .map((v, i) => `L${sx(horizon - i).toFixed(1)},${sy(v).toFixed(1)}`)
         .join(" ") +
       " Z";
@@ -192,12 +212,17 @@ export function ProjectionLab() {
       <div className="rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
         <span className="text-primary">P(t)</span> = P₀ · e^(μ̂·t) · (1 + A·sin(2πt/T) · e^(−t/τ))
         <span className="mx-2 text-border">|</span>
-        P₀={fmtPrice(model.p0)} · μ̂={(model.mu * 100).toFixed(3)}%/d · A={waveAmp.toFixed(1)}% · T={wavePeriod}d · τ={model.tau}d · band=±{volMult.toFixed(1)}σ̂√t
+        P₀={fmtPrice(model.p0)} · μ̂={(model.mu * 100).toFixed(3)}%/d · A={waveAmp.toFixed(1)}% · T={wavePeriod}d · τ={model.tau}d · band=P10–P90({model.band.paths}×bootstrap)
         <br />
         <span className="text-primary">P({horizon})</span> = {substitutedExpr(model.p0, model.mu, horizon)} · W = {outcome.waveFactor.toFixed(4)} = {fmtPrice(outcome.expectedPrice)}
         <span className="mx-2 text-border">|</span>
         drift-only: {fmtPrice(outcome.driftPrice)} ({fmtPct(outcome.driftChangePct, 1)}) · cyclical: {fmtPct(outcome.waveContributionPct, 2)}
+        <br />
+        P10–P90@{horizon}d: {fmtPrice(model.band.p10[model.band.p10.length - 1])} – {fmtPrice(model.band.p90[model.band.p90.length - 1])} · μ̂auto {(model.muHist * 100).toFixed(3)}% × {model.shrink.n}/{model.shrink.n + model.shrink.k} = {(model.shrink.muEff * 100).toFixed(3)}% (SE ±{(model.shrink.se * 100).toFixed(3)}%) + slider {driftMod >= 0 ? "+" : ""}{driftMod.toFixed(2)}% → {(model.mu * 100).toFixed(3)}%
       </div>
+
+      {/* plain-language note for the honest-statistics changes */}
+      <p className="text-[11px] leading-relaxed text-muted-foreground/75">{t("shrinkNote")}</p>
 
       {/* sliders */}
       <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">

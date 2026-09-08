@@ -110,6 +110,7 @@ const zh: Messages = {
     expectedMove: "预期变动",
     driftPerDay: "漂移 μ̂ / 天",
     annVol: "年化 σ",
+    shrinkNote: "P10–P90 区间来自 1,000 条基于该资产真实日收益的自助法路径 — 保留肥尾。自动漂移按 ×n/(n+30) 收缩：30 天估计大多为噪声（±SE）。拖动波动率滑块可对区间做压力测试。",
     today: "今天",
     now: "现价 {price}",
   },
