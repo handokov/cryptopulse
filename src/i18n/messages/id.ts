@@ -346,6 +346,19 @@ const id: Messages = {
     notifyBody: "{name} baru saja melewati {target}.",
   },
 
+  pwa: {
+    install: "Instal aplikasi",
+    installedTitle: "Aplikasi terinstal",
+    installedBody: "CryptoPulse kini hadir di layar utama Anda — layar penuh dan siap offline.",
+    iosTitle: "Tambahkan ke Layar Utama",
+    iosSubtitle: "iOS memasang CryptoPulse langsung dari menu Bagikan Safari:",
+    iosStep1: "Ketuk tombol Bagikan (persegi dengan panah) di toolbar Safari",
+    iosStep2: "Gulir ke bawah dan ketuk “Tambahkan ke Layar Utama”",
+    iosStep3: "Konfirmasi dengan “Tambah” — CryptoPulse lalu terbuka layar penuh seperti aplikasi native",
+    offline: "Anda sedang offline — menampilkan data pasar terbaru dari cache.",
+    online: "Kembali online",
+  },
+
   footer: {
     about:
       "Pelacakan tren harian untuk aset kripto bervolume tinggi. Berita diagregasi dari outlet publik tepercaya.",

@@ -224,3 +224,46 @@ Work Log:
 Stage Summary:
 - Browser-verified end to end: register → empty dashboard shows demo CTA → demo load yields 6 live-priced holdings ($24,470 value / $25,906 cost) + 14-day history chart (Aug 26–Sep 8); 7D/30D toggle refetches (7 ticks on 7D); alerts: BTC above $1 fired instantly (Triggered badge + amber bell count + sonner toast "Price alert triggered — Solana just crossed $1.00."), ETH below $1,000 stays Active with "+148.45% to target" chip, re-arm keeps alert Active (no re-fire) across polls, UI delete removes row; demo button hidden once holdings exist; Chinese locale renders every new string (价格提醒/已触发/生效中/涨破/距目标/投资组合价值历史) with localized chart date ticks; locale persists across reload; mobile 390px clean; 0 console errors; lint clean; i18n parity 292/292 ×6.
 - Demo account left in DB for exploration: demo-trader@test.local / demo123456 (6 demo holdings, 2 active alerts).
+
+---
+Task ID: 6-i18n
+Agent: general-purpose subagent
+Task: Mirror new pwa.* namespace (install/installed/iOS walkthrough/offline-online toasts) into id/zh/es/pt/ja catalogs.
+
+Work Log:
+- Read worklog (Task 5-3 i18n conventions) + en.ts: new pwa namespace = exactly 10 keys (install, installedTitle, installedBody, iosTitle, iosSubtitle, iosStep1..3, offline, online) sitting between alerts and footer; en.ts untouched.
+- Read neighboring namespaces (alerts/footer) in all 5 locales to match tone, dash style (id/es/pt " — ", zh " —— ", ja U+2015 " ― "), quote style (id/es/pt/zh “ ”, ja 「」), paren style (zh/ja full-width （）), and colon style (zh full-width ：, others half-width).
+- id.ts: Instal aplikasi / Tambahkan ke Layar Utama; "menu Bagikan"/"tombol Bagikan" for Safari share sheet/button (kept as recognized iOS labels); formal Anda; cache/online loanwords per file convention.
+- zh.ts: 安装应用 / 添加到主屏幕； iOS-native verbs 轻点/分享/添加; full-width punctuation; “ —— ” dash; 行情数据 for market data per file glossary.
+- es.ts: Instalar aplicación / Añadir a la pantalla de inicio; "menú para compartir" for share sheet; Pulsa/Compartir iOS es verbs; sin conexión / en caché per existing glossary; online toast rendered idiomatically as "Conexión restablecida".
+- pt.ts: Instalar aplicativo / Adicionar à Tela de Início; "folha de compartilhamento" (Apple pt-BR term); Toque/Compartilhar; kept "o CryptoPulse" article per file convention; "em cache" matches stale/cachedBrief strings.
+- ja.ts: アプリをインストール / ホーム画面に追加; iOS ja verbs タップ/共有/追加; kept U+2015 dash and half-width colon style; キャッシュ済み matches existing glossary; CryptoPulse brand untranslated everywhere.
+- All translations keep "Add to Home Screen" / confirm "Add" as the recognizable iOS menu labels in each language; key order, blank-line separation, and insertion position (alerts closing → pwa → footer) mirror en.ts exactly; en.ts and all other files untouched.
+
+Stage Summary:
+- Files: src/i18n/messages/{id,zh,es,pt,ja}.ts (each +11 lines: pwa namespace with 10 keys between alerts and footer). en.ts untouched.
+- `bun scripts/i18n-check.mjs`: en = 302 keys across 15 namespaces […, alerts, pwa, footer]; id/zh/es/pt/ja each 302/302 — 0 missing, 0 extra, 0 placeholder mismatches → ALL CLEAN.
+- `bunx tsc --noEmit`: 0 errors in src/i18n/messages (typed Messages = typeof en intact).
+---
+
+---
+Task ID: 6
+Agent: Super Z (main agent) + 1 subagent (6-i18n)
+Task: PWA — installable on mobile phones (web app manifest, service worker, install prompt, iOS walkthrough, offline support).
+
+Work Log:
+- Confirmed via worklog that backlog tasks 1-5 (incl. traceable display + first-visit locale auto-detection in intl-provider) were already complete; this task is PWA only.
+- Icons: scripts/generate-icons.mjs (sharp) renders the brand emerald pulse + amber dot on deep-emerald gradient → public/icons/{icon-192,icon-512,maskable-192,maskable-512,apple-touch-icon(180),favicon-32}.png; maskable content scaled 0.62 into the safe zone.
+- src/app/manifest.ts: id/start_url "/", scope "/", display standalone, bg/theme #0b1310, 4 icons (2 any + 2 maskable), shortcuts to #portfolio and #markets; auto-served at /manifest.webmanifest.
+- public/sw.js (hand-rolled, v2): precached shell; navigations network-first w/ cached-shell fallback; /_next/static + /_next/image NETWORK-FIRST (v1 used cache-first and pinned stale Turbopack dev chunks — root cause of a "changes not applying" bug, fixed in v2); /icons + /logo.svg cache-first; /api/* network-first with last-good JSON fallback → offline shows latest cached market data; same-origin GET only, everything else passthrough.
+- src/components/pwa/sw-register.tsx: registers /sw.js after load (secure context only), sonner toasts on offline/online; mounted INSIDE NextIntlClientProvider in layout.tsx (first attempt as a sibling crashed with a 500 — useTranslations outside the provider).
+- src/components/pwa/install-button.tsx: captures beforeinstallprompt (suppresses mini-infobar), one-shot prompt(), hides on appinstalled/standalone; iOS (UA + iPadOS touch heuristic) gets a Dialog walkthrough (Share → Add to Home Screen, 3 numbered steps); setState deferral via setTimeout(0) to satisfy react-hooks/set-state-in-effect.
+- layout.tsx: manifest + applicationName metadata, local icons (replaced z-cdn logo), appleWebApp {capable, black-translucent, title}, Viewport {viewportFit cover, themeColor #0b1310}.
+- Mobile header overflow (58px at 390px) fixed: auth-dialog sign-in label + authenticated name hidden below sm (icon-only, aria-label/title preserved), skeleton w-10 sm:w-20, language switcher Languages glyph hidden below sm, cluster gap-2 sm:gap-2.5.
+- i18n: en.ts new pwa namespace (10 keys); subagent 6-i18n mirrored into id/zh/es/pt/ja — parity 302/302 ×6 via scripts/i18n-check.mjs.
+- Debug note: a misleading mid-session loop ("edit not applying") was SW v1 cache-first on dev chunks + an invalid SSR grep (AuthButton renders a skeleton server-side, sign-in button is client-only); dev server restarted detached via (setsid bun run dev &) to unstick Turbopack's watcher.
+
+Stage Summary:
+- Browser-verified (agent-browser): SW active scope "/", manifest JSON correct, head tags (theme-color/manifest/apple-*) injected; offline reload renders the full app incl. cached API prices (desktop + 390px mobile screenshots); iOS dialog opens with 3 localized steps; install button localizes (Install app / 安装应用); no console/page errors; 0 horizontal overflow at 390/448/1280; lint clean; dev.log clean.
+- Files: new — src/app/manifest.ts, public/sw.js, src/components/pwa/{sw-register,install-button}.tsx, public/icons/*, scripts/generate-icons.mjs; modified — layout.tsx, site-header.tsx, auth-dialog.tsx, language-switcher.tsx, en.ts + 5 catalogs.
+- Dev caveat: service worker caches dev-mode chunks network-first, so HMR stays fresh; bump sw.js VERSION when editing SHELL_ASSETS.

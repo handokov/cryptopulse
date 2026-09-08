@@ -346,6 +346,19 @@ const es: Messages = {
     notifyBody: "{name} acaba de cruzar {target}.",
   },
 
+  pwa: {
+    install: "Instalar aplicación",
+    installedTitle: "Aplicación instalada",
+    installedBody: "CryptoPulse ya vive en tu pantalla de inicio — a pantalla completa y listo para funcionar sin conexión.",
+    iosTitle: "Añadir a la pantalla de inicio",
+    iosSubtitle: "iOS instala CryptoPulse directamente desde el menú para compartir de Safari:",
+    iosStep1: "Pulsa el botón Compartir (el cuadrado con una flecha) en la barra de herramientas de Safari",
+    iosStep2: "Desplázate hacia abajo y pulsa “Añadir a la pantalla de inicio”",
+    iosStep3: "Confirma con “Añadir” — CryptoPulse se abrirá entonces a pantalla completa como una aplicación nativa",
+    offline: "Estás sin conexión — mostrando los últimos datos de mercado en caché.",
+    online: "Conexión restablecida",
+  },
+
   footer: {
     about:
       "Seguimiento diario de tendencias de criptoactivos de alto volumen. Noticias agregadas de medios públicos confiables.",

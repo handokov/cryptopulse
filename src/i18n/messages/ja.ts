@@ -345,6 +345,19 @@ const ja: Messages = {
     notifyBody: "{name} が {target} を越えました。",
   },
 
+  pwa: {
+    install: "アプリをインストール",
+    installedTitle: "アプリをインストールしました",
+    installedBody: "CryptoPulse がホーム画面に登場 ― フルスクリーンでオフラインでも使えます。",
+    iosTitle: "ホーム画面に追加",
+    iosSubtitle: "iOS では Safari の共有シートからそのまま CryptoPulse をインストールできます:",
+    iosStep1: "Safari のツールバーで共有ボタン（矢印の付いた四角）をタップ",
+    iosStep2: "下にスクロールして「ホーム画面に追加」をタップ",
+    iosStep3: "「追加」をタップして確定 ― CryptoPulse がネイティブアプリのようにフルスクリーンで開きます",
+    offline: "オフラインです ― 最新のキャッシュ済みマーケットデータを表示しています。",
+    online: "オンラインに復帰",
+  },
+
   footer: {
     about:
       "高出来高暗号資産の毎日のトレンド追跡。ニュースは信頼できる公開メディアから集約。",

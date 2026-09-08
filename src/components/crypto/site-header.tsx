@@ -6,6 +6,7 @@ import { fmtPrice, fmtPct } from "@/lib/format";
 import { LanguageSwitcher } from "./language-switcher";
 import { AuthButton, AuthDialog } from "./auth-dialog";
 import { AlertsBell } from "./alerts-bell";
+import { InstallButton } from "@/components/pwa/install-button";
 import { Activity } from "lucide-react";
 
 export function SiteHeader() {
@@ -31,7 +32,7 @@ export function SiteHeader() {
           <a href="#portfolio" className="whitespace-nowrap transition-colors hover:text-foreground">{t("portfolio")}</a>
         </nav>
 
-        <div className="flex items-center gap-2.5 text-xs">
+        <div className="flex items-center gap-2 text-xs sm:gap-2.5">
           {btc && (
             <span className="tnum hidden items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 xl:flex">
               <span className="font-semibold text-foreground/80">BTC</span>
@@ -46,6 +47,7 @@ export function SiteHeader() {
             24/7 LIVE
           </span>
           <AlertsBell />
+          <InstallButton />
           <AuthButton />
           <AuthDialog />
           <LanguageSwitcher />

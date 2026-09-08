@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "flag-icons/css/flag-icons.min.css";
 import { Toaster as RadixToaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { IntlProvider } from "@/i18n/intl-provider";
+import { SwRegister } from "@/components/pwa/sw-register";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,8 +30,19 @@ export const metadata: Metadata = {
     "news aggregation",
     "technical indicators",
   ],
+  manifest: "/manifest.webmanifest",
+  applicationName: "CryptoPulse",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CryptoPulse",
   },
   openGraph: {
     title: "CryptoPulse — Market Intelligence, Visualized",
@@ -39,6 +51,13 @@ export const metadata: Metadata = {
     siteName: "CryptoPulse",
     type: "website",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b1310",
 };
 
 export default function RootLayout({
@@ -51,7 +70,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <IntlProvider>{children}</IntlProvider>
+        <IntlProvider>
+          <SwRegister />
+          {children}
+        </IntlProvider>
         <RadixToaster />
         {/* forced-dark app: pin sonner to dark (wrapper's useTheme() resolves to system without a ThemeProvider) */}
         <SonnerToaster theme="dark" position="bottom-right" />

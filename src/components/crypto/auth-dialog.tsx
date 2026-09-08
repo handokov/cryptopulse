@@ -56,7 +56,7 @@ export function AuthButton() {
   }, [refresh]);
 
   if (status === "loading") {
-    return <Skeleton className="h-8 w-20 rounded-full" />;
+    return <Skeleton className="h-8 w-10 rounded-full sm:w-20" />;
   }
 
   if (status === "unauthenticated" || !user) {
@@ -65,10 +65,13 @@ export function AuthButton() {
         size="sm"
         variant="outline"
         onClick={() => setDialogOpen(true)}
-        className="gap-1.5 border-primary/30 bg-primary/10 text-xs text-primary hover:bg-primary/20"
+        aria-label={t("signIn")}
+        title={t("signIn")}
+        className="gap-1.5 border-primary/30 bg-primary/10 px-2.5 text-xs text-primary hover:bg-primary/20"
       >
         <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
-        {t("signIn")}
+        {/* label hidden on phones so the header row (bell + install + auth + language) fits 390px */}
+        <span className="hidden sm:inline">{t("signIn")}</span>
       </Button>
     );
   }
@@ -76,11 +79,11 @@ export function AuthButton() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="ghost" className="max-w-[170px] gap-1.5 px-2 text-xs">
+        <Button size="sm" variant="ghost" aria-label={user.name || user.email.split("@")[0]} className="max-w-[170px] gap-1.5 px-2 text-xs">
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
             <UserRound className="h-3 w-3" aria-hidden="true" />
           </span>
-          <span className="max-w-[120px] truncate">{user.name || user.email.split("@")[0]}</span>
+          <span className="max-w-[120px] truncate hidden sm:inline">{user.name || user.email.split("@")[0]}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>

@@ -343,6 +343,19 @@ const zh: Messages = {
     notifyBody: "{name} 刚刚越过 {target}。",
   },
 
+  pwa: {
+    install: "安装应用",
+    installedTitle: "应用已安装",
+    installedBody: "CryptoPulse 现已安装到你的主屏幕 —— 全屏显示，离线可用。",
+    iosTitle: "添加到主屏幕",
+    iosSubtitle: "iOS 可直接通过 Safari 的分享菜单安装 CryptoPulse：",
+    iosStep1: "在 Safari 工具栏中轻点“分享”按钮（带箭头的方形图标）",
+    iosStep2: "向下滚动并轻点“添加到主屏幕”",
+    iosStep3: "轻点“添加”确认 —— CryptoPulse 随后会像原生应用一样全屏打开",
+    offline: "你已离线 —— 正在显示最新的缓存行情数据。",
+    online: "已恢复在线",
+  },
+
   footer: {
     about:
       "面向高成交量加密资产的每日趋势追踪。新闻聚合自可信的公开媒体。",

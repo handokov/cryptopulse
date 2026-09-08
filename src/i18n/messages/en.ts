@@ -346,6 +346,19 @@ const en = {
     notifyBody: "{name} just crossed {target}.",
   },
 
+  pwa: {
+    install: "Install app",
+    installedTitle: "App installed",
+    installedBody: "CryptoPulse now lives on your home screen — full-screen and offline-ready.",
+    iosTitle: "Add to Home Screen",
+    iosSubtitle: "iOS installs CryptoPulse straight from Safari's share sheet:",
+    iosStep1: "Tap the Share button (the square with an arrow) in Safari's toolbar",
+    iosStep2: "Scroll down and tap \u201cAdd to Home Screen\u201d",
+    iosStep3: "Confirm with \u201cAdd\u201d — CryptoPulse then opens full-screen like a native app",
+    offline: "You're offline — showing the latest cached market data.",
+    online: "Back online",
+  },
+
   footer: {
     about:
       "Daily trend tracking for high-volume crypto assets. News aggregated from trusted public outlets.",

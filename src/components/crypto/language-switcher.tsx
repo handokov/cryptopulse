@@ -33,7 +33,7 @@ export function LanguageSwitcher() {
         aria-label={t("language")}
         className="flex h-9 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium transition-colors hover:border-primary/40 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Languages className="h-3.5 w-3.5 text-primary" />
+        <Languages className="hidden h-3.5 w-3.5 text-primary sm:block" />
         <FlagIcon country={localeFlag(locale)} size={16} />
         <span className="hidden sm:inline">{locale.toUpperCase()}</span>
         <ChevronDown className="h-3 w-3 opacity-60" />
