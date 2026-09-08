@@ -135,3 +135,81 @@ export function findTopCoin(idOrSymbol: string): TopCoin | null {
     null
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Symbol → coin matching universe for exchange sync (see exchanges/) */
+
+export interface MatchCandidate {
+  id: string;
+  symbol: string;
+  name: string;
+  image: string | null;
+  /** Board snapshot price when available; null from the coins-list fallback. */
+  price: number | null;
+}
+
+interface CoinsListEntry {
+  id?: unknown;
+  symbol?: unknown;
+  name?: unknown;
+}
+
+const g2 = globalThis as unknown as {
+  __cpCoinsList?: { at: number; rows: MatchCandidate[] } | null;
+};
+
+/** Cheap single-call fallback (GET /coins/list), module-cached for 10 min. */
+async function getCoinsListFallback(): Promise<MatchCandidate[] | null> {
+  const cached = g2.__cpCoinsList;
+  if (cached && Date.now() - cached.at < 600_000) return cached.rows;
+  try {
+    const res = await fetch("https://api.coingecko.com/api/v3/coins/list", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as CoinsListEntry[];
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const rows: MatchCandidate[] = [];
+    const seen = new Set<string>();
+    for (const item of data) {
+      if (typeof item?.id !== "string" || typeof item?.symbol !== "string") continue;
+      const sym = item.symbol.toUpperCase();
+      if (!sym || seen.has(sym)) continue; // first id wins, deterministic
+      seen.add(sym);
+      rows.push({
+        id: item.id,
+        symbol: sym,
+        name: typeof item.name === "string" ? item.name : item.id,
+        image: null,
+        price: null,
+      });
+    }
+    g2.__cpCoinsList = { at: Date.now(), rows };
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort symbol→coin universe for exchange sync: the top-100 board
+ * (with images + snapshot prices) first; the all-coins list as a fallback
+ * when the markets endpoint is rate-limited (images/prices then come from
+ * the simple/price endpoint instead).
+ */
+export async function getMatchUniverse(): Promise<MatchCandidate[] | null> {
+  try {
+    const board = (await getTop100()).coins;
+    return board.map((c) => ({
+      id: c.id,
+      symbol: c.symbol,
+      name: c.name,
+      image: c.image || null,
+      price: Number.isFinite(c.price) && c.price > 0 ? c.price : null,
+    }));
+  } catch {
+    return await getCoinsListFallback();
+  }
+}

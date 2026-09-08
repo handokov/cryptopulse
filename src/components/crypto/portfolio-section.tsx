@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/command";
 import { useAuthStore } from "@/store/auth-store";
 import { useLocaleStore } from "@/store/locale-store";
+import { ExchangeConnections } from "@/components/crypto/exchange-connections";
 import type { Locale } from "@/i18n/config";
 import { fmtPrice, fmtCompactUsd, fmtPct, fmtPctPlain } from "@/lib/format";
 
@@ -328,6 +329,10 @@ function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{
 interface PnlDatum {
   symbol: string;
   pnlPct: number;
+  /** Stable key: holdings can share a symbol across lots/sources. */
+  coinId: string;
+  cost: number;
+  pnl: number;
 }
 
 function PnlTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: PnlDatum }> }) {
@@ -567,14 +572,45 @@ export function PortfolioSection() {
   );
   const uniqueSymbols = useMemo(() => new Set(holdings.map((h) => h.coinId)).size, [holdings]);
 
-  const donutData = useMemo<DonutDatum[]>(
-    () => valued.map((h) => ({ name: h.symbol, value: h.currentValue, weight: h.weight ?? 0 })),
-    [valued]
-  );
-  const barData = useMemo<PnlDatum[]>(
-    () => valued.map((h) => ({ symbol: h.symbol, pnlPct: h.pnlPct ?? 0 })),
-    [valued]
-  );
+  /* Charts aggregate per coin: duplicate symbols across lots (manual vs
+     exchange-imported) would collide React keys and double-count rows. */
+  const donutData = useMemo<DonutDatum[]>(() => {
+    const byCoin = new Map<string, DonutDatum>();
+    for (const h of valued) {
+      const cur = byCoin.get(h.coinId);
+      if (cur) {
+        cur.value += h.currentValue;
+        cur.weight += h.weight ?? 0;
+      } else {
+        byCoin.set(h.coinId, { name: h.symbol, value: h.currentValue, weight: h.weight ?? 0 });
+      }
+    }
+    return [...byCoin.values()];
+  }, [valued]);
+  const barData = useMemo<PnlDatum[]>(() => {
+    const byCoin = new Map<
+      string,
+      { symbol: string; cost: number; pnl: number }
+    >();
+    for (const h of valued) {
+      const cost = h.quantity * h.purchasePrice;
+      const pnl = h.pnl ?? 0;
+      const cur = byCoin.get(h.coinId);
+      if (cur) {
+        cur.cost += cost;
+        cur.pnl += pnl;
+      } else {
+        byCoin.set(h.coinId, { symbol: h.symbol, cost, pnl });
+      }
+    }
+    return [...byCoin.entries()].map(([coinId, d]) => ({
+      coinId,
+      symbol: d.symbol,
+      cost: d.cost,
+      pnl: d.pnl,
+      pnlPct: d.cost > 0 ? (d.pnl / d.cost) * 100 : 0,
+    }));
+  }, [valued]);
 
   /* insight lines — only built when data is present */
   const insightLines = useMemo(() => {
@@ -1249,7 +1285,7 @@ export function PortfolioSection() {
                   stroke="none"
                 >
                   {donutData.map((d, i) => (
-                    <Cell key={d.name} fill={PALETTE[i % PALETTE.length]} />
+                    <Cell key={`${d.name}-${i}`} fill={PALETTE[i % PALETTE.length]} />
                   ))}
                 </Pie>
                 <Tooltip content={<DonutTooltip />} />
@@ -1268,7 +1304,7 @@ export function PortfolioSection() {
             </ResponsiveContainer>
             <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
               {donutData.map((d, i) => (
-                <span key={d.name} className="inline-flex items-center gap-1.5">
+                <span key={`${d.name}-${i}`} className="inline-flex items-center gap-1.5">
                   <span
                     className="h-2 w-2 rounded-full"
                     style={{ backgroundColor: PALETTE[i % PALETTE.length] }}
@@ -1298,7 +1334,7 @@ export function PortfolioSection() {
                 <Tooltip content={<PnlTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
                 <Bar dataKey="pnlPct" radius={3} barSize={16}>
                   {barData.map((d) => (
-                    <Cell key={d.symbol} fill={d.pnlPct >= 0 ? "#10b981" : "#ef4444"} />
+                    <Cell key={d.coinId} fill={d.pnlPct >= 0 ? "#10b981" : "#ef4444"} />
                   ))}
                 </Bar>
               </BarChart>
@@ -1557,6 +1593,9 @@ export function PortfolioSection() {
           </ul>
         </div>
       )}
+
+      {/* exchange connections (import assets from Binance / Bitget / Tokocrypto) */}
+      <ExchangeConnections onChanged={refreshAll} />
 
       {/* ---------------- add / edit dialog ---------------- */}
       <Dialog

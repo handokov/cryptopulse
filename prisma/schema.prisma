@@ -23,6 +23,7 @@ model User {
   holdings     Holding[]
   snapshots    PortfolioSnapshot[]
   alerts       PriceAlert[]
+  exchanges    ExchangeConnection[]
 }
 
 model Holding {
@@ -36,9 +37,41 @@ model Holding {
   quantity      Float
   purchasePrice Float
   purchaseDate  DateTime
+  // Non-null only for holdings auto-imported from an exchange connection.
+  // Each sync upserts quantities for this connection and removes positions
+  // that no longer exist on the exchange. Manual holdings are never touched.
+  connectionId  String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@index([userId])
+  @@index([connectionId])
+}
+
+model ExchangeConnection {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "binance" | "bitget" | "tokocrypto" | "demo"
+  exchange         String
+  label            String?
+  // AES-256-GCM ciphertext (src/lib/secure.ts) — plaintext never hits the DB.
+  apiKeyEnc        String
+  apiSecretEnc     String
+  apiPassphraseEnc String?
+  // Masked display form (first4…last4) — safe to render in the UI.
+  apiKeyMasked     String
+  // SHA-256 of the raw API key — lets us reject exact duplicates without
+  // ever decrypting anything.
+  apiKeyHash       String
+  // "active" | "error"
+  status           String    @default("active")
+  lastError        String?
+  lastSyncAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, exchange, apiKeyHash])
   @@index([userId])
 }
 
