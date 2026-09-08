@@ -6,9 +6,11 @@ import { SiteFooter } from "@/components/crypto/site-footer";
 import { MorphingHero } from "@/components/crypto/morphing-hero";
 import { MarketDataLoader } from "@/components/crypto/market-data-loader";
 import { MarketGrid } from "@/components/crypto/market-grid";
+import { Top100Groups } from "@/components/crypto/top100-groups";
 import { LabPanels } from "@/components/crypto/lab-panels";
 import { AnalysisEngine } from "@/components/crypto/analysis-engine";
 import { NewsFeed } from "@/components/crypto/news-feed";
+import { PortfolioSection } from "@/components/crypto/portfolio-section";
 import { Newspaper } from "lucide-react";
 
 function SectionHeading({
@@ -31,9 +33,11 @@ function SectionHeading({
 
 export default function Home() {
   const tMarkets = useTranslations("markets");
+  const tTop100 = useTranslations("top100");
   const tLabs = useTranslations("labs");
   const tAnalysis = useTranslations("analysis");
   const tNews = useTranslations("news");
+  const tPortfolio = useTranslations("portfolio");
 
   return (
     <div id="top" className="flex min-h-screen flex-col bg-background bg-grid">
@@ -51,7 +55,17 @@ export default function Home() {
           <MarketGrid />
         </section>
 
-        {/* 02 — Signal labs */}
+        {/* 02 — Top 100 board */}
+        <section id="top100" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tTop100("title")}>
+          <SectionHeading
+            index={tTop100("index")}
+            title={tTop100("title")}
+            subtitle={tTop100("subtitle")}
+          />
+          <Top100Groups />
+        </section>
+
+        {/* 03 — Signal labs */}
         <section id="labs" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tLabs("title")}>
           <SectionHeading
             index={tLabs("index")}
@@ -61,7 +75,7 @@ export default function Home() {
           <LabPanels />
         </section>
 
-        {/* 03 — Analysis */}
+        {/* 04 — Analysis */}
         <section id="analysis" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tAnalysis("title")}>
           <SectionHeading
             index={tAnalysis("index")}
@@ -71,7 +85,7 @@ export default function Home() {
           <AnalysisEngine />
         </section>
 
-        {/* 04 — News */}
+        {/* 05 — News */}
         <section id="news" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tNews("title")}>
           <SectionHeading
             index={tNews("index")}
@@ -84,6 +98,16 @@ export default function Home() {
             </div>
             <NewsFeed />
           </div>
+        </section>
+
+        {/* 06 — Portfolio dashboard */}
+        <section id="portfolio" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tPortfolio("title")}>
+          <SectionHeading
+            index={tPortfolio("index")}
+            title={tPortfolio("title")}
+            subtitle={tPortfolio("subtitle")}
+          />
+          <PortfolioSection />
         </section>
       </main>
 
