@@ -416,3 +416,18 @@ Stage Summary:
 - Vercel env table handed to user: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, AUTH_SECRET, CREDENTIAL_SECRET.
 - Production starts with an EMPTY database (re-register + re-connect exchange keys; sync re-imports holdings).
 - Security: GitHub PAT pasted in chat twice now — user must revoke it after this push; Turso token can be rotated from the Turso dashboard anytime.
+
+---
+Task ID: 14
+Agent: Super Z (main agent)
+Task: Add Vercel Web Analytics — user request: install @vercel/analytics.
+
+Work Log:
+- Installed @vercel/analytics@2.0.1; confirmed the ./next entry exports Analytics as a NAMED export (v2 shape — not the old default export from /react).
+- src/app/layout.tsx: added `import { Analytics } from "@vercel/analytics/next"` and mounted <Analytics /> after the toasters in body. No-op in dev/self-hosted; records page views + referrers on Vercel deployments only. No conflict with the PWA service worker (script served from /_vercel/insights on Vercel).
+- Verification: eslint clean on layout.tsx; full `npm run build` passed (all 21 routes) with dev server paused, then dev restarted on :3000.
+- Committed and pushed to handokov/cryptopulse main (one-time tokenized URL if PAT still valid) — auto-triggers a Vercel redeploy if the project is already imported.
+
+Stage Summary:
+- Analytics wired at the root layout; data appears in Vercel dashboard after the user enables Web Analytics (project → Analytics tab → Enable).
+- Optional next: @vercel/speed-insights for Core Web Vitals.
