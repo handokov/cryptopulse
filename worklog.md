@@ -396,3 +396,23 @@ Work Log:
 Stage Summary:
 - Repo on GitHub is now deploy-ready for Vercel. Remaining: user creates Turso DB (cloud.turso.io, GitHub sign-in) and sends DATABASE URL + auth token → I run prisma db push against libsql:// from here (fallback if CLI rejects libsql: dump/restore via sqlite), generate AUTH_SECRET + CREDENTIAL_SECRET, and hand over the 4-var env table (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, AUTH_SECRET, CREDENTIAL_SECRET) for Vercel → user imports repo and deploys.
 - Note: production starts with an empty DB — users re-register and re-connect exchange keys (holdings auto-re-import via sync); local data is NOT auto-migrated, and old ciphertext is bound to the dev CREDENTIAL_SECRET anyway.
+
+---
+Task ID: 13
+Agent: Super Z (main agent)
+Task: Turso database live wiring — user sent the Turso DATABASE URL + auth token; push the Prisma schema to the remote DB, verify the real production path, generate prod secrets, ship remaining commits.
+
+Work Log:
+- State at start: remote handokov/cryptopulse already at 7576612 (Tasks 11-12); 3 local auto-checkpoint commits (worklog only) unpushed; .env holds only local DATABASE_URL.
+- scripts/turso-apply-schema.mjs: generates deterministic SQLite DDL via `prisma migrate diff --from-empty --to-schema-datamodel` (Prisma 6 sqlite connector cannot speak libsql://), applies over HTTP via @libsql/client executeMultiple; credentials from env only, nothing hardcoded.
+- Schema push executed against libsql://cryptopulse-handokov.aws-ap-northeast-1.turso.io — all 5 tables verified on the remote: User, Holding, ExchangeConnection, PortfolioSnapshot, PriceAlert.
+- scripts/turso-verify.ts (bun): roundtrip through the REAL dual-mode src/lib/db.ts (PrismaLibSQL adapter path) — created a throwaway user, read back with all 4 relations, deleted, count=0. Adapter + schema + credentials confirmed working end-to-end.
+- Generated production secrets (64-hex, openssl): AUTH_SECRET + CREDENTIAL_SECRET for the Vercel env table; confirmed exact var names in src/lib/auth.ts and src/lib/secure.ts (dev fallbacks stay local-only).
+- Production-build rehearsal for Vercel: paused dev server, ran `npm run build` (next.config already output:"standalone" so the build script's cp steps are Vercel-safe), then restarted dev.
+- Committed turso scripts and pushed everything (incl. the 3 checkpoint commits) to handokov/cryptopulse main via one-time tokenized URL; token still valid (user has not revoked it — reminded again).
+
+Stage Summary:
+- Turso DB is live with the full schema and roundtrip-verified through the production code path.
+- Vercel env table handed to user: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, AUTH_SECRET, CREDENTIAL_SECRET.
+- Production starts with an EMPTY database (re-register + re-connect exchange keys; sync re-imports holdings).
+- Security: GitHub PAT pasted in chat twice now — user must revoke it after this push; Turso token can be rotated from the Turso dashboard anytime.
