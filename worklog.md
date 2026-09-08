@@ -380,3 +380,19 @@ Work Log:
 Stage Summary:
 - Code is live on https://github.com/handokov/cryptopulse (branch main, 5 commits incl. cleanup c4e6a5e).
 - Secrets stay local only; deployment blocked on hosting choice — Vercel requires SQLite→Turso migration (planned), Railway needs a volume.
+
+---
+Task ID: 12
+Agent: Super Z (main agent)
+Task: Vercel + Turso deployment preparation — migrate persistence off local SQLite.
+
+Work Log:
+- Installed @prisma/adapter-libsql (first pulled v7 by default — incompatible with Prisma 6.11; pinned to 6.19.3) — tsc confirmed signature: v6.19+ constructor takes the libSQL Config directly, not a Client.
+- src/lib/db.ts rewritten dual-mode: TURSO_DATABASE_URL set → PrismaClient with PrismaLibSQL adapter (url + TURSO_AUTH_TOKEN); otherwise the original local file client. Query logging now dev-only. Constructors are lazy — safe at build time.
+- package.json: added "postinstall": "prisma generate" (Vercel runs install before build; no prisma generate otherwise), plus new deps.
+- Verified: tsc clean for db/adapter, eslint clean, local app + auth + top100 all 200 on the file-DB path.
+- Committed 7576612 and pushed to handokov/cryptopulse (old PAT still valid — user has not revoked it yet; reminded again).
+
+Stage Summary:
+- Repo on GitHub is now deploy-ready for Vercel. Remaining: user creates Turso DB (cloud.turso.io, GitHub sign-in) and sends DATABASE URL + auth token → I run prisma db push against libsql:// from here (fallback if CLI rejects libsql: dump/restore via sqlite), generate AUTH_SECRET + CREDENTIAL_SECRET, and hand over the 4-var env table (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, AUTH_SECRET, CREDENTIAL_SECRET) for Vercel → user imports repo and deploys.
+- Note: production starts with an empty DB — users re-register and re-connect exchange keys (holdings auto-re-import via sync); local data is NOT auto-migrated, and old ciphertext is bound to the dev CREDENTIAL_SECRET anyway.
