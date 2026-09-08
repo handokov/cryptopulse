@@ -8,7 +8,7 @@ import { useLocaleStore } from "@/store/locale-store";
 import { Button } from "@/components/ui/button";
 import { fmtPrice, fmtPct } from "@/lib/format";
 import type { AnalysisStep, StepTone } from "@/lib/analysis-engine";
-import { Radar, Loader2, CircleCheck, Minus, TriangleAlert, XCircle } from "lucide-react";
+import { Radar, Loader2, CircleCheck, Minus, TriangleAlert, XCircle, ArrowUp, ArrowDown } from "lucide-react";
 
 const TONE_STYLES: Record<StepTone, { icon: React.ReactNode; text: string }> = {
   info: { icon: <Minus className="h-3.5 w-3.5 text-sky-300/80" />, text: "text-foreground/80" },
@@ -205,21 +205,45 @@ export function AnalysisEngine() {
                   {t("confidence", { value: String(analysis.verdict.confidence) })}
                 </p>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                {[
-                  [t("targets.entry"), analysis.targets.entry, "text-foreground"],
-                  [t("targets.support"), analysis.targets.support, "text-destructive"],
-                  [t("targets.resistance"), analysis.targets.resistance, "text-primary"],
-                  [t("targets.stop"), analysis.targets.stop, "text-destructive"],
-                  [t("targets.t1"), analysis.targets.target1, "text-primary"],
-                  [t("targets.t2"), analysis.targets.target2, "text-primary"],
-                ].map(([label, val, tone]) => (
-                  <div key={label as string} className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5">
-                    <span className="shrink-0 text-muted-foreground">{label as string}</span>
-                    <span className={`tnum font-semibold ${tone as string}`}>{fmtPrice(val as number)}</span>
-                  </div>
-                ))}
+              {/* Price ladder — rows are SORTED BY PRICE so the hierarchy always
+                  reads correctly, whichever side of the market the verdict puts
+                  us on (for SHORT the stop legitimately sits ABOVE entry).
+                  Arrows show each level's direction from the entry price;
+                  colors are semantic: emerald = profit targets, red = risk
+                  exit, amber = structural levels. */}
+              <div className="mt-4 flex flex-col gap-1">
+                {(() => {
+                  const entry = analysis.targets.entry;
+                  const eps = entry * 1e-6;
+                  const dir = analysis.verdict.action === "SHORT" ? -1 : 1;
+                  const levels = [
+                    { key: "resistance", label: t("targets.resistance"), value: analysis.targets.resistance, hint: t("targets.hintResistance"), tone: "text-accent" },
+                    { key: "t2", label: t("targets.t2"), value: analysis.targets.target2, hint: t("targets.hintT2", { days: String(analysis.projection.horizonDays) }), tone: "text-primary" },
+                    { key: "t1", label: t("targets.t1"), value: analysis.targets.target1, hint: t("targets.hintT1", { days: String(analysis.projection.horizonDays) }), tone: "text-primary" },
+                    { key: "entry", label: t("targets.entry"), value: entry, hint: t("targets.hintEntry"), tone: "text-foreground" },
+                    { key: "stop", label: t("targets.stop"), value: analysis.targets.stop, hint: dir < 0 ? t("targets.hintStopShort") : t("targets.hintStopLong"), tone: "text-destructive" },
+                    { key: "support", label: t("targets.support"), value: analysis.targets.support, hint: t("targets.hintSupport"), tone: "text-accent" },
+                  ].sort((x, y) => y.value - x.value);
+                  return levels.map((lv) => {
+                    const rel = Math.abs(lv.value - entry) <= eps ? 0 : lv.value > entry ? 1 : -1;
+                    return (
+                      <div key={lv.key} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                        <span className="shrink-0" aria-hidden>
+                          {rel > 0 ? <ArrowUp className="h-3.5 w-3.5 text-muted-foreground/60" /> : rel < 0 ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground/60" /> : <Minus className="h-3.5 w-3.5 text-muted-foreground/60" />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">{lv.label}</span>
+                            <span className={`tnum text-xs font-semibold ${lv.tone}`}>{fmtPrice(lv.value)}</span>
+                          </div>
+                          <p className="truncate text-[10px] leading-tight text-muted-foreground/70">{lv.hint}</p>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
+              <p className="mt-2 text-[10px] text-muted-foreground/60">{t("targets.ladderHint")}</p>
               <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
                 {t("modelExpects", {
                   price: fmtPrice(analysis.projection.expectedPrice),

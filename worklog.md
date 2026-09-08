@@ -431,3 +431,19 @@ Work Log:
 Stage Summary:
 - Analytics wired at the root layout; data appears in Vercel dashboard after the user enables Web Analytics (project → Analytics tab → Enable).
 - Optional next: @vercel/speed-insights for Core Web Vitals.
+
+---
+Task ID: 15
+Agent: Super Z (main agent)
+Task: Fix user confusion in the targets grid — "why is stop HIGHER than support?" — implement direction-aware hints (#1) + price-sorted ladder (#2). Engine math untouched.
+
+Work Log:
+- Root cause (diagnosed first): support/resistance are STRUCTURAL levels (min/max of Bollinger + 14d high/low — always below/above price), while stop = last·e^(∓2.5σ̂) is VOLATILITY-based and direction-aware (above entry for SHORT, below for LONG/NEUTRAL). Nothing enforced ordering between the two families → stop>support in SHORT setups (correct short semantics, confusing for long-minded users) and in low-vol LONG/NEUTRAL setups (2.5σ shallower than the 14d low).
+- analysis-engine.tsx: replaced the flat 2-col grid with a price ladder — 6 rows sorted by value desc (T2→T1→Resistance→Entry→Stop/Support in the observed case), per-row direction arrow vs entry (ArrowUp/ArrowDown/Minus), semantic colors (emerald=targets, red=stop, amber=structure, white=entry), per-level 10px hint line, and a one-line ladderHint footer. Stop hint switches on verdict: hintStopLong (max risk 2.5σ below) vs hintStopShort (short buyback 2.5σ above).
+- i18n ×6: targets namespace +8 keys (hintEntry, hintSupport, hintResistance, hintStopLong, hintStopShort, hintT1{days}, hintT2{days}, ladderHint) — en/id/es/pt/zh/ja; i18n-check 371/371 ×6 ALL CLEAN incl. placeholder parity.
+- Verification: eslint clean; production build passed (21 routes); dev restarted :3000; API sanity POST /api/analysis → NEUTRAL 39.9, targets intact (stop 72,930 > support 71,908 — the exact reported case now renders sorted with explanatory hints).
+- Committed and pushed to handokov/cryptopulse main.
+
+Stage Summary:
+- The stop-vs-support reading confusion is resolved at the UI layer: hierarchy is always price-ordered, every level carries a direction-aware explanation, and SHORT verdicts explicitly label the stop as a buyback level. No engine/API/schema changes.
+- Backlog unchanged: Monte Carlo band + drift shrinkage (offered, not yet approved).
