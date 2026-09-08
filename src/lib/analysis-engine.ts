@@ -7,7 +7,7 @@
  */
 
 import { createTranslator } from "use-intl/core";
-import { getMarketSnapshot } from "@/lib/market-data";
+import { getMarketSnapshot, type AssetSnapshot } from "@/lib/market-data";
 import { bollinger, ema, logReturns, macd, percentileRank, rsi, sma, stdev } from "@/lib/indicators";
 import { ALL_MESSAGES } from "@/i18n/messages";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/config";
@@ -75,10 +75,14 @@ export async function runAnalysis(
   symbol: string,
   factors: Record<FactorKey, number>,
   horizonDays: number,
-  locale: Locale = DEFAULT_LOCALE
+  locale: Locale = DEFAULT_LOCALE,
+  override?: AssetSnapshot
 ): Promise<AnalysisResult> {
   const snapshot = await getMarketSnapshot();
-  const asset = snapshot.assets.find((a) => a.symbol === symbol.toUpperCase()) ?? snapshot.assets[0];
+  const asset =
+    override ??
+    snapshot.assets.find((a) => a.symbol === symbol.toUpperCase()) ??
+    snapshot.assets[0];
   const series = asset.history;
   const last = series[series.length - 1];
   const steps: AnalysisStep[] = [];

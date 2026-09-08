@@ -59,6 +59,8 @@ const zh: Messages = {
     error: "暂时无法加载百强榜。",
     retry: "重试",
     empty: "没有资产与“{query}”匹配。",
+    allTraceable: "全部 100 个资产均可追踪——点击任意行即可让实验室聚焦该资产。",
+    loadingCoin: "正在加载价格序列……",
   },
 
   labs: {
@@ -293,7 +295,7 @@ const zh: Messages = {
 
   footer: {
     about:
-      "CryptoPulse —— 面向高成交量加密资产的每日趋势追踪。新闻聚合自可信的公开媒体。",
+      "面向高成交量加密资产的每日趋势追踪。新闻聚合自可信的公开媒体。",
     disclaimer:
       "仅供参考，不构成投资建议 —— 模型可能出错，市场可能更离谱。请管理好自己的风险。",
   },

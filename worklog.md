@@ -121,3 +121,20 @@ Stage Summary:
 - Key UI decisions: forced-dark emerald/amber palette only; rounded-2xl border bg-card/40 cards; tnum everywhere numerics render; subtle CSS animate-in row transitions instead of framer-motion; sessionStorage hydration in Top100Groups to smooth locale-switch remounts; recharts custom dark tooltips; PctChip/StatCard/CoinAvatar mini-helpers kept file-local.
 - Lint status: clean; TypeScript strict clean for the new files; no new dependencies added.
 - Contract assumptions: /api/portfolio 401 handled implicitly (auth gating + error card); POST purchaseDate sent as ISO; PATCH sends only quantity/purchasePrice/purchaseDate; POST image omitted when null; /api/market/top100 payload reused for the coin picker; delete failure keeps the confirm dialog open with an inline error.
+
+---
+Task ID: 3
+Agent: Super Z (main agent)
+Task: Top 100 cryptos in groups of 10 + user login + portfolio dashboard (purchase dates/prices, performance analysis, total asset value); follow-up: all coins traceable + first-visit browser-locale auto-detection.
+
+Work Log:
+- Contracts first: extended en.ts (nav.top100/portfolio, top100/auth/portfolio namespaces, section renumber 03/04/05) + created src/store/auth-store.ts (user/status/dialogOpen, refresh/logout).
+- Parallel agents: 3-a mirrored all keys into id/zh/es/pt/ja (243/243 structural match verified); 3-b built backend (User.passwordHash + Holding model via db:push, scrypt+HMAC cookie auth lib, /api/auth/{register,login,logout,me}, /api/portfolio GET/POST + [id] PATCH/DELETE, /api/market/top100 with 120s TTL + lastGood); 3-c built top100-groups.tsx (10 group pills, search, sparklines), auth-dialog.tsx (AuthButton + AuthDialog login/register), portfolio-section.tsx (6 stat cards, holdings table, add/edit dialog with searchable top-100 picker + price prefill, donut + P&L bar charts, insight bullets).
+- Integrated page.tsx (01 Markets / 02 Top 100 / 03 Labs / 04 Analysis / 05 News / 06 Portfolio) + site-header (6 links, AuthButton/AuthDialog, whitespace-nowrap nav).
+- Fixed pre-existing next-intl timeZone warning (timeZone="UTC") and footer "CryptoPulse — CryptoPulse" duplication (stripped brand prefix from 6 about strings).
+- Follow-up request implemented: (1) ALL 100 coins traceable — new src/lib/coin-series.ts + GET /api/coin/[id] (90d market_chart downsampled to daily closes, seeded backward-walk fallback anchored at live price, top-100 board as snapshot fallback under rate limits; top100 logic extracted to src/lib/top100.ts shared lib), runAnalysis accepts override snapshot, /api/analysis accepts coinId for non-core symbols, store extraAssets + consumers fallback (use-asset-signals, projection-lab), all top100 rows clickable with per-row spinner + allTraceable note (i18n ×6); (2) first-visit locale auto-detection in IntlProvider (fires only when cryptopulse-locale key absent; prefix-maps navigator.language to en/id/zh/es/pt/ja).
+- Portfolio resilience: price enrichment falls back to cached top-100 board when CoinGecko simple/price rate-limits (priceStale flag surfaces "cached snapshot" chip).
+
+Stage Summary:
+- Browser-verified end to end: top100 board (groups, search, sparklines), Chainlink row click → both labs + line-by-line analysis focused on LINK with real CoinGecko data (91 closes, $12.64), register → header chip → dashboard, add holdings with price prefill (ADA 5000@$0.15 2025-03-15, BTC 0.01@$60000 2025-06-01), totals $1,879/$1,350/+$529 (+39.13%), allocation donut + P&L bars + 5 insight bullets, Indonesian switch fully translated incl. new sections, locale/session persist across reload, logout → CTA, mobile 390px clean.
+- APIs: /api/market/top100, /api/coin/[id], /api/auth/*, /api/portfolio/* all 200; lint clean; dev.log clean (only pre-existing stale entries + news-search 429 fallbacks).

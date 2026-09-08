@@ -59,6 +59,8 @@ const pt: Messages = {
     error: "Não foi possível carregar o top 100 agora.",
     retry: "Tentar novamente",
     empty: "Nenhum ativo corresponde a “{query}”.",
+    allTraceable: "Todos os 100 ativos podem ser rastreados — clique em qualquer linha para focar os laboratórios nele.",
+    loadingCoin: "Carregando a série de preços…",
   },
 
   labs: {
@@ -296,7 +298,7 @@ const pt: Messages = {
 
   footer: {
     about:
-      "CryptoPulse — acompanhamento diário de tendências de criptoativos de alto volume. Notícias agregadas de veículos públicos confiáveis.",
+      "Acompanhamento diário de tendências de criptoativos de alto volume. Notícias agregadas de veículos públicos confiáveis.",
     disclaimer:
       "Apenas para fins informativos. Nada aqui é recomendação financeira — modelos podem errar e os mercados podem ser mais estranhos. Gerencie seu risco.",
   },

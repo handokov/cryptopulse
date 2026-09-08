@@ -22,12 +22,12 @@ export function SiteHeader() {
         </a>
 
         <nav className="hidden items-center gap-5 text-sm text-muted-foreground lg:flex" aria-label="Primary">
-          <a href="#markets" className="transition-colors hover:text-foreground">{t("markets")}</a>
-          <a href="#top100" className="transition-colors hover:text-foreground">{t("top100")}</a>
-          <a href="#labs" className="transition-colors hover:text-foreground">{t("labs")}</a>
-          <a href="#analysis" className="transition-colors hover:text-foreground">{t("analysis")}</a>
-          <a href="#news" className="transition-colors hover:text-foreground">{t("news")}</a>
-          <a href="#portfolio" className="transition-colors hover:text-foreground">{t("portfolio")}</a>
+          <a href="#markets" className="whitespace-nowrap transition-colors hover:text-foreground">{t("markets")}</a>
+          <a href="#top100" className="whitespace-nowrap transition-colors hover:text-foreground">{t("top100")}</a>
+          <a href="#labs" className="whitespace-nowrap transition-colors hover:text-foreground">{t("labs")}</a>
+          <a href="#analysis" className="whitespace-nowrap transition-colors hover:text-foreground">{t("analysis")}</a>
+          <a href="#news" className="whitespace-nowrap transition-colors hover:text-foreground">{t("news")}</a>
+          <a href="#portfolio" className="whitespace-nowrap transition-colors hover:text-foreground">{t("portfolio")}</a>
         </nav>
 
         <div className="flex items-center gap-2.5 text-xs">

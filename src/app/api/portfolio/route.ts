@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { findTopCoin } from "@/lib/top100";
 
 export const dynamic = "force-dynamic";
 
@@ -75,9 +76,22 @@ export async function GET() {
   });
 
   const coinIds = [...new Set(holdings.map((h) => h.coinId))];
-  const { map: priceMap, failed } =
+  const { map: liveMap, failed } =
     coinIds.length > 0 ? await fetchPrices(coinIds) : { map: {}, failed: false };
-  const priceStale = coinIds.length > 0 && failed;
+
+  /* Fallback: price any missing coin from the cached top-100 board so the
+     dashboard keeps working under CoinGecko rate limits. */
+  const priceMap = { ...liveMap };
+  let usedBoard = false;
+  for (const id of coinIds) {
+    if (priceMap[id]) continue;
+    const board = findTopCoin(id);
+    if (board) {
+      priceMap[id] = { usd: board.price, change: board.change24h };
+      usedBoard = true;
+    }
+  }
+  const priceStale = coinIds.length > 0 && (failed || usedBoard);
 
   /* First pass: per-holding values + totals */
   const base = holdings.map((h) => {

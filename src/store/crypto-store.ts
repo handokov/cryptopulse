@@ -29,6 +29,10 @@ interface CryptoState {
   setMarket: (assets: AssetSnapshot[], source: "coingecko" | "model", updatedAt: number) => void;
   setLoadingMarket: (v: boolean) => void;
 
+  /* ad-hoc traced coins (top-100) keyed by symbol — merged into lookups */
+  extraAssets: Record<string, AssetSnapshot>;
+  setExtraAsset: (asset: AssetSnapshot) => void;
+
   /* selection + one-shot pulse token fired on query/select */
   selected: string;
   selectAsset: (symbol: string) => void;
@@ -74,6 +78,9 @@ export const useCryptoStore = create<CryptoState>((set) => ({
   loadingMarket: true,
   setMarket: (assets, source, updatedAt) => set({ assets, dataSource: source, updatedAt, loadingMarket: false }),
   setLoadingMarket: (v) => set({ loadingMarket: v }),
+
+  extraAssets: {},
+  setExtraAsset: (asset) => set((s) => ({ extraAssets: { ...s.extraAssets, [asset.symbol]: asset } })),
 
   selected: "BTC",
   selectAsset: (symbol) =>

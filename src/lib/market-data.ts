@@ -24,6 +24,8 @@ export interface AssetSnapshot {
   marketCap: number; // USD
   history: number[]; // 90 daily closes, last = current price
   color: string;
+  coingeckoId?: string; // present for coins fetched ad-hoc (top-100 tracing)
+  source?: "coingecko" | "model";
 }
 
 export interface MarketSnapshot {

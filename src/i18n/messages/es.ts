@@ -59,6 +59,8 @@ const es: Messages = {
     error: "No se pudo cargar el top 100 en este momento.",
     retry: "Reintentar",
     empty: "Ningún activo coincide con “{query}”.",
+    allTraceable: "Los 100 activos se pueden rastrear: haz clic en cualquier fila para enfocar los laboratorios en él.",
+    loadingCoin: "Cargando la serie de precios…",
   },
 
   labs: {
@@ -296,7 +298,7 @@ const es: Messages = {
 
   footer: {
     about:
-      "CryptoPulse — seguimiento diario de tendencias de criptoactivos de alto volumen. Noticias agregadas de medios públicos confiables.",
+      "Seguimiento diario de tendencias de criptoactivos de alto volumen. Noticias agregadas de medios públicos confiables.",
     disclaimer:
       "Solo con fines informativos. Nada de esto es asesoría financiera — los modelos pueden fallar y los mercados pueden ser más extraños. Gestiona tu riesgo.",
   },

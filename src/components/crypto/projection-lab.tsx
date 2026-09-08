@@ -24,6 +24,7 @@ export function ProjectionLab() {
   const t = useTranslations("projection");
   const selected = useCryptoStore((s) => s.selected);
   const assets = useCryptoStore((s) => s.assets);
+  const extraAssets = useCryptoStore((s) => s.extraAssets);
   const horizon = useCryptoStore((s) => s.horizon);
   const driftMod = useCryptoStore((s) => s.driftMod);
   const volMult = useCryptoStore((s) => s.volMult);
@@ -31,7 +32,7 @@ export function ProjectionLab() {
   const wavePeriod = useCryptoStore((s) => s.wavePeriod);
   const setSlider = useCryptoStore((s) => s.setSlider);
 
-  const asset = assets.find((a) => a.symbol === selected);
+  const asset = assets.find((a) => a.symbol === selected) ?? extraAssets[selected];
 
   const model = useMemo(() => {
     if (!asset || asset.history.length < 31) return null;

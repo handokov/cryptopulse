@@ -16,9 +16,10 @@ const clamp = (x: number, lo = 0, hi = 100) => Math.min(Math.max(x, lo), hi);
 /** Derives live indicator-based factor signals for the selected asset. */
 export function useAssetSignals(symbol: string): AssetSignals {
   const assets = useCryptoStore((s) => s.assets);
+  const extra = useCryptoStore((s) => s.extraAssets[symbol]);
 
   return useMemo(() => {
-    const asset = assets.find((a) => a.symbol === symbol);
+    const asset = assets.find((a) => a.symbol === symbol) ?? extra;
     if (!asset || asset.history.length < 51) {
       return { momentum: 50, trend: 50, volatility: 50, hasData: false };
     }
@@ -35,5 +36,5 @@ export function useAssetSignals(symbol: string): AssetSignals {
       volatility: clamp(100 - volAnn * 0.8),
       hasData: true,
     };
-  }, [assets, symbol]);
+  }, [assets, extra, symbol]);
 }

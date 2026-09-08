@@ -22,6 +22,7 @@ export function AnalysisEngine() {
   const tFactors = useTranslations("factors");
   const tProjection = useTranslations("projection");
   const selected = useCryptoStore((s) => s.selected);
+  const extraAsset = useCryptoStore((s) => s.extraAssets[s.selected]);
   const factors = useCryptoStore((s) => s.factors);
   const horizon = useCryptoStore((s) => s.horizon);
   const analysis = useCryptoStore((s) => s.analysis);
@@ -55,7 +56,7 @@ export function AnalysisEngine() {
       const res = await fetch("/api/analysis", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ symbol: selected, horizon, factors, locale }),
+        body: JSON.stringify({ symbol: selected, horizon, factors, locale, coinId: extraAsset?.coingeckoId }),
       });
       if (!res.ok) throw new Error(`Analysis failed (${res.status})`);
       const data = (await res.json()) as Parameters<typeof setAnalysis>[0];

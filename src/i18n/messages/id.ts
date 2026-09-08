@@ -59,6 +59,8 @@ const id: Messages = {
     error: "Papan 100 besar tidak dapat dimuat saat ini.",
     retry: "Coba lagi",
     empty: "Tidak ada aset yang cocok dengan “{query}”.",
+    allTraceable: "Semua 100 aset dapat dilacak — klik baris mana pun untuk memfokuskan lab padanya.",
+    loadingCoin: "Memuat deret harga…",
   },
 
   labs: {
@@ -296,7 +298,7 @@ const id: Messages = {
 
   footer: {
     about:
-      "CryptoPulse — pelacakan tren harian untuk aset kripto bervolume tinggi. Berita diagregasi dari outlet publik tepercaya.",
+      "Pelacakan tren harian untuk aset kripto bervolume tinggi. Berita diagregasi dari outlet publik tepercaya.",
     disclaimer:
       "Hanya untuk tujuan informasi. Bukan nasihat keuangan — model bisa salah, pasar bisa lebih aneh. Kelola risiko Anda.",
   },

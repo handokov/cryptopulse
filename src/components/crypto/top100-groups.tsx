@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crosshair, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +30,20 @@ interface Top100Payload {
   updatedAt: number;
   source: "coingecko" | "cache";
   coins: Top100Coin[];
+}
+
+/** Shape returned by GET /api/coin/[id] (AssetSnapshot-compatible). */
+interface TraceSnapshot {
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;
+  volume24h: number;
+  marketCap: number;
+  history: number[];
+  color: string;
+  coingeckoId: string;
+  source: "coingecko" | "model";
 }
 
 /* ---------------- constants ---------------- */
@@ -103,7 +117,34 @@ interface CoinRowEntry {
 function CoinTable({ entries, loading = false }: { entries: CoinRowEntry[]; loading?: boolean }) {
   const t = useTranslations("top100");
   const selectAsset = useCryptoStore((s) => s.selectAsset);
+  const setExtraAsset = useCryptoStore((s) => s.setExtraAsset);
+  const [traceId, setTraceId] = useState<string | null>(null);
   const tbodyKey = loading ? "skeleton" : `${entries[0]?.rank ?? 0}-${entries.length}`;
+
+  /** Every row is traceable: core symbols select instantly, other coins
+      fetch a full 90-day series first so the labs always have data. */
+  const traceCoin = useCallback(
+    async (coin: Top100Coin) => {
+      if (TRACKED_SYMBOLS.has(coin.symbol)) {
+        selectAsset(coin.symbol);
+        return;
+      }
+      if (traceId) return;
+      setTraceId(coin.id);
+      try {
+        const res = await fetch(`/api/coin/${coin.id}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`coin fetch failed: ${res.status}`);
+        const snap = (await res.json()) as TraceSnapshot;
+        setExtraAsset(snap);
+        selectAsset(snap.symbol);
+      } catch {
+        /* leave the row as-is on failure */
+      } finally {
+        setTraceId(null);
+      }
+    },
+    [selectAsset, setExtraAsset, traceId]
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -171,29 +212,35 @@ function CoinTable({ entries, loading = false }: { entries: CoinRowEntry[]; load
               ))
             : entries.map(({ coin, rank }) => {
                 const tracked = TRACKED_SYMBOLS.has(coin.symbol);
+                const tracing = traceId === coin.id;
                 const up24 = coin.change24h >= 0;
                 const up7 = coin.change7d >= 0;
                 return (
                   <tr
                     key={coin.id}
-                    className={`border-b border-border/40 last:border-b-0 ${tracked ? "cursor-pointer hover:bg-white/5" : ""}`}
-                    {...(tracked
-                      ? {
-                          role: "button",
-                          tabIndex: 0,
-                          "aria-label": t("selectAria", { name: coin.name }),
-                          onClick: () => selectAsset(coin.symbol),
-                          onKeyDown: (e: React.KeyboardEvent) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              selectAsset(coin.symbol);
-                            }
-                          },
-                        }
-                      : {})}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t("selectAria", { name: coin.name })}
+                    onClick={() => void traceCoin(coin)}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void traceCoin(coin);
+                      }
+                    }}
+                    className="cursor-pointer border-b border-border/40 transition-colors last:border-b-0 hover:bg-white/5"
                   >
                     <td className="tnum py-2.5 pr-3 font-mono">
-                      <span className={rank <= 3 ? "font-semibold text-amber-400" : "text-muted-foreground"}>{rank}</span>
+                      {tracing ? (
+                        <Loader2
+                          className="h-3.5 w-3.5 animate-spin text-primary"
+                          aria-label={t("loadingCoin")}
+                        />
+                      ) : (
+                        <span className={rank <= 3 ? "font-semibold text-amber-400" : "text-muted-foreground"}>
+                          {rank}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 pr-3">
                       <span className="flex items-center gap-2">
@@ -365,6 +412,12 @@ export function Top100Groups() {
           )}
         </div>
       </div>
+
+      {/* traceability note */}
+      <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Crosshair className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+        {t("allTraceable")}
+      </p>
 
       {/* group pills */}
       {!searching && (

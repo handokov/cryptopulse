@@ -60,6 +60,8 @@ const en = {
     error: "Couldn't load the top 100 right now.",
     retry: "Retry",
     empty: "No assets match “{query}”.",
+    allTraceable: "All 100 assets are traceable — click any row to focus the labs on it.",
+    loadingCoin: "Loading price series…",
   },
 
   labs: {
@@ -296,7 +298,7 @@ const en = {
 
   footer: {
     about:
-      "CryptoPulse — daily trend tracking for high-volume crypto assets. News aggregated from trusted public outlets.",
+      "Daily trend tracking for high-volume crypto assets. News aggregated from trusted public outlets.",
     disclaimer:
       "For informational purposes only. Nothing here is financial advice — models can be wrong, markets can be weirder. Manage your risk.",
   },
