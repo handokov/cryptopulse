@@ -6,6 +6,7 @@ import { Toaster as RadixToaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { IntlProvider } from "@/i18n/intl-provider";
 import { SwRegister } from "@/components/pwa/sw-register";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -77,6 +78,8 @@ export default function RootLayout({
         <RadixToaster />
         {/* forced-dark app: pin sonner to dark (wrapper's useTheme() resolves to system without a ThemeProvider) */}
         <SonnerToaster theme="dark" position="bottom-right" />
+        {/* Vercel Web Analytics — no-op in dev/self-hosted; records page views on Vercel deployments */}
+        <Analytics />
       </body>
     </html>
   );
