@@ -18,9 +18,11 @@ model User {
   email        String    @unique
   name         String?
   passwordHash String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
   holdings     Holding[]
+  snapshots    PortfolioSnapshot[]
+  alerts       PriceAlert[]
 }
 
 model Holding {
@@ -36,6 +38,41 @@ model Holding {
   purchaseDate  DateTime
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model PortfolioSnapshot {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       String // UTC "YYYY-MM-DD"
+  totalValue Float
+  totalCost  Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model PriceAlert {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coinId      String
+  symbol      String
+  name        String
+  image       String?
+  targetPrice Float
+  direction   String // "above" | "below"
+  // Price snapshot taken when the alert is armed. null = never armed yet
+  // (fires as soon as the condition holds); once armed, only a FRESH crossing
+  // of the target re-fires it (prevents instant re-trigger loops after re-arm).
+  baselinePrice Float?
+  triggered   Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([userId])
 }

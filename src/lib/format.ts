@@ -18,3 +18,8 @@ export function fmtCompactUsd(x: number): string {
 export function fmtPct(x: number, digits = 2): string {
   return `${x >= 0 ? "+" : ""}${x.toFixed(digits)}%`;
 }
+
+/** Sign-free percentage — for shares/weights where "+" makes no sense. */
+export function fmtPctPlain(x: number, digits = 2): string {
+  return `${x.toFixed(digits)}%`;
+}

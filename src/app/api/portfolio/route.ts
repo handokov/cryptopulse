@@ -8,13 +8,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { findTopCoin } from "@/lib/top100";
+import { fetchSimplePrices } from "@/lib/coin-prices";
 
 export const dynamic = "force-dynamic";
-
-interface SimplePriceEntry {
-  usd?: unknown;
-  usd_24h_change?: unknown;
-}
 
 interface EnrichedHolding {
   id: string;
@@ -35,37 +31,6 @@ interface EnrichedHolding {
   weight: number | null;
 }
 
-async function fetchPrices(
-  ids: string[]
-): Promise<{ map: Record<string, { usd: number; change: number }>; failed: boolean }> {
-  // NOTE: CoinGecko's simple/price requires the plural `vs_currencies`;
-  // the singular form returns 422 (param name per API docs).
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(
-    ","
-  )}&vs_currencies=usd&include_24hr_change=true`;
-  try {
-    const res = await fetch(url, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(3500),
-      cache: "no-store",
-    });
-    if (!res.ok) return { map: {}, failed: true };
-    const data = (await res.json()) as Record<string, SimplePriceEntry>;
-    if (!data || typeof data !== "object") return { map: {}, failed: true };
-    const map: Record<string, { usd: number; change: number }> = {};
-    for (const id of ids) {
-      const entry = data[id];
-      const usd = Number(entry?.usd);
-      if (entry && Number.isFinite(usd)) {
-        map[id] = { usd, change: Number(entry.usd_24h_change ?? 0) || 0 };
-      }
-    }
-    return { map, failed: Object.keys(map).length === 0 };
-  } catch {
-    return { map: {}, failed: true };
-  }
-}
-
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -76,8 +41,7 @@ export async function GET() {
   });
 
   const coinIds = [...new Set(holdings.map((h) => h.coinId))];
-  const { map: liveMap, failed } =
-    coinIds.length > 0 ? await fetchPrices(coinIds) : { map: {}, failed: false };
+  const { map: liveMap, failed } = await fetchSimplePrices(coinIds);
 
   /* Fallback: price any missing coin from the cached top-100 board so the
      dashboard keeps working under CoinGecko rate limits. */
@@ -162,6 +126,20 @@ export async function GET() {
     topHolding,
     priceStale,
   };
+
+  /* Record today's daily snapshot (best-effort — must never break the response). */
+  if (holdings.length > 0 && totalValue > 0) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await db.portfolioSnapshot.upsert({
+        where: { userId_date: { userId: user.id, date: today } },
+        create: { userId: user.id, date: today, totalValue, totalCost },
+        update: { totalValue, totalCost },
+      });
+    } catch {
+      /* snapshot recording is non-critical */
+    }
+  }
 
   return NextResponse.json({ holdings: enriched, computed });
 }

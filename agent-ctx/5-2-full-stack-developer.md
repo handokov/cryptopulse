@@ -1,0 +1,35 @@
+# Task ID: 5-2 — full-stack-developer (frontend)
+
+CryptoPulse portfolio frontend: demo-data button, portfolio value history chart, price alerts card, header notification bell.
+
+## Files touched
+1. `src/components/crypto/portfolio-section.tsx` (modified)
+2. `src/components/crypto/alerts-bell.tsx` (new)
+3. `src/components/crypto/site-header.tsx` (modified — bell inserted before `<AuthButton />`)
+4. `src/app/layout.tsx` (modified — sonner Toaster mounted)
+
+## What was done
+- **portfolio-section.tsx**
+  - Extracted file-local `CoinPicker` (Popover + Command over `/api/market/top100`) and reused it in BOTH the add/edit-holding dialog and the new alerts form; the top-100 fetch effect now triggers on `dialogMode || alertPickerOpen` first open.
+  - Demo button in holdings toolbar (`computed.positionCount === 0` only), Sparkles + outline style → AlertDialog (demoConfirmTitle/Body, cancel = portfolio.cancel, action demoConfirmAction → demoLoading while pending, both disabled). POST `/api/portfolio/demo`: 201 → close + `toast.success(demoDone)` + refetch portfolio AND history (silent); 409 → close + `toast.warning(demoNotEmpty)`; other errors → `toast.error(portfolio.error)` with dialog kept open.
+  - New full-width "Portfolio value history" card between the summary stat cards and the holdings table: header History icon + historyTitle, muted historyDesc (hidden on mobile), 7D/30D rounded-full chips (active `bg-primary/15 text-primary`, `aria-pressed`); states: skeleton (first load) / dashed `historyEmpty` / error + retry (`historyError` + portfolio.retry). recharts `AreaChart` height 230, `dataKey="totalValue"`, stroke `#10b981`, `<defs>` gradient 0.35→0.02 emerald fill, XAxis `date` with UTC-anchored `parseUtc("YYYY-MM-DD" + "T00:00:00Z")` + `Intl.DateTimeFormat(locale, {month:"short", day:"numeric", timeZone:"UTC"})`, YAxis width 56 `fmtCompactUsd`, muted 11px ticks, `dot={false} activeDot={{r:3}}`, custom dark `HistoryTooltip` (`bg-popover/95`, localized medium date + compact value), `tnum` on axes + tooltip. History fetch on auth + on range change + silent refetch after every holding mutation and after demo load (`refreshAll()` = `load()` + `loadHistory(true)`; silent refetches keep the chart mounted — no flicker).
+  - New "Price alerts" card after the charts row (before insights): two-column inner grid on `xl` (create form left / alert list right), stacks on mobile. Form: CoinPicker (alerts-namespace labels), direction toggle buttons (above = ArrowUpRight emerald tint active, below = ArrowDownRight destructive tint active, `aria-pressed`), target Input type=number min 0 step any with `fmtPrice(coin.price)` placeholder + prefill on pick, submit disabled until coin + target > 0, create/creating. POST error mapping validation/limit/duplicate/else → inline destructive banner (errValidation/errLimit/errDuplicate/errGeneric). 201 → silent refetch, clear target, keep coin.
+  - Alert list: max-h-96 overflow-y-auto + nice-scroll; rows = CoinAvatar h-8 (letter fallback), symbol + muted truncated name, direction chip (emerald/destructive tint), `fmtPrice(targetPrice)`, "Now: fmtPrice(currentPrice) | —", distance chip `toTarget` with `fmtPct(|Δ|/target*100)` when `!triggered && currentPrice != null`, status badge (Active = outline muted; Triggered = amber tint + animate-pulse); row actions: Re-arm ghost (RotateCcw, PATCH `{triggered:false}` → silent refetch + `toast.success(rearmed)`), Trash2 ghost (DELETE → silent refetch); pending guarded via shared `alertActionId`. Empty → `alerts.empty` dashed; loading → 3 skeleton rows; error → `alerts.error` + retry.
+  - Silent 60s polling of GET `/api/alerts` while authenticated (`setInterval`, skips `document.hidden`, cleanup on unmount/status change); card never toasts trigger events (bell owns them).
+  - All new hooks/state placed before the existing gating early-returns to preserve hook order.
+- **alerts-bell.tsx (new)**: ghost icon Bell button `h-9 w-9 rounded-full` (matches header buttons), `aria-label=bellAria`; amber badge `absolute -top-0.5 -right-0.5 min-w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-bold grid place-items-center animate-pulse` with triggered count (hidden at 0). Fetch on mount + 60s polling (skip when hidden). `newlyTriggered` → one `toast(notifyTitle, { description: notifyBody, duration: 8000 })` per item, deduped by a `useRef<Set<string>>` of seen ids; an id is released when its alert comes back `triggered:false` (re-arm) so future crossings re-notify. Popover align=end w-80: unauthenticated → bellSignIn + auth.signIn button → `setDialogOpen(true)`; authenticated → compact rows (avatar/symbol, direction mini icon, target, Active muted / Triggered amber chip), max-h-72 overflow-y-auto; `bellEmpty` empty state; footer full-width `#portfolio` manage link + ArrowRight that closes the popover. status "loading" → disabled skeleton circle. Visible list is derived from auth status so a stale fetch can't render after logout.
+- **site-header.tsx**: `<AlertsBell />` inserted immediately before `<AuthButton />` (gap preserved, icon-only at all breakpoints).
+- **layout.tsx**: kept the radix `<Toaster />` (renamed import `RadixToaster`) and mounted `<SonnerToaster theme="dark" position="bottom-right" />`. No wrapper change needed: the shadcn sonner wrapper spreads `{...props}` after its `useTheme()`-derived `theme`, so the explicit `theme="dark"` prop wins even without a next-themes ThemeProvider.
+
+## Verification
+- `bun run lint` → clean (exit 0). One `react-hooks/set-state-in-effect` error surfaced during development (direct `void load()` in the bell's effect) — resolved with the codebase's established `setTimeout(…, 0)` deferral pattern; also derived `visibleAlerts` instead of resetting alert state synchronously in the effect.
+- `bunx tsc --noEmit` → zero errors in the four touched files (remaining errors are pre-existing in `examples/`, `skills/`, `src/app/api/news/route.ts`).
+- dev.log: compiles clean; observed GET `/api/alerts` → 200 from the parallel backend agent's live route hitting the bell's polling — contract assumptions hold (200 `{alerts, newlyTriggered}` shape).
+
+## Contract assumptions (coded against, not curl-tested per instructions)
+- POST `/api/portfolio/demo` 201 `{holdings,snapshots}` / 409 `{error:"not_empty"}`; only status codes are inspected.
+- GET `/api/portfolio/history?days=` → `{snapshots:[{date:"YYYY-MM-DD",totalValue,totalCost}]}` ascending; `date` parsed as UTC.
+- GET `/api/alerts` → `{alerts:[{id,coinId,symbol,name,image,direction:"above"|"below",targetPrice,triggered,triggeredAt,createdAt,currentPrice:number|null}], newlyTriggered:[{id,symbol,name,targetPrice}]}`.
+- POST `/api/alerts` body `{coinId,symbol,name,image,targetPrice,direction}`; `image` omitted when null; error mapping by `json.error` string (validation/limit/duplicate).
+- PATCH `/api/alerts/[id]` `{triggered:false}`; DELETE `/api/alerts/[id]` → `{ok:true}`; only `res.ok` checked.
+- en.ts keys used verbatim as specified; no locale/backend/prisma files touched.

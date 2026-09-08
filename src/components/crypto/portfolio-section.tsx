@@ -3,16 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BellRing,
   Check,
   ChevronsUpDown,
   CircleAlert,
+  History,
   Lock,
   Pencil,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   Cell,
@@ -33,6 +41,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -49,7 +58,7 @@ import {
 import { useAuthStore } from "@/store/auth-store";
 import { useLocaleStore } from "@/store/locale-store";
 import type { Locale } from "@/i18n/config";
-import { fmtPrice, fmtCompactUsd, fmtPct } from "@/lib/format";
+import { fmtPrice, fmtCompactUsd, fmtPct, fmtPctPlain } from "@/lib/format";
 
 /* ---------------- types (mirror the API contracts) ---------------- */
 
@@ -110,6 +119,35 @@ interface CoinOption {
   price: number;
 }
 
+interface HistorySnapshot {
+  date: string;
+  totalValue: number;
+  totalCost: number;
+}
+
+interface HistoryPayload {
+  snapshots: HistorySnapshot[];
+}
+
+interface AlertItem {
+  id: string;
+  coinId: string;
+  symbol: string;
+  name: string;
+  image: string | null;
+  direction: "above" | "below";
+  targetPrice: number;
+  triggered: boolean;
+  triggeredAt: string | null;
+  createdAt: string;
+  currentPrice: number | null;
+}
+
+interface AlertsPayload {
+  alerts: AlertItem[];
+  newlyTriggered: Array<{ id: string; symbol: string; name: string; targetPrice: number }>;
+}
+
 /* ---------------- constants ---------------- */
 
 const PALETTE = [
@@ -144,6 +182,11 @@ function dateLocale(l: Locale): string {
   }
 }
 
+/** Parse a "YYYY-MM-DD" string as UTC to avoid timezone off-by-one on the axes. */
+function parseUtc(iso: string): Date {
+  return new Date(`${iso}T00:00:00Z`);
+}
+
 function fmtWeight(w: number): string {
   return `${w.toFixed(1)}%`;
 }
@@ -159,6 +202,74 @@ function CoinAvatar({ image, symbol, size = "h-6 w-6" }: { image: string | null;
     >
       {symbol.slice(0, 1)}
     </span>
+  );
+}
+
+/** Searchable top-100 coin picker, shared by the add/edit dialog and the alerts form. */
+function CoinPicker({
+  coin,
+  options,
+  open,
+  onOpenChange,
+  onPick,
+  disabled = false,
+  labels,
+}: {
+  coin: CoinOption | null;
+  options: Top100Coin[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onPick: (c: Top100Coin) => void;
+  disabled?: boolean;
+  labels: { select: string; search: string; empty: string };
+}) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={labels.select}
+          className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm transition-colors hover:border-primary/40 disabled:cursor-default disabled:opacity-70"
+        >
+          {coin ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <CoinAvatar image={coin.image} symbol={coin.symbol} />
+              <span className="min-w-0 text-left">
+                <span className="block truncate font-medium leading-tight text-foreground">{coin.name}</span>
+                <span className="block text-xs uppercase leading-tight text-muted-foreground">{coin.symbol}</span>
+              </span>
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">{labels.select}</span>
+          )}
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] max-w-[calc(100vw-2rem)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={labels.search} />
+          <CommandList className="max-h-64 overflow-y-auto">
+            <CommandEmpty>{labels.empty}</CommandEmpty>
+            <CommandGroup>
+              {options.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={`${c.name} ${c.symbol}`}
+                  onSelect={() => onPick(c)}
+                  className="gap-2 text-sm"
+                >
+                  <CoinAvatar image={c.image} symbol={c.symbol} size="h-5 w-5" />
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <span className="text-xs uppercase text-muted-foreground">{c.symbol}</span>
+                  {coin?.id === c.id && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -231,10 +342,37 @@ function PnlTooltip({ active, payload }: { active?: boolean; payload?: Array<{ p
   );
 }
 
+interface HistoryDatum {
+  date: string;
+  totalValue: number;
+  totalCost: number;
+}
+
+function HistoryTooltip({
+  active,
+  payload,
+  fmtDate,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: HistoryDatum }>;
+  fmtDate: (iso: string) => string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const datum = payload[0]?.payload;
+  if (!datum) return null;
+  return (
+    <div className="rounded-lg border border-border bg-popover/95 px-2.5 py-1.5 text-xs shadow-lg backdrop-blur">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{fmtDate(datum.date)}</p>
+      <p className="tnum font-semibold text-foreground">{fmtCompactUsd(datum.totalValue)}</p>
+    </div>
+  );
+}
+
 /* ---------------- main component ---------------- */
 
 export function PortfolioSection() {
   const t = useTranslations("portfolio");
+  const tA = useTranslations("alerts");
   const tAuth = useTranslations("auth");
   const status = useAuthStore((s) => s.status);
   const setDialogOpen = useAuthStore((s) => s.setDialogOpen);
@@ -263,6 +401,29 @@ export function PortfolioSection() {
   const [deletingPending, setDeletingPending] = useState(false);
   const [deleteError, setDeleteError] = useState(false);
 
+  /* demo load */
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoPending, setDemoPending] = useState(false);
+
+  /* portfolio value history */
+  const [history, setHistory] = useState<HistorySnapshot[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyRange, setHistoryRange] = useState<7 | 30>(30);
+
+  /* price alerts */
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsError, setAlertsError] = useState(false);
+  const [alertCoin, setAlertCoin] = useState<CoinOption | null>(null);
+  const [alertTarget, setAlertTarget] = useState("");
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const [alertPickerOpen, setAlertPickerOpen] = useState(false);
+  const [alertSaving, setAlertSaving] = useState(false);
+  const [alertError, setAlertError] = useState<"validation" | "limit" | "duplicate" | "error" | null>(null);
+  const [alertActionId, setAlertActionId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -282,9 +443,97 @@ export function PortfolioSection() {
     if (status === "authenticated") void load();
   }, [status, load]);
 
-  /* fetch the top-100 coin universe the first time the add/edit dialog opens */
+  const loadHistory = useCallback(
+    async (silent = false) => {
+      if (!silent) setHistoryLoading(true);
+      try {
+        const res = await fetch(`/api/portfolio/history?days=${historyRange}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`history fetch failed: ${res.status}`);
+        const json = (await res.json()) as HistoryPayload;
+        setHistory(json.snapshots ?? []);
+        setHistoryLoaded(true);
+        setHistoryError(false);
+      } catch {
+        if (!silent) setHistoryError(true);
+      } finally {
+        if (!silent) setHistoryLoading(false);
+      }
+    },
+    [historyRange]
+  );
+
+  /* initial + range-change history load (silent refetches keep the current chart mounted) */
   useEffect(() => {
-    if (!dialogMode || coinOptions.length > 0) return;
+    if (status === "authenticated") void loadHistory();
+  }, [status, loadHistory]);
+
+  const loadAlerts = useCallback(async (silent = false) => {
+    if (!silent) setAlertsLoading(true);
+    try {
+      const res = await fetch("/api/alerts", { cache: "no-store" });
+      if (!res.ok) throw new Error(`alerts fetch failed: ${res.status}`);
+      const json = (await res.json()) as AlertsPayload;
+      setAlerts(json.alerts ?? []);
+      setAlertsError(false);
+      /* Only the request that flips an alert's triggered flag receives it in
+         newlyTriggered — the bell and this card poll independently, so toast
+         here too: exactly one of the two fetchers ever sees each crossing. */
+      for (const item of json.newlyTriggered ?? []) {
+        toast(tA("notifyTitle"), {
+          description: tA("notifyBody", { name: item.name, target: fmtPrice(item.targetPrice) }),
+          duration: 8000,
+        });
+      }
+    } catch {
+      if (!silent) setAlertsError(true);
+    } finally {
+      if (!silent) setAlertsLoading(false);
+    }
+  }, [tA]);
+
+  /* initial load + silent 60s polling while authenticated (skips hidden tabs) */
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    void loadAlerts();
+    const iv = setInterval(() => {
+      if (document.hidden) return;
+      void loadAlerts(true);
+    }, 60000);
+    return () => clearInterval(iv);
+  }, [status, loadAlerts]);
+
+  /* refetch the portfolio AND its value history after any holding mutation */
+  const refreshAll = useCallback(() => {
+    void load();
+    void loadHistory(true);
+  }, [load, loadHistory]);
+
+  const runDemoLoad = useCallback(async () => {
+    if (demoPending) return;
+    setDemoPending(true);
+    try {
+      const res = await fetch("/api/portfolio/demo", { method: "POST" });
+      if (res.status === 201) {
+        setDemoOpen(false);
+        toast.success(t("demoDone"));
+        void load();
+        void loadHistory(true);
+      } else if (res.status === 409) {
+        setDemoOpen(false);
+        toast.warning(t("demoNotEmpty"));
+      } else {
+        toast.error(t("error"));
+      }
+    } catch {
+      toast.error(t("error"));
+    } finally {
+      setDemoPending(false);
+    }
+  }, [demoPending, t, load, loadHistory]);
+
+  /* fetch the top-100 coin universe the first time any coin picker opens */
+  useEffect(() => {
+    if ((!dialogMode && !alertPickerOpen) || coinOptions.length > 0) return;
     void (async () => {
       try {
         const res = await fetch("/api/market/top100", { cache: "no-store" });
@@ -295,7 +544,7 @@ export function PortfolioSection() {
         /* picker stays empty → CommandEmpty shows */
       }
     })();
-  }, [dialogMode, coinOptions.length]);
+  }, [dialogMode, alertPickerOpen, coinOptions.length]);
 
   const holdings = useMemo(() => data?.holdings ?? [], [data]);
   const computed = data?.computed ?? null;
@@ -353,14 +602,14 @@ export function PortfolioSection() {
               color: "bg-amber-400",
               text: t("insightConcentrated", {
                 name: computed.topHolding.symbol,
-                pct: fmtPct(computed.topHolding.weight),
+                pct: fmtPctPlain(computed.topHolding.weight),
               }),
             }
           : {
               color: "bg-primary",
               text: t("insightTop", {
                 name: computed.topHolding.symbol,
-                pct: fmtPct(computed.topHolding.weight),
+                pct: fmtPctPlain(computed.topHolding.weight),
               }),
             }
       );
@@ -465,7 +714,7 @@ export function PortfolioSection() {
       });
       if (res.ok) {
         closeForm();
-        void load();
+        void refreshAll();
       } else {
         setFormError("error");
       }
@@ -474,7 +723,7 @@ export function PortfolioSection() {
     } finally {
       setSaving(false);
     }
-  }, [dialogMode, saving, quantity, price, date, coin, editing, closeForm, load]);
+  }, [dialogMode, saving, quantity, price, date, coin, editing, closeForm, refreshAll]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleting || deletingPending) return;
@@ -484,17 +733,115 @@ export function PortfolioSection() {
       const res = await fetch(`/api/portfolio/${deleting.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("delete failed");
       setDeleting(null);
-      void load();
+      void refreshAll();
     } catch {
       setDeleteError(true);
     } finally {
       setDeletingPending(false);
     }
-  }, [deleting, deletingPending, load]);
+  }, [deleting, deletingPending, refreshAll]);
 
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(dateLocale(locale), { dateStyle: "medium" }),
     [locale]
+  );
+
+  /* history axis: "Aug 14" style ticks (UTC-anchored) */
+  const historyTickFormatter = useMemo(
+    () => new Intl.DateTimeFormat(dateLocale(locale), { month: "short", day: "numeric", timeZone: "UTC" }),
+    [locale]
+  );
+  /* history tooltip: fully localized long date */
+  const historyTooltipFormatter = useMemo(
+    () => new Intl.DateTimeFormat(dateLocale(locale), { dateStyle: "medium", timeZone: "UTC" }),
+    [locale]
+  );
+
+  /* ---- price alert helpers ---- */
+
+  const pickAlertCoin = useCallback((c: Top100Coin) => {
+    setAlertCoin({ id: c.id, symbol: c.symbol, name: c.name, image: c.image, price: c.price });
+    if (c.price > 0) setAlertTarget(String(Math.round(c.price * 1e6) / 1e6));
+    setAlertError(null);
+    setAlertPickerOpen(false);
+  }, []);
+
+  const createAlert = useCallback(async () => {
+    if (alertSaving) return;
+    const target = Number(alertTarget);
+    if (!alertCoin || !alertTarget || !Number.isFinite(target) || target <= 0) {
+      setAlertError("validation");
+      return;
+    }
+    setAlertSaving(true);
+    setAlertError(null);
+    try {
+      const res = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          coinId: alertCoin.id,
+          symbol: alertCoin.symbol,
+          name: alertCoin.name,
+          image: alertCoin.image ?? undefined,
+          targetPrice: target,
+          direction: alertDirection,
+        }),
+      });
+      if (res.status === 201) {
+        setAlertTarget(""); // keep the coin selected for quick follow-ups
+        void loadAlerts(true);
+      } else {
+        const json = (await res.json().catch(() => null)) as { error?: string } | null;
+        if (json?.error === "validation") setAlertError("validation");
+        else if (json?.error === "limit") setAlertError("limit");
+        else if (json?.error === "duplicate") setAlertError("duplicate");
+        else setAlertError("error");
+      }
+    } catch {
+      setAlertError("error");
+    } finally {
+      setAlertSaving(false);
+    }
+  }, [alertSaving, alertTarget, alertCoin, alertDirection, loadAlerts]);
+
+  const rearmAlert = useCallback(
+    async (a: AlertItem) => {
+      if (alertActionId) return;
+      setAlertActionId(a.id);
+      try {
+        const res = await fetch(`/api/alerts/${a.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ triggered: false }),
+        });
+        if (res.ok) {
+          toast.success(tA("rearmed"));
+          void loadAlerts(true);
+        }
+      } catch {
+        /* keep the row as-is; the next poll will reconcile */
+      } finally {
+        setAlertActionId(null);
+      }
+    },
+    [alertActionId, loadAlerts, tA]
+  );
+
+  const deleteAlert = useCallback(
+    async (a: AlertItem) => {
+      if (alertActionId) return;
+      setAlertActionId(a.id);
+      try {
+        const res = await fetch(`/api/alerts/${a.id}`, { method: "DELETE" });
+        if (res.ok) void loadAlerts(true);
+      } catch {
+        /* keep the row as-is; the next poll will reconcile */
+      } finally {
+        setAlertActionId(null);
+      }
+    },
+    [alertActionId, loadAlerts]
   );
 
   /* ---------------- gating ---------------- */
@@ -588,6 +935,17 @@ export function PortfolioSection() {
               )}
             </span>
           )}
+          {computed && computed.positionCount === 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDemoOpen(true)}
+              className="gap-1.5 border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+            >
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("demoLoad")}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={openAdd}
@@ -637,6 +995,98 @@ export function PortfolioSection() {
           />
         </div>
       )}
+
+      {/* portfolio value history */}
+      <div className="rounded-2xl border border-border bg-card/40 p-4 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" aria-hidden="true" />
+            <p className="text-sm font-semibold text-foreground">{t("historyTitle")}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="hidden text-xs text-muted-foreground sm:block">{t("historyDesc")}</p>
+            <div className="flex items-center gap-1" role="group" aria-label={t("historyTitle")}>
+              {([7, 30] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setHistoryRange(d)}
+                  aria-pressed={historyRange === d}
+                  className={`tnum rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                    historyRange === d
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                  }`}
+                >
+                  {d === 7 ? t("history7d") : t("history30d")}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {historyError ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
+            <CircleAlert className="h-5 w-5 text-destructive" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">{t("historyError")}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void loadHistory()}
+              className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+            >
+              {t("retry")}
+            </Button>
+          </div>
+        ) : !historyLoaded && historyLoading ? (
+          <Skeleton className="h-[230px] w-full rounded-xl" />
+        ) : history.length === 0 ? (
+          <div className="flex items-center justify-center rounded-xl border border-dashed border-border px-4 py-10 text-center">
+            <p className="max-w-md text-sm text-muted-foreground">{t("historyEmpty")}</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={230}>
+            <AreaChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="history-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="date"
+                tickFormatter={(value: string) => historyTickFormatter.format(parseUtc(value))}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                axisLine={{ stroke: "var(--border)" }}
+                tickLine={false}
+                minTickGap={28}
+                className="tnum"
+              />
+              <YAxis
+                width={56}
+                tickFormatter={(value: number) => fmtCompactUsd(value)}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                className="tnum"
+              />
+              <Tooltip
+                content={<HistoryTooltip fmtDate={(iso) => historyTooltipFormatter.format(parseUtc(iso))} />}
+                cursor={{ stroke: "var(--border)", strokeDasharray: "4 4" }}
+              />
+              <Area
+                type="monotone"
+                dataKey="totalValue"
+                stroke="#10b981"
+                strokeWidth={2}
+                fill="url(#history-fill)"
+                dot={false}
+                activeDot={{ r: 3 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
       {/* holdings / empty state */}
       {isEmpty ? (
@@ -857,6 +1307,239 @@ export function PortfolioSection() {
         </div>
       )}
 
+      {/* price alerts */}
+      <div className="rounded-2xl border border-border bg-card/40 p-4 sm:p-6">
+        <div className="mb-4 flex items-start gap-2">
+          <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-semibold text-foreground">{tA("title")}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{tA("desc")}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          {/* create form */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createAlert();
+            }}
+            className="flex flex-col gap-3"
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {tA("newAlert")}
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {tA("coin")}
+              </Label>
+              <CoinPicker
+                coin={alertCoin}
+                options={coinOptions}
+                open={alertPickerOpen}
+                onOpenChange={setAlertPickerOpen}
+                onPick={pickAlertCoin}
+                labels={{ select: tA("selectCoin"), search: tA("searchCoin"), empty: tA("noCoins") }}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {tA("direction")}
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAlertDirection("above")}
+                  aria-pressed={alertDirection === "above"}
+                  className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                    alertDirection === "above"
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-border bg-background/60 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                  }`}
+                >
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  {tA("above")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlertDirection("below")}
+                  aria-pressed={alertDirection === "below"}
+                  className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                    alertDirection === "below"
+                      ? "border-destructive/40 bg-destructive/15 text-destructive"
+                      : "border-border bg-background/60 text-muted-foreground hover:border-destructive/30 hover:text-foreground"
+                  }`}
+                >
+                  <ArrowDownRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  {tA("below")}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label
+                htmlFor="alert-target"
+                className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                {tA("target")}
+              </Label>
+              <Input
+                id="alert-target"
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                value={alertTarget}
+                onChange={(e) => {
+                  setAlertTarget(e.target.value);
+                  setAlertError(null);
+                }}
+                placeholder={alertCoin && alertCoin.price > 0 ? fmtPrice(alertCoin.price) : undefined}
+                className="h-9 border-border bg-background/60 text-sm"
+              />
+            </div>
+
+            {alertError && (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                {alertError === "validation"
+                  ? tA("errValidation")
+                  : alertError === "limit"
+                    ? tA("errLimit")
+                    : alertError === "duplicate"
+                      ? tA("errDuplicate")
+                      : tA("errGeneric")}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              disabled={alertSaving || !alertCoin || !(Number(alertTarget) > 0)}
+              className="h-9 w-full bg-primary/15 text-sm font-semibold text-primary hover:bg-primary/25"
+            >
+              {alertSaving ? tA("creating") : tA("create")}
+            </Button>
+          </form>
+
+          {/* alert list */}
+          <div className="flex flex-col">
+            {alertsError ? (
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
+                <CircleAlert className="h-5 w-5 text-destructive" aria-hidden="true" />
+                <p className="text-sm text-muted-foreground">{tA("error")}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void loadAlerts()}
+                  className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  {t("retry")}
+                </Button>
+              </div>
+            ) : alertsLoading && alerts.length === 0 ? (
+              <div className="space-y-2">
+                <Skeleton className="h-16 rounded-xl" />
+                <Skeleton className="h-16 rounded-xl" />
+                <Skeleton className="h-16 rounded-xl" />
+              </div>
+            ) : alerts.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border px-4 py-10 text-center">
+                <p className="text-sm text-muted-foreground">{tA("empty")}</p>
+              </div>
+            ) : (
+              <ul className="nice-scroll max-h-96 divide-y divide-border/40 overflow-y-auto pr-1">
+                {alerts.map((a) => {
+                  const distancePct =
+                    !a.triggered && a.currentPrice != null && a.targetPrice > 0
+                      ? (Math.abs(a.currentPrice - a.targetPrice) / a.targetPrice) * 100
+                      : null;
+                  return (
+                    <li key={a.id} className="flex items-center gap-3 py-2.5">
+                      <CoinAvatar image={a.image} symbol={a.symbol} size="h-8 w-8" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-bold text-foreground">{a.symbol}</span>
+                          <span className="min-w-0 truncate text-xs text-muted-foreground">{a.name}</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                              a.direction === "above"
+                                ? "bg-primary/10 text-primary"
+                                : "bg-destructive/10 text-destructive"
+                            }`}
+                          >
+                            {a.direction === "above" ? (
+                              <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                            ) : (
+                              <ArrowDownRight className="h-3 w-3" aria-hidden="true" />
+                            )}
+                            {a.direction === "above" ? tA("above") : tA("below")}
+                          </span>
+                          <span className="tnum text-xs text-muted-foreground">{fmtPrice(a.targetPrice)}</span>
+                          <span className="tnum text-xs text-muted-foreground">
+                            {tA("now")}: {a.currentPrice != null ? fmtPrice(a.currentPrice) : "—"}
+                          </span>
+                          {distancePct != null && (
+                            <span className="tnum rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              {tA("toTarget", {
+                                pct:
+                                  Math.abs(distancePct) >= 1000
+                                    ? ">999%"
+                                    : fmtPct(distancePct),
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {a.triggered ? (
+                          <span className="inline-flex animate-pulse items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
+                            {tA("statusTriggered")}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                            {tA("statusActive")}
+                          </span>
+                        )}
+                        <div className="flex items-center">
+                          {a.triggered && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={tA("rearm")}
+                              disabled={alertActionId === a.id}
+                              onClick={() => void rearmAlert(a)}
+                              className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={tA("delete")}
+                            disabled={alertActionId === a.id}
+                            onClick={() => void deleteAlert(a)}
+                            className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* insights */}
       {insightLines.length > 0 && (
         <div className="rounded-2xl border border-border bg-card/40 p-4 sm:p-6">
@@ -901,54 +1584,15 @@ export function PortfolioSection() {
               <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {t("coin")}
               </Label>
-              <Popover open={coinPickerOpen} onOpenChange={setCoinPickerOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={dialogMode === "edit"}
-                    aria-label={t("selectCoin")}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm transition-colors hover:border-primary/40 disabled:cursor-default disabled:opacity-70"
-                  >
-                    {coin ? (
-                      <span className="flex min-w-0 items-center gap-2">
-                        <CoinAvatar image={coin.image} symbol={coin.symbol} />
-                        <span className="min-w-0 text-left">
-                          <span className="block truncate font-medium leading-tight text-foreground">{coin.name}</span>
-                          <span className="block text-xs uppercase leading-tight text-muted-foreground">
-                            {coin.symbol}
-                          </span>
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">{t("selectCoin")}</span>
-                    )}
-                    <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[320px] max-w-[calc(100vw-2rem)] p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder={t("searchCoin")} />
-                    <CommandList className="max-h-64 overflow-y-auto">
-                      <CommandEmpty>{t("noCoins")}</CommandEmpty>
-                      <CommandGroup>
-                        {coinOptions.map((c) => (
-                          <CommandItem
-                            key={c.id}
-                            value={`${c.name} ${c.symbol}`}
-                            onSelect={() => pickCoin(c)}
-                            className="gap-2 text-sm"
-                          >
-                            <CoinAvatar image={c.image} symbol={c.symbol} size="h-5 w-5" />
-                            <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                            <span className="text-xs uppercase text-muted-foreground">{c.symbol}</span>
-                            {coin?.id === c.id && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <CoinPicker
+                coin={coin}
+                options={coinOptions}
+                open={coinPickerOpen}
+                onOpenChange={setCoinPickerOpen}
+                onPick={pickCoin}
+                disabled={dialogMode === "edit"}
+                labels={{ select: t("selectCoin"), search: t("searchCoin"), empty: t("noCoins") }}
+              />
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1062,6 +1706,33 @@ export function PortfolioSection() {
               className="bg-destructive text-white hover:bg-destructive/90"
             >
               {t("delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ---------------- demo load confirmation ---------------- */}
+      <AlertDialog open={demoOpen} onOpenChange={setDemoOpen}>
+        <AlertDialogContent className="rounded-2xl border-border sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">{t("demoConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              {t("demoConfirmBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs" disabled={demoPending}>
+              {t("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={demoPending}
+              onClick={(e) => {
+                e.preventDefault();
+                void runDemoLoad();
+              }}
+              className="bg-primary/15 text-primary hover:bg-primary/25"
+            >
+              {demoPending ? t("demoLoading") : t("demoConfirmAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

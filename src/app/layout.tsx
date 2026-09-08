@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "flag-icons/css/flag-icons.min.css";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster as RadixToaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { IntlProvider } from "@/i18n/intl-provider";
 
 const geistSans = Geist({
@@ -51,7 +52,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
         <IntlProvider>{children}</IntlProvider>
-        <Toaster />
+        <RadixToaster />
+        {/* forced-dark app: pin sonner to dark (wrapper's useTheme() resolves to system without a ThemeProvider) */}
+        <SonnerToaster theme="dark" position="bottom-right" />
       </body>
     </html>
   );

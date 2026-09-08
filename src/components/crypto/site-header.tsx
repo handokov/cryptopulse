@@ -5,6 +5,7 @@ import { useCryptoStore } from "@/store/crypto-store";
 import { fmtPrice, fmtPct } from "@/lib/format";
 import { LanguageSwitcher } from "./language-switcher";
 import { AuthButton, AuthDialog } from "./auth-dialog";
+import { AlertsBell } from "./alerts-bell";
 import { Activity } from "lucide-react";
 
 export function SiteHeader() {
@@ -44,6 +45,7 @@ export function SiteHeader() {
             <span className="live-dot h-1.5 w-1.5 rounded-full bg-primary" />
             24/7 LIVE
           </span>
+          <AlertsBell />
           <AuthButton />
           <AuthDialog />
           <LanguageSwitcher />
