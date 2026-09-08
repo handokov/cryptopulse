@@ -42,6 +42,9 @@ const ja: Messages = {
     groupAria: "{from}–{to} 位を表示",
     prevGroup: "前のグループ",
     nextGroup: "次のグループ",
+    customGroup: "ピン留め",
+    customGroupTitle: "ピン留め銘柄 ― トップ100圏外",
+    customBadge: "ピン留め",
     rank: "順位",
     asset: "アセット",
     price: "価格",
@@ -59,7 +62,7 @@ const ja: Messages = {
     error: "現在トップ100を読み込めません。",
     retry: "再試行",
     empty: "「{query}」に一致するアセットはありません。",
-    allTraceable: "全100資産が追跡可能です。任意の行をクリックするとラボがその資産にフォーカスします。",
+    allTraceable: "ボード上のすべての資産が追跡可能です。任意の行をクリックするとラボがその資産にフォーカスします。",
     loadingCoin: "価格シリーズを読み込み中…",
   },
 

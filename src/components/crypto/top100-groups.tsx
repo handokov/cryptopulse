@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, ChevronRight, Crosshair, Loader2, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crosshair, Loader2, Pin, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +24,8 @@ interface Top100Coin {
   marketCap: number;
   volume24h: number;
   sparkline: number[];
+  /** Custom pinned coin (outside the top 100) — shown in the trailing "Pinned" group. */
+  pinned?: boolean;
 }
 
 interface Top100Payload {
@@ -236,6 +238,8 @@ function CoinTable({ entries, loading = false }: { entries: CoinRowEntry[]; load
                           className="h-3.5 w-3.5 animate-spin text-primary"
                           aria-label={t("loadingCoin")}
                         />
+                      ) : coin.pinned ? (
+                        <Pin className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
                       ) : (
                         <span className={rank <= 3 ? "font-semibold text-amber-400" : "text-muted-foreground"}>
                           {rank}
@@ -252,6 +256,11 @@ function CoinTable({ entries, loading = false }: { entries: CoinRowEntry[]; load
                             {tracked && (
                               <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary">
                                 {t("tracked")}
+                              </span>
+                            )}
+                            {coin.pinned && (
+                              <span className="rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-400">
+                                {t("customBadge")}
                               </span>
                             )}
                           </span>
@@ -384,6 +393,13 @@ export function Top100Groups() {
     return groupCoins.reduce((sum, { coin }) => sum + coin.change24h, 0) / groupCoins.length;
   }, [groupCoins]);
 
+  /* Custom pinned coins live in a trailing group past the ten numbered ones
+     (they are appended after the top 100 in the payload, so the same slice
+     logic serves them). */
+  const isCustomGroup = groupIndex === GROUP_COUNT;
+  const hasCustomGroup = useMemo(() => coins.some((c) => c.pinned), [coins]);
+  const maxGroupIndex = hasCustomGroup ? GROUP_COUNT : GROUP_COUNT - 1;
+
   return (
     <div className="flex flex-col gap-4">
       {/* search + freshness strip */}
@@ -452,11 +468,27 @@ export function Top100Groups() {
               </button>
             );
           })}
+          {hasCustomGroup && (
+            <button
+              type="button"
+              aria-label={t("customGroupTitle")}
+              aria-pressed={isCustomGroup}
+              onClick={() => setGroupIndex(GROUP_COUNT)}
+              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                isCustomGroup
+                  ? "border-amber-400/40 bg-amber-400/10 text-amber-400"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Pin className="h-3 w-3" aria-hidden="true" />
+              {t("customGroup")}
+            </button>
+          )}
           <button
             type="button"
             aria-label={t("nextGroup")}
-            disabled={groupIndex === GROUP_COUNT - 1}
-            onClick={() => setGroupIndex((i) => Math.min(GROUP_COUNT - 1, i + 1))}
+            disabled={groupIndex === maxGroupIndex}
+            onClick={() => setGroupIndex((i) => Math.min(maxGroupIndex, i + 1))}
             className="flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
           >
             <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -468,7 +500,7 @@ export function Top100Groups() {
       {!searching && !loading && !error && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {t("groupAria", { from: groupFrom, to: groupTo })}
+            {isCustomGroup ? t("customGroupTitle") : t("groupAria", { from: groupFrom, to: groupTo })}
           </p>
           <span className="tnum rounded-full border border-border bg-card px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
             {t("groupAvg", { value: fmtPct(groupAvg) })}

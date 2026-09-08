@@ -42,6 +42,9 @@ const id: Messages = {
     groupAria: "Tampilkan peringkat {from}–{to}",
     prevGroup: "Kelompok sebelumnya",
     nextGroup: "Kelompok berikutnya",
+    customGroup: "Disematkan",
+    customGroupTitle: "Koin tersemat — di luar 100 besar",
+    customBadge: "DISEMATKAN",
     rank: "Peringkat",
     asset: "Aset",
     price: "Harga",
@@ -59,7 +62,7 @@ const id: Messages = {
     error: "Papan 100 besar tidak dapat dimuat saat ini.",
     retry: "Coba lagi",
     empty: "Tidak ada aset yang cocok dengan “{query}”.",
-    allTraceable: "Semua 100 aset dapat dilacak — klik baris mana pun untuk memfokuskan lab padanya.",
+    allTraceable: "Semua aset di papan dapat dilacak — klik baris mana pun untuk memfokuskan lab padanya.",
     loadingCoin: "Memuat deret harga…",
   },
 

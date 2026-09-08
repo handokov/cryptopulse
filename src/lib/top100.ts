@@ -3,7 +3,25 @@
  * and last-good fallback on upstream failure. Shared by the
  * /api/market/top100 route and the per-coin tracing endpoint (which uses
  * the cached board as a snapshot source when the live markets call fails).
+ *
+ * Custom pinned coins (CUSTOM_COIN_IDS) are fetched in the same pass and
+ * merged after the top 100, so assets outside the top 100 stay visible on
+ * the board, traceable in the labs, selectable in the portfolio/alert
+ * pickers and matchable during exchange sync.
  */
+
+/**
+ * Custom pinned coins — tracked in addition to the top-100 board. Add or
+ * remove CoinGecko ids here to change what gets pinned; nothing else needs
+ * to change (board UI shows them in the "Pinned" group, exchange sync
+ * matches them by symbol like any board coin).
+ */
+export const CUSTOM_COIN_IDS: readonly string[] = [
+  "syrup", // Maple Finance (SYRUP)
+  "irys", // Irys (IRYS)
+  "sei-network", // Sei (SEI)
+  "gaib", // GAIB
+];
 
 export interface TopCoin {
   id: string;
@@ -16,6 +34,8 @@ export interface TopCoin {
   marketCap: number;
   volume24h: number;
   sparkline: number[];
+  /** True only for custom pinned coins (CUSTOM_COIN_IDS) appended after the top 100. */
+  pinned?: boolean;
 }
 
 export interface Top100Result {
@@ -57,9 +77,8 @@ function num(v: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-async function fetchTop100(): Promise<TopCoin[] | null> {
-  const url =
-    "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=true&price_change_percentage=24h%2C7d";
+/** Fetches one CoinGecko /coins/markets page and normalizes it to TopCoin rows. */
+async function fetchBoardPage(url: string, pinned: boolean): Promise<TopCoin[] | null> {
   try {
     const res = await fetch(url, {
       headers: { accept: "application/json" },
@@ -90,12 +109,37 @@ async function fetchTop100(): Promise<TopCoin[] | null> {
         marketCap: num(item.market_cap),
         volume24h: num(item.total_volume),
         sparkline: Array.isArray(sparkRaw) ? sparkRaw.map((p) => num(p)) : [],
+        pinned: pinned ? true : undefined,
       });
     }
     return coins.length > 0 ? coins : null;
   } catch {
     return null;
   }
+}
+
+async function fetchTop100(): Promise<TopCoin[] | null> {
+  const base =
+    "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&sparkline=true&price_change_percentage=24h%2C7d";
+  const topUrl = `${base}&order=market_cap_desc&per_page=100&page=1`;
+  const customUrl =
+    CUSTOM_COIN_IDS.length > 0
+      ? `${base}&ids=${encodeURIComponent(CUSTOM_COIN_IDS.join(","))}`
+      : null;
+  // Both calls run in parallel; a pinned-coins failure degrades to the plain
+  // top-100 board instead of failing the whole snapshot.
+  const [top, custom] = await Promise.all([
+    fetchBoardPage(topUrl, false),
+    customUrl ? fetchBoardPage(customUrl, true) : Promise.resolve<TopCoin[] | null>([]),
+  ]);
+  if (!top) return null;
+  // Merge pinned coins (mcap-desc) after the top 100, skipping ids the board
+  // already contains (e.g. a pinned coin that climbed into the top 100).
+  const seen = new Set(top.map((c) => c.id));
+  const extra = (custom ?? [])
+    .filter((c) => !seen.has(c.id))
+    .sort((a, b) => b.marketCap - a.marketCap);
+  return extra.length > 0 ? [...top, ...extra] : top;
 }
 
 /** Cached top-100 snapshot (falls back to the last good board). */

@@ -42,6 +42,9 @@ const zh: Messages = {
     groupAria: "显示第 {from}–{to} 名",
     prevGroup: "上一组",
     nextGroup: "下一组",
+    customGroup: "置顶",
+    customGroupTitle: "置顶代币 —— 百强之外",
+    customBadge: "置顶",
     rank: "排名",
     asset: "资产",
     price: "价格",
@@ -59,7 +62,7 @@ const zh: Messages = {
     error: "暂时无法加载百强榜。",
     retry: "重试",
     empty: "没有资产与“{query}”匹配。",
-    allTraceable: "全部 100 个资产均可追踪——点击任意行即可让实验室聚焦该资产。",
+    allTraceable: "榜单上所有资产均可追踪——点击任意行即可让实验室聚焦该资产。",
     loadingCoin: "正在加载价格序列……",
   },
 

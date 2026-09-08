@@ -331,3 +331,22 @@ Work Log:
 Stage Summary:
 - Files: new — src/lib/secure.ts, src/lib/exchanges/{types,binance,bitget,tokocrypto,demo,index,sync}.ts, src/app/api/exchange-connections/{route.ts,[id]/route.ts,[id]/sync/route.ts}, src/components/crypto/exchange-connections.tsx, scripts/verify-exchange-adapters.ts; modified — prisma/schema.prisma, src/lib/top100.ts (getMatchUniverse + coins-list fallback), src/components/crypto/portfolio-section.tsx (mount card + per-coin chart aggregation), en.ts + 5 catalogs.
 - Contract: adapters only speak wire formats; sync.ts is the ONLY writer of connectionId holdings; any new exchange = one adapter file + registry entry + (optionally) i18n how-to line. Match universe = top-100 board, /coins/list fallback during outages; "not tracked" balances surface in sync results.
+
+---
+Task ID: 9
+Agent: Super Z (main agent)
+Task: Add custom cryptos outside the top 100 — user request: SYRUP, IRYS, SEI, GAIB (all currently untrackable: mcap ranks 146 / 671 / 130 / 2133, so absent from the CoinGecko top-100 board and thus from the board UI, pickers, and exchange-sync matching).
+
+Work Log:
+- Verified exact CoinGecko ids via /search: syrup (Maple Finance), irys (Irys), sei-network (Sei), gaib (GAIB). All four outside the top 100 → none matched during Bitget sync either.
+- Design: server-side pinned-custom-coins registry (global, one-line extensible) instead of per-user DB model — fulfills the request with zero new schema/migration, and exchange sync inherits matching automatically.
+- src/lib/top100.ts: added exported CUSTOM_COIN_IDS registry; TopCoin gained optional pinned flag; fetchTop100 refactored into fetchBoardPage(url, pinned) + a parallel second /coins/markets?ids= call; pinned coins merged mcap-desc after the top 100 (dedupe by id — a pinned coin that climbs into the top 100 is not duplicated); pinned-call failure degrades to the plain board.
+- top100-groups.tsx: trailing amber "Pinned" pill (11th group) only when pinned coins exist; group header switches to customGroupTitle; rank cell renders a pin icon for pinned rows; amber PINNED badge next to symbol; next/prev arrows clamp to the new max index. Same slice logic reused (pinned coins sit at indexes 100+).
+- i18n: top100 namespace +3 keys (customGroup, customGroupTitle, customBadge) mirrored to id/zh/es/pt/ja; allTraceable copy de-hardcoded ("All 100 assets" → "Every asset on the board") in all 6 languages. i18n-check: 363/363 ×6 ALL CLEAN.
+- Verification: /api/market/top100 → 104 coins, pinned block = SEI/SYRUP/IRYS/GAIB with live prices; /api/coin/syrup + /api/coin/gaib → full snapshots, source=coingecko, 91-pt history (labs + analysis fully work for pinned coins); eslint clean; agent-browser E2E — Pinned pill renders + activates amber, all 4 rows with pin icons + PINNED badges + sparklines, clicking Maple Finance focuses the labs (forward-analysis — syrup@45d); dev.log free of errors.
+- Exchange sync impact: getMatchUniverse() returns the merged board, so SYRUP/IRYS/SEI/GAIB balances on the user's Bitget key now match by symbol on the next Sync click (previously unmatched).
+
+Stage Summary:
+- Files modified: src/lib/top100.ts (CUSTOM_COIN_IDS + pinned merge), src/components/crypto/top100-groups.tsx (Pinned group UI), src/i18n/messages/{en,id,zh,es,pt,ja}.ts (+3 keys, allTraceable copy). No schema/API-contract changes.
+- To pin more coins later: append a CoinGecko id to CUSTOM_COIN_IDS in src/lib/top100.ts — board UI, pickers, tracing and sync matching pick it up automatically.
+- User follow-up: re-run Sync on the Bitget connection to import SYRUP/IRYS/SEI/GAIB balances into the portfolio.

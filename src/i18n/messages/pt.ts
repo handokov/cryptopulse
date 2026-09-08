@@ -42,6 +42,9 @@ const pt: Messages = {
     groupAria: "Mostrar posições {from}–{to}",
     prevGroup: "Grupo anterior",
     nextGroup: "Próximo grupo",
+    customGroup: "Fixados",
+    customGroupTitle: "Moedas fixadas — além do top 100",
+    customBadge: "FIXADO",
     rank: "Posição",
     asset: "Ativo",
     price: "Preço",
@@ -59,7 +62,7 @@ const pt: Messages = {
     error: "Não foi possível carregar o top 100 agora.",
     retry: "Tentar novamente",
     empty: "Nenhum ativo corresponde a “{query}”.",
-    allTraceable: "Todos os 100 ativos podem ser rastreados — clique em qualquer linha para focar os laboratórios nele.",
+    allTraceable: "Todos os ativos do quadro podem ser rastreados — clique em qualquer linha para focar os laboratórios nele.",
     loadingCoin: "Carregando a série de preços…",
   },
 

@@ -43,6 +43,9 @@ const en = {
     groupAria: "Show ranks {from}–{to}",
     prevGroup: "Previous group",
     nextGroup: "Next group",
+    customGroup: "Pinned",
+    customGroupTitle: "Pinned coins — beyond the top 100",
+    customBadge: "PINNED",
     rank: "Rank",
     asset: "Asset",
     price: "Price",
@@ -60,7 +63,7 @@ const en = {
     error: "Couldn't load the top 100 right now.",
     retry: "Retry",
     empty: "No assets match “{query}”.",
-    allTraceable: "All 100 assets are traceable — click any row to focus the labs on it.",
+    allTraceable: "Every asset on the board is traceable — click any row to focus the labs on it.",
     loadingCoin: "Loading price series…",
   },
 
