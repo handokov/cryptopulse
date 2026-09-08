@@ -447,3 +447,16 @@ Work Log:
 Stage Summary:
 - The stop-vs-support reading confusion is resolved at the UI layer: hierarchy is always price-ordered, every level carries a direction-aware explanation, and SHORT verdicts explicitly label the stop as a buyback level. No engine/API/schema changes.
 - Backlog unchanged: Monte Carlo band + drift shrinkage (offered, not yet approved).
+
+---
+Task ID: 15-b
+Agent: Super Z (main agent)
+Task: Publish the blocked ladder commit after the user supplied a fresh GitHub PAT.
+
+Work Log:
+- Old PAT confirmed 401 (user had revoked it as advised); new classic PAT verified → account handokov, repo access 200.
+- Detected local history rewrite by the checkpoint system (analytics commit 52cea5d → 60722ee, same content) → used force-with-lease pinned to the known remote head 52cea5d (aborts if anyone else pushed meanwhile).
+- Push OK: remote main 52cea5d → e606a3b (ladder + i18n + worklog); local and remote fully synced; Vercel auto-deploy expected.
+
+Stage Summary:
+- All deployment work is now on GitHub. Third PAT exposed in chat — user must revoke ghp_PvPY… after this push; recommend fine-grained tokens with repo-scoped Contents:RW for future rounds.
