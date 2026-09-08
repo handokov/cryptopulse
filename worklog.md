@@ -350,3 +350,18 @@ Stage Summary:
 - Files modified: src/lib/top100.ts (CUSTOM_COIN_IDS + pinned merge), src/components/crypto/top100-groups.tsx (Pinned group UI), src/i18n/messages/{en,id,zh,es,pt,ja}.ts (+3 keys, allTraceable copy). No schema/API-contract changes.
 - To pin more coins later: append a CoinGecko id to CUSTOM_COIN_IDS in src/lib/top100.ts — board UI, pickers, tracing and sync matching pick it up automatically.
 - User follow-up: re-run Sync on the Bitget connection to import SYRUP/IRYS/SEI/GAIB balances into the portfolio.
+
+---
+Task ID: 10
+Agent: Super Z (main agent)
+Task: Prepare the project for going online — user wants to connect it to GitHub and deploy. Teaching + repo hygiene.
+
+Work Log:
+- Audited git state: repo already initialized (main, 3 scaffold commits); found sensitive/local files TRACKED: .env, db/custom.db (user accounts + AES-encrypted exchange keys!), agent-ctx/, tool-results/, download/, upload/, scripts/*.png.
+- .gitignore extended (.env*, /db/*.db*, /tool-results/, /agent-ctx/, /upload/, /download/, /scripts/*.png); all offenders untracked via git rm --cached (kept on disk); committed c4e6a5e.
+- Compiled production env vars: DATABASE_URL (SQLite file — needs persistent hosting or provider migration), CREDENTIAL_SECRET (secure.ts AES key, dev fallback "change-me"), AUTH_SECRET (auth.ts session signer, same fallback). Both secrets MUST be set in production.
+- Deployment options assessed: Vercel (free, Next.js-native) requires DB migration off SQLite (Turso/libSQL recommended, needs db.ts + schema provider change) because serverless has no persistent disk; Railway/Render-with-volume keeps SQLite as-is (paid); documented in the tutorial reply.
+
+Stage Summary:
+- Repo is push-ready and secrets-safe; no app code changed this turn.
+- Next: user either sends a fine-grained GitHub token (I push) or downloads a clean archive and pushes manually; then hosting choice (Vercel+Turso migration vs Railway+volume), then set DATABASE_URL/CREDENTIAL_SECRET/AUTH_SECRET on the host.
