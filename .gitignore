@@ -52,3 +52,13 @@ prompt
 server.log
 # Skills directory
 /skills/
+# local data & secrets (never push to GitHub)
+.env
+.env.*
+/db/*.db
+/db/*.db-journal
+/tool-results/
+/agent-ctx/
+/upload/
+/download/
+/scripts/*.png
