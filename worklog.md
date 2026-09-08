@@ -365,3 +365,18 @@ Work Log:
 Stage Summary:
 - Repo is push-ready and secrets-safe; no app code changed this turn.
 - Next: user either sends a fine-grained GitHub token (I push) or downloads a clean archive and pushes manually; then hosting choice (Vercel+Turso migration vs Railway+volume), then set DATABASE_URL/CREDENTIAL_SECRET/AUTH_SECRET on the host.
+
+---
+Task ID: 11
+Agent: Super Z (main agent)
+Task: Push the project to the user's GitHub repo (user provided a classic PAT in chat).
+
+Work Log:
+- Verified token via /user → account handokov; repo handokov/cryptopulse already created by the user, empty (size 0), default branch main, visibility public.
+- Added tokenless remote origin (https://github.com/handokov/cryptopulse.git); pushed main via one-time tokenized URL (token NOT persisted in .git/config).
+- Post-push verification via GitHub contents API: .env → 404, db/custom.db → 404 (no secrets on GitHub); clean source tree confirmed.
+- Advised user to revoke the pasted PAT immediately (it was exposed in chat) and how to flip repo visibility; hosting decision (Vercel+Turso migration vs Railway) pending.
+
+Stage Summary:
+- Code is live on https://github.com/handokov/cryptopulse (branch main, 5 commits incl. cleanup c4e6a5e).
+- Secrets stay local only; deployment blocked on hosting choice — Vercel requires SQLite→Turso migration (planned), Railway needs a volume.
