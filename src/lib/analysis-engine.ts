@@ -9,6 +9,8 @@
 import { createTranslator } from "use-intl/core";
 import { getMarketSnapshot, type AssetSnapshot } from "@/lib/market-data";
 import { bollinger, ema, logReturns, macd, percentileRank, rsi, sma, stdev } from "@/lib/indicators";
+import { projectPrice, substitutedExpr } from "@/lib/projection";
+import { fmtPrice, fmtPct } from "@/lib/format";
 import { ALL_MESSAGES } from "@/i18n/messages";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/config";
 
@@ -61,16 +63,6 @@ export const FACTOR_KEYS: FactorKey[] = ["momentum", "volume", "volatility", "se
 
 type T = ReturnType<typeof createTranslator>;
 
-function fmtUsd(x: number): string {
-  if (x >= 1000) return `$${x.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-  if (x >= 1) return `$${x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${x.toFixed(4)}`;
-}
-
-function fmtPct(x: number): string {
-  return `${x >= 0 ? "+" : ""}${x.toFixed(2)}%`;
-}
-
 export async function runAnalysis(
   symbol: string,
   factors: Record<FactorKey, number>,
@@ -104,7 +96,7 @@ export async function runAnalysis(
     formula: `X = {c₁ … c₉₀} for ${asset.symbol}`,
     detail: t("analysis.steps.s1Detail", {
       count: String(series.length),
-      price: fmtUsd(last),
+      price: fmtPrice(last),
       source: snapshot.source === "coingecko" ? t("analysis.sourceLive") : t("analysis.sourceModel"),
     }),
     tone: "info",
@@ -119,8 +111,8 @@ export async function runAnalysis(
     title: t("analysis.steps.s2Title"),
     formula: "SMA₅₀ = (1/n)·Σ cᵢ ,  bias = (c₉₀/SMA₅₀ − 1)·100",
     detail: t("analysis.steps.s2Detail", {
-      sma50: fmtUsd(sma50),
-      sma20: fmtUsd(sma20),
+      sma50: fmtPrice(sma50),
+      sma20: fmtPrice(sma20),
       bias: fmtPct(smaBiasPct),
       direction: smaBiasPct >= 0 ? t("analysis.directions.above") : t("analysis.directions.below"),
       mood: smaBiasPct >= 0 ? t("analysis.moods.constructive") : t("analysis.moods.defensive"),
@@ -177,8 +169,8 @@ export async function runAnalysis(
       bb == null
         ? t("analysis.steps.s5NoData")
         : t("analysis.steps.s5Detail", {
-            upper: fmtUsd(bb.upper),
-            lower: fmtUsd(bb.lower),
+            upper: fmtPrice(bb.upper),
+            lower: fmtPrice(bb.lower),
             position: bbPos.toFixed(0),
             bandwidth: (bb.bandwidth * 100).toFixed(1),
             note: t(bbNoteKey),
@@ -208,7 +200,7 @@ export async function runAnalysis(
     title: t("analysis.steps.s7Title"),
     formula: "VT = (vol₂₄ₕ / vol₃₀d_avg − 1)·100",
     detail: t("analysis.steps.s7Detail", {
-      volume: fmtUsd(asset.volume24h),
+      volume: fmtPrice(asset.volume24h),
       trend: fmtPct(volTrendPct),
       note: volTrendPct >= 0 ? t("analysis.volume.expanding") : t("analysis.volume.cooling"),
     }),
@@ -281,28 +273,37 @@ export async function runAnalysis(
   const confidence = Math.round(Math.min(Math.abs(score - 50) * 2.4, 96));
 
   const horizon = Math.min(Math.max(Math.round(horizonDays), 7), 180);
-  const muDaily = rets.slice(-30).reduce((a, b) => a + b, 0) / 30;
+  const muWindow = rets.slice(-30);
+  const muDaily = muWindow.reduce((a, b) => a + b, 0) / (muWindow.length || 1);
   const driftAdj = muDaily + ((score - 50) / 50) * dailySd * 0.6;
-  const expectedPrice = last * Math.exp(driftAdj * horizon);
-  const expectedChangePct = (expectedPrice / last - 1) * 100;
+
+  /* Single source of truth for the forward expectation (no cyclical term in
+     the engine's baseline — the wave lives in the Projection Lab only). */
+  const projectionOut = projectPrice({ p0: last, muDaily: driftAdj, horizonDays: horizon });
+  const expectedPrice = projectionOut.expectedPrice;
+  const expectedChangePct = projectionOut.expectedChangePct;
 
   const dir = action === "SHORT" ? -1 : 1;
   const support = Math.min(bb ? bb.lower : last * 0.95, recentLow(series, 14));
   const resistance = Math.max(bb ? bb.upper : last * 1.05, recentHigh(series, 14));
-  const stop = last * (1 - dailySd * 2.5 * dir);
-  const target1 = last * (1 + dir * Math.max(Math.abs(driftAdj * horizon * 0.6), dailySd * 2));
-  const target2 = last * (1 + dir * Math.max(Math.abs(driftAdj * horizon), dailySd * 4));
+  /* Exponential targets/stop — same multiplicative units as the projection
+     path, so no arithmetic drift between steps and target cards. */
+  const stop = last * Math.exp(-dir * dailySd * 2.5);
+  const target1 = last * Math.exp(dir * Math.max(Math.abs(driftAdj * horizon * 0.6), dailySd * 2));
+  const target2 = last * Math.exp(dir * Math.max(Math.abs(driftAdj * horizon), dailySd * 4));
 
   steps.push({
     id: steps.length + 1,
     title: t("analysis.steps.s10Title"),
-    formula: "E[c_T] = c₉₀ · e^{(μ̂ + φ·score)·T}",
+    formula: `E[C_T] = C₀ · e^(μ̂×T) = ${substitutedExpr(last, driftAdj, horizon)} = ${fmtPrice(expectedPrice)}`,
     detail: t("analysis.steps.s10Detail", {
       days: String(horizon),
       daysShort,
-      drift: (driftAdj * 100).toFixed(3),
+      /* the s10Detail template renders "μ̂ = {drift}{perDayShort}" — embed
+         the % here so the printed unit reads "−0.99770%/d" */
+      drift: `${(projectionOut.muDaily * 100).toFixed(5)}%`,
       perDayShort,
-      price: fmtUsd(expectedPrice),
+      price: fmtPrice(expectedPrice),
       change: fmtPct(expectedChangePct),
     }),
     tone: expectedChangePct >= 0 ? "good" : "bad",
@@ -316,9 +317,9 @@ export async function runAnalysis(
       score: score.toFixed(1),
       action: actionKey(action),
       confidence: String(confidence),
-      entry: fmtUsd(last),
-      stop: fmtUsd(stop),
-      target: fmtUsd(target1),
+      entry: fmtPrice(last),
+      stop: fmtPrice(stop),
+      target: fmtPrice(target1),
     }),
     tone: action === "LONG" ? "good" : action === "SHORT" ? "bad" : "info",
   });
@@ -329,14 +330,18 @@ export async function runAnalysis(
     steps,
     verdict: { action, score, confidence },
     targets: {
-      entry: last,
+      entry: projectionOut.p0,
       support,
       resistance,
       target1,
       target2,
       stop,
     },
-    projection: { horizonDays: horizon, expectedPrice, expectedChangePct },
+    projection: {
+      horizonDays: projectionOut.horizonDays,
+      expectedPrice: projectionOut.expectedPrice,
+      expectedChangePct: projectionOut.expectedChangePct,
+    },
     signals: {
       rsi: r,
       macdHist,

@@ -69,6 +69,10 @@ export function AnalysisEngine() {
   };
 
   const verdictDone = !!analysis && !analyzing && revealedSteps >= analysis.steps.length;
+  /* Label the terminal with the horizon the RESULTS were computed at (the
+     baked analysis), falling back to the live slider before the first run —
+     prevents "header says 30d, math says 45d" style contradictions. */
+  const displayHorizon = analysis?.projection.horizonDays ?? horizon;
   const verdictTone =
     analysis?.verdict.action === "LONG"
       ? { badge: "bg-primary/15 text-primary border-primary/40", glow: "verdict-glow" }
@@ -98,7 +102,7 @@ export function AnalysisEngine() {
               <span className="h-2.5 w-2.5 rounded-full bg-accent/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-primary/70" />
             </span>
-            forward-analysis — {selected.toLowerCase()}@{horizon}
+            forward-analysis — {selected.toLowerCase()}@{displayHorizon}
             {tProjection("daysShort")}
           </div>
           {analyzing && (

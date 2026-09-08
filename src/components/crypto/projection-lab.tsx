@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCryptoStore } from "@/store/crypto-store";
 import { Slider } from "@/components/ui/slider";
 import { logReturns, stdev } from "@/lib/indicators";
+import { buildPath, projectPrice, substitutedExpr } from "@/lib/projection";
 import { fmtPrice, fmtPct } from "@/lib/format";
 import { SlidersHorizontal } from "lucide-react";
 
@@ -39,24 +40,26 @@ export function ProjectionLab() {
     const hist = asset.history.slice(-TAIL);
     const p0 = hist[hist.length - 1];
     const rets = logReturns(asset.history);
-    const muHist = rets.slice(-30).reduce((a, b) => a + b, 0) / 30;
+    const muWindow = rets.slice(-30);
+    const muHist = muWindow.reduce((a, b) => a + b, 0) / (muWindow.length || 1);
     const sdDaily = stdev(rets.slice(-30));
     const mu = muHist + driftMod / 100;
     const tau = wavePeriod * 2;
 
-    const f = (t: number) => p0 * Math.exp(mu * t) * (1 + (waveAmp / 100) * Math.sin((2 * Math.PI * t) / wavePeriod) * Math.exp(-t / tau));
-    const band = (t: number) => sdDaily * Math.sqrt(t) * volMult * 0.9;
-
-    const upper: number[] = [];
-    const lower: number[] = [];
-    const path: number[] = [];
-    for (let t = 1; t <= horizon; t++) {
-      const p = f(t);
-      path.push(p);
-      upper.push(p * Math.exp(band(t)));
-      lower.push(p * Math.exp(-band(t)));
-    }
-    return { hist, p0, mu, sdDaily, path, upper, lower, tau };
+    /* Shared math: the curve samples and the summary endpoint come from the
+       same projectPrice/buildPath helpers — they can never disagree. */
+    const params = {
+      p0,
+      muDaily: mu,
+      horizonDays: horizon,
+      waveAmpPct: waveAmp,
+      wavePeriodDays: wavePeriod,
+      sdDaily,
+      volMult,
+    };
+    const { path, upper, lower } = buildPath(params);
+    const outcome = projectPrice(params);
+    return { hist, p0, mu, sdDaily, path, upper, lower, tau, outcome };
   }, [asset, horizon, driftMod, volMult, waveAmp, wavePeriod]);
 
   const chart = useMemo(() => {
@@ -105,14 +108,15 @@ export function ProjectionLab() {
     );
   }
 
-  const proj = model.path[model.path.length - 1];
-  const changePct = (proj / model.p0 - 1) * 100;
+  const outcome = model.outcome;
+  const proj = outcome.expectedPrice; // === model.path[model.path.length - 1] by construction
+  const changePct = outcome.expectedChangePct; // === ((proj / model.p0) - 1) * 100, single computation
   const sigmaAnn = model.sdDaily * Math.sqrt(365) * 100;
 
   const readouts = [
     { label: t("projectedAt", { days: String(horizon), daysShort: t("daysShort") }), value: fmtPrice(proj), tone: changePct >= 0 ? "text-primary" : "text-destructive" },
     { label: t("expectedMove"), value: fmtPct(changePct, 1), tone: changePct >= 0 ? "text-primary" : "text-destructive" },
-    { label: t("driftPerDay"), value: `${(model.mu * 100).toFixed(3)}%`, tone: "text-foreground/85" },
+    { label: t("driftPerDay"), value: `${(outcome.muDaily * 100).toFixed(3)}%`, tone: "text-foreground/85" },
     { label: t("annVol"), value: `${sigmaAnn.toFixed(0)}%`, tone: "text-accent" },
   ];
 
@@ -183,11 +187,16 @@ export function ProjectionLab() {
         </svg>
       </div>
 
-      {/* live function readout */}
+      {/* live function readout — symbolic formula + exact substituted values,
+          so every card on screen can be verified against this line */}
       <div className="rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
         <span className="text-primary">P(t)</span> = P₀ · e^(μ̂·t) · (1 + A·sin(2πt/T) · e^(−t/τ))
         <span className="mx-2 text-border">|</span>
         P₀={fmtPrice(model.p0)} · μ̂={(model.mu * 100).toFixed(3)}%/d · A={waveAmp.toFixed(1)}% · T={wavePeriod}d · τ={model.tau}d · band=±{volMult.toFixed(1)}σ̂√t
+        <br />
+        <span className="text-primary">P({horizon})</span> = {substitutedExpr(model.p0, model.mu, horizon)} · W = {outcome.waveFactor.toFixed(4)} = {fmtPrice(outcome.expectedPrice)}
+        <span className="mx-2 text-border">|</span>
+        drift-only: {fmtPrice(outcome.driftPrice)} ({fmtPct(outcome.driftChangePct, 1)}) · cyclical: {fmtPct(outcome.waveContributionPct, 2)}
       </div>
 
       {/* sliders */}

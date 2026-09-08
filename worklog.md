@@ -267,3 +267,22 @@ Stage Summary:
 - Browser-verified (agent-browser): SW active scope "/", manifest JSON correct, head tags (theme-color/manifest/apple-*) injected; offline reload renders the full app incl. cached API prices (desktop + 390px mobile screenshots); iOS dialog opens with 3 localized steps; install button localizes (Install app / 安装应用); no console/page errors; 0 horizontal overflow at 390/448/1280; lint clean; dev.log clean.
 - Files: new — src/app/manifest.ts, public/sw.js, src/components/pwa/{sw-register,install-button}.tsx, public/icons/*, scripts/generate-icons.mjs; modified — layout.tsx, site-header.tsx, auth-dialog.tsx, language-switcher.tsx, en.ts + 5 catalogs.
 - Dev caveat: service worker caches dev-mode chunks network-first, so HMR stays fresh; bump sw.js VERSION when editing SHELL_ASSETS.
+
+---
+Task ID: 7
+Agent: Super Z (main agent)
+Task: Audit and fix the projection math (Forward Analysis + Projection Lab) — calculation mismatches, formula-string synchronization, strict percentage formula.
+
+Work Log:
+- Audit findings: (1) engine's price/pct math was internally consistent but the terminal header showed the LIVE slider horizon while results were baked at the RUN horizon (root of the "C_30 vs -30.96% @45d" contradiction; the quoted pair actually reconciles exactly at T=45); (2) the Projection Lab's PROJECTED card endpoint includes the damped cyclical wave term W(t)=1+A·sin(2πt/T_p)·e^(−t/τ) ≈ +0.40% at t=45 — mathematically correct but shown without breakdown, so pure e^(μ̂T) recomputation ($61,318) didn't match the card ($61,570); (3) engine targets/stop used simple-return arithmetic while projection used exponential — mixed units; (4) percentages were computed independently in 3 places.
+- NEW src/lib/projection.ts — single source of truth: waveFactorAt/pathPoint/bandLogAt/buildPath/projectPrice. Invariants enforced in one place: expectedChangePct === ((expectedPrice−p0)/p0)·100 (strict standard formula, never recomputed elsewhere); driftPrice = p0·e^(μ̂·T); waveContributionPct = expected − drift. Display builders: fmtMu (signed "+0.554%/d") and substitutedExpr ("$94,944 · e^(-0.82336%×45)", 5-decimal drift so printed strings are reproducible within price-display rounding).
+- analysis-engine.ts: step 10 + projection result now via projectPrice (no wave in engine baseline); step-10 formula string substitutes the actual numbers (E[C_T] = C₀ · e^(μ̂×T) = $94,944 · e^(-0.82336%×45) = $65,547); targets/stop converted to exponential form (same units as the path, side-aware via dir); μ window length guarded; local fmtUsd/fmtPct duplicates replaced by lib/format.
+- projection-lab.tsx: curve samples (buildPath) and summary endpoint (projectPrice) share identical math; cards/readouts consume one outcome object; live P(t) readout now renders a second line with the fully substituted equation incl. wave factor and the drift-only vs cyclical split (drift-only $73,992 (-22.1%) · cyclical +0.31% → final $74,289).
+- analysis-engine.tsx: terminal title shows the ANALYZED horizon (analysis.projection.horizonDays) instead of the live slider once a run exists — kills the stale-label class of bugs.
+- Rendering fix found during verification: s10Detail templates render "μ̂ = {drift}{perDayShort}" with no % — drift param now embeds "%" so all 6 locales read "μ̂ = -0.82336%/d".
+- Verification: scripts/verify-projection.ts (17 identity assertions, incl. the user's exact reported scenarios) and scripts/verify-analysis-api.ts (end-to-end API: pct identity, formula/detail string reconciliation within rounding bounds, side-aware stop) — ALL PASS. Note for future: display-rounding of μ̂ at 3dp shifted recomputation by ~$18 on BTC; 5dp drift makes printed math exact to display precision. Pre-existing tsc error in api/news/route.ts unrelated.
+- Browser-verified: lab cards === formula endpoint ($74,289 / -21.8%); terminal step 10 substitutes real numbers; verdict card "Model expects $65,547 over 45d (-31.0%)" agrees with step 10 and title btc@45d; 0 console errors; lint clean.
+
+Stage Summary:
+- Files: new src/lib/projection.ts, scripts/verify-projection.ts, scripts/verify-analysis-api.ts; modified src/lib/analysis-engine.ts, src/components/crypto/projection-lab.tsx, src/components/crypto/analysis-engine.tsx. No i18n catalog changes (all touched strings are code literals or existing keys).
+- Contract: any future UI that displays a projection MUST consume projectPrice()/buildPath() outcomes — never recompute exp/pct inline; step-10-style strings should use substitutedExpr()/fmtMu().
