@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useCryptoStore } from "@/store/crypto-store";
 import { fmtPrice, fmtPct } from "@/lib/format";
 import { ArrowDown, TrendingUp } from "lucide-react";
@@ -12,6 +13,7 @@ import { ArrowDown, TrendingUp } from "lucide-react";
  * layered sine noise and react softly to the pointer position.
  */
 export function MorphingHero() {
+  const t = useTranslations("hero");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const mouse = useRef({ x: 0.5, y: 0.5, active: false });
@@ -188,7 +190,7 @@ export function MorphingHero() {
           className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary"
         >
           <span className="live-dot inline-block h-2 w-2 rounded-full bg-primary" />
-          Markets never sleep — neither do we
+          {t("badge")}
         </motion.div>
 
         <motion.h1
@@ -199,7 +201,7 @@ export function MorphingHero() {
         >
           CryptoPulse
           <span className="block bg-gradient-to-r from-primary via-emerald-300 to-accent bg-clip-text text-transparent">
-            market intelligence, visualized
+            {t("tagline")}
           </span>
         </motion.h1>
 
@@ -209,9 +211,7 @@ export function MorphingHero() {
           transition={{ duration: 0.7, delay: 0.2 }}
           className="mt-5 max-w-2xl text-balance text-base text-muted-foreground sm:text-lg"
         >
-          Daily trend tracking for the highest-volume crypto assets, aggregated with trusted
-          news sources. Drag signal vertices, tune projection functions with sliders, and
-          watch forward-looking analysis unfold step by step.
+          {t("subtitle")}
         </motion.p>
 
         <motion.div
@@ -224,13 +224,13 @@ export function MorphingHero() {
             href="#markets"
             className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground transition-transform hover:scale-[1.03]"
           >
-            <TrendingUp className="h-4 w-4" /> Track the market
+            <TrendingUp className="h-4 w-4" /> {t("ctaMarket")}
           </a>
           <a
             href="#analysis"
             className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-card/60 px-6 text-sm font-semibold backdrop-blur transition-colors hover:border-primary/50 hover:text-primary"
           >
-            Run forward analysis <ArrowDown className="h-4 w-4" />
+            {t("ctaAnalysis")} <ArrowDown className="h-4 w-4" />
           </a>
         </motion.div>
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useCryptoStore, FACTOR_META } from "@/store/crypto-store";
 import { useAssetSignals } from "@/hooks/use-asset-signals";
 import { Slider } from "@/components/ui/slider";
@@ -30,6 +31,8 @@ function vertexPos(i: number, value: number) {
  * keyboard/precision control.
  */
 export function SignalPolygon() {
+  const tFactors = useTranslations("factors");
+  const t = useTranslations("polygon");
   const factors = useCryptoStore((s) => s.factors);
   const setFactor = useCryptoStore((s) => s.setFactor);
   const setAllFactors = useCryptoStore((s) => s.setAllFactors);
@@ -72,8 +75,13 @@ export function SignalPolygon() {
   }, [updateFromPointer]);
 
   const vertices = useMemo(
-    () => FACTOR_META.map((f, i) => ({ ...f, ...vertexPos(i, factors[f.key]) })),
-    [factors]
+    () =>
+      FACTOR_META.map((f, i) => ({
+        key: f.key,
+        label: tFactors(`${f.key}.label`),
+        ...vertexPos(i, factors[f.key]),
+      })),
+    [factors, tFactors]
   );
 
   const polygonPath = useMemo(
@@ -118,7 +126,7 @@ export function SignalPolygon() {
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           className="w-full touch-none select-none"
           role="application"
-          aria-label="Draggable factor polygon — drag vertices to adjust factor weights"
+          aria-label={t("aria")}
         >
           <defs>
             <radialGradient id="polyFill" cx="50%" cy="50%" r="60%">
@@ -184,7 +192,7 @@ export function SignalPolygon() {
 
         <p className="mt-1 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
           <MousePointer2 className="h-3.5 w-3.5" />
-          Drag any vertex — values update in real time
+          {t("dragHint")}
         </p>
       </div>
 
@@ -192,7 +200,7 @@ export function SignalPolygon() {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-baseline justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Live composite</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("composite")}</span>
             <span className={`tnum text-2xl font-bold ${scoreColor}`}>{composite.toFixed(1)}</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -204,9 +212,7 @@ export function SignalPolygon() {
             />
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            Blends your vertex weights with live indicator signals for{" "}
-            <span className="font-semibold text-foreground/80">{selected}</span>. Weights flow straight into the
-            forward analysis below.
+            {t("compositeHint", { symbol: selected })}
           </p>
         </div>
 
@@ -214,7 +220,7 @@ export function SignalPolygon() {
           {FACTOR_META.map((f) => (
             <div key={f.key}>
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium">{f.label}</span>
+                <span className="font-medium">{tFactors(`${f.key}.label`)}</span>
                 <span className="tnum font-bold text-foreground/85">{Math.round(factors[f.key])}</span>
               </div>
               <Slider
@@ -222,23 +228,23 @@ export function SignalPolygon() {
                 min={0}
                 max={100}
                 step={1}
-                aria-label={`${f.label} factor`}
+                aria-label={tFactors(`${f.key}.label`)}
                 onValueChange={(v) => setFactor(f.key, v[0])}
                 className="mt-1.5"
               />
-              <p className="mt-0.5 text-[10px] text-muted-foreground">{f.hint}</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{tFactors(`${f.key}.hint`)}</p>
             </div>
           ))}
         </div>
 
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" className="flex-1" onClick={autoTune} disabled={!signals.hasData}>
-            <Sparkles className="h-3.5 w-3.5" /> Auto-tune from market
+            <Sparkles className="h-3.5 w-3.5" /> {t("autoTune")}
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            aria-label="Reset factors to 50"
+            aria-label={t("resetAria")}
             onClick={() =>
               setAllFactors({ momentum: 50, trend: 50, volume: 50, volatility: 50, sentiment: 50, liquidity: 50 })
             }

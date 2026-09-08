@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useCryptoStore } from "@/store/crypto-store";
 import { Slider } from "@/components/ui/slider";
 import { logReturns, stdev } from "@/lib/indicators";
@@ -20,6 +21,7 @@ const TAIL = 60; // days of history shown
  * with a lognormal confidence band scaled by the volatility multiplier.
  */
 export function ProjectionLab() {
+  const t = useTranslations("projection");
   const selected = useCryptoStore((s) => s.selected);
   const assets = useCryptoStore((s) => s.assets);
   const horizon = useCryptoStore((s) => s.horizon);
@@ -97,7 +99,7 @@ export function ProjectionLab() {
   if (!model || !chart) {
     return (
       <div className="flex h-[320px] items-center justify-center rounded-xl border border-border bg-card text-sm text-muted-foreground">
-        Loading projection model…
+        {t("loading")}
       </div>
     );
   }
@@ -107,10 +109,10 @@ export function ProjectionLab() {
   const sigmaAnn = model.sdDaily * Math.sqrt(365) * 100;
 
   const readouts = [
-    { label: `Projected @ ${horizon}d`, value: fmtPrice(proj), tone: changePct >= 0 ? "text-primary" : "text-destructive" },
-    { label: "Expected move", value: fmtPct(changePct, 1), tone: changePct >= 0 ? "text-primary" : "text-destructive" },
-    { label: "Drift μ̂ / day", value: `${(model.mu * 100).toFixed(3)}%`, tone: "text-foreground/85" },
-    { label: "Annualized σ", value: `${sigmaAnn.toFixed(0)}%`, tone: "text-accent" },
+    { label: t("projectedAt", { days: String(horizon), daysShort: t("daysShort") }), value: fmtPrice(proj), tone: changePct >= 0 ? "text-primary" : "text-destructive" },
+    { label: t("expectedMove"), value: fmtPct(changePct, 1), tone: changePct >= 0 ? "text-primary" : "text-destructive" },
+    { label: t("driftPerDay"), value: `${(model.mu * 100).toFixed(3)}%`, tone: "text-foreground/85" },
+    { label: t("annVol"), value: `${sigmaAnn.toFixed(0)}%`, tone: "text-accent" },
   ];
 
   return (
@@ -144,7 +146,7 @@ export function ProjectionLab() {
           {/* current price reference */}
           <line x1={PAD.l} y1={chart.zeroY} x2={W - PAD.r} y2={chart.zeroY} stroke="rgba(245,158,11,0.4)" strokeDasharray="5 5" />
           <text x={W - PAD.r} y={chart.zeroY - 6} textAnchor="end" className="fill-accent text-[10px] font-semibold">
-            now {fmtPrice(model.p0)}
+            {t("now", { price: fmtPrice(model.p0) })}
           </text>
 
           {/* confidence band */}
@@ -174,9 +176,9 @@ export function ProjectionLab() {
           <circle cx={chart.endX} cy={chart.endY} r={4} fill="#f59e0b" />
 
           {/* x axis labels */}
-          <text x={PAD.l} y={H - 8} className="fill-muted-foreground text-[10px]">−60d</text>
-          <text x={W / 2} y={H - 8} textAnchor="middle" className="fill-muted-foreground text-[10px]">today</text>
-          <text x={chart.endX} y={H - 8} textAnchor="end" className="fill-muted-foreground text-[10px]">+{horizon}d</text>
+          <text x={PAD.l} y={H - 8} className="fill-muted-foreground text-[10px]">−60{t("daysShort")}</text>
+          <text x={W / 2} y={H - 8} textAnchor="middle" className="fill-muted-foreground text-[10px]">{t("today")}</text>
+          <text x={chart.endX} y={H - 8} textAnchor="end" className="fill-muted-foreground text-[10px]">+{horizon}{t("daysShort")}</text>
         </svg>
       </div>
 
@@ -189,11 +191,11 @@ export function ProjectionLab() {
 
       {/* sliders */}
       <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-        <SliderRow icon label="Horizon" hint="Projection window" display={`${horizon} d`} min={30} max={180} step={5} value={horizon} onChange={(v) => setSlider("horizon", v)} />
-        <SliderRow label="Drift bias μ̂" hint="Tilt the trend" display={`${driftMod >= 0 ? "+" : ""}${driftMod.toFixed(2)} %/d`} min={-0.8} max={0.8} step={0.05} value={driftMod} onChange={(v) => setSlider("driftMod", v)} />
-        <SliderRow label="Volatility ×" hint="Confidence band width" display={`${volMult.toFixed(2)}×`} min={0.5} max={2} step={0.05} value={volMult} onChange={(v) => setSlider("volMult", v)} />
-        <SliderRow label="Wave amplitude A" hint="Cyclical swing size" display={`${waveAmp.toFixed(1)}%`} min={0} max={5} step={0.1} value={waveAmp} onChange={(v) => setSlider("waveAmp", v)} />
-        <SliderRow label="Wave period T" hint="Cycle length" display={`${wavePeriod} d`} min={7} max={60} step={1} value={wavePeriod} onChange={(v) => setSlider("wavePeriod", v)} />
+        <SliderRow icon label={t("horizon.label")} hint={t("horizon.hint")} display={`${horizon}${t("daysShort")}`} min={30} max={180} step={5} value={horizon} onChange={(v) => setSlider("horizon", v)} />
+        <SliderRow label={t("drift.label")} hint={t("drift.hint")} display={`${driftMod >= 0 ? "+" : ""}${driftMod.toFixed(2)} %${t("perDayShort")}`} min={-0.8} max={0.8} step={0.05} value={driftMod} onChange={(v) => setSlider("driftMod", v)} />
+        <SliderRow label={t("vol.label")} hint={t("vol.hint")} display={`${volMult.toFixed(2)}×`} min={0.5} max={2} step={0.05} value={volMult} onChange={(v) => setSlider("volMult", v)} />
+        <SliderRow label={t("waveAmp.label")} hint={t("waveAmp.hint")} display={`${waveAmp.toFixed(1)}%`} min={0} max={5} step={0.1} value={waveAmp} onChange={(v) => setSlider("waveAmp", v)} />
+        <SliderRow label={t("wavePeriod.label")} hint={t("wavePeriod.hint")} display={`${wavePeriod}${t("daysShort")}`} min={7} max={60} step={1} value={wavePeriod} onChange={(v) => setSlider("wavePeriod", v)} />
       </div>
 
       {/* readouts */}

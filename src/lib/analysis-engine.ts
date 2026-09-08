@@ -2,10 +2,15 @@
  * Forward-looking analysis engine: computes technical indicators on the
  * tracked asset series, blends user-tunable factor weights, and produces
  * a step-by-step solution trace that the UI reveals line by line.
+ * Fully locale-aware: step titles/details come from next-intl catalogs
+ * via createTranslator (use-intl/core).
  */
 
+import { createTranslator } from "use-intl/core";
 import { getMarketSnapshot } from "@/lib/market-data";
 import { bollinger, ema, logReturns, macd, percentileRank, rsi, sma, stdev } from "@/lib/indicators";
+import { ALL_MESSAGES } from "@/i18n/messages";
+import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/config";
 
 export type FactorKey = "momentum" | "volume" | "volatility" | "sentiment" | "liquidity" | "trend";
 
@@ -54,6 +59,8 @@ export interface AnalysisResult {
 
 export const FACTOR_KEYS: FactorKey[] = ["momentum", "volume", "volatility", "sentiment", "liquidity", "trend"];
 
+type T = ReturnType<typeof createTranslator>;
+
 function fmtUsd(x: number): string {
   if (x >= 1000) return `$${x.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   if (x >= 1) return `$${x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -67,7 +74,8 @@ function fmtPct(x: number): string {
 export async function runAnalysis(
   symbol: string,
   factors: Record<FactorKey, number>,
-  horizonDays: number
+  horizonDays: number,
+  locale: Locale = DEFAULT_LOCALE
 ): Promise<AnalysisResult> {
   const snapshot = await getMarketSnapshot();
   const asset = snapshot.assets.find((a) => a.symbol === symbol.toUpperCase()) ?? snapshot.assets[0];
@@ -75,12 +83,26 @@ export async function runAnalysis(
   const last = series[series.length - 1];
   const steps: AnalysisStep[] = [];
 
+  const t = createTranslator({
+    locale,
+    messages: ALL_MESSAGES[locale] ?? ALL_MESSAGES[DEFAULT_LOCALE],
+  }) as T;
+
+  const daysShort = t("projection.daysShort");
+  const perDayShort = t("projection.perDayShort");
+  const actionKey = (a: "LONG" | "SHORT" | "NEUTRAL") =>
+    a === "LONG" ? t("analysis.actions.long") : a === "SHORT" ? t("analysis.actions.short") : t("analysis.actions.neutral");
+
   /* ---------- Step 1: dataset ---------- */
   steps.push({
     id: steps.length + 1,
-    title: "Load model series",
+    title: t("analysis.steps.s1Title"),
     formula: `X = {c₁ … c₉₀} for ${asset.symbol}`,
-    detail: `Loaded 90 daily closes ending at ${fmtUsd(last)} (source: ${snapshot.source === "coingecko" ? "CoinGecko live" : "internal model"}).`,
+    detail: t("analysis.steps.s1Detail", {
+      count: String(series.length),
+      price: fmtUsd(last),
+      source: snapshot.source === "coingecko" ? t("analysis.sourceLive") : t("analysis.sourceModel"),
+    }),
     tone: "info",
   });
 
@@ -90,22 +112,32 @@ export async function runAnalysis(
   const smaBiasPct = (last / sma50 - 1) * 100;
   steps.push({
     id: steps.length + 1,
-    title: "Trend baseline — SMA bias",
+    title: t("analysis.steps.s2Title"),
     formula: "SMA₅₀ = (1/n)·Σ cᵢ ,  bias = (c₉₀/SMA₅₀ − 1)·100",
-    detail: `SMA₅₀ = ${fmtUsd(sma50)}, SMA₂₀ = ${fmtUsd(sma20)}. Price sits ${fmtPct(smaBiasPct)} ${smaBiasPct >= 0 ? "above" : "below"} the 50-day mean → ${smaBiasPct >= 0 ? "constructive" : "defensive"} trend context.`,
+    detail: t("analysis.steps.s2Detail", {
+      sma50: fmtUsd(sma50),
+      sma20: fmtUsd(sma20),
+      bias: fmtPct(smaBiasPct),
+      direction: smaBiasPct >= 0 ? t("analysis.directions.above") : t("analysis.directions.below"),
+      mood: smaBiasPct >= 0 ? t("analysis.moods.constructive") : t("analysis.moods.defensive"),
+    }),
     tone: smaBiasPct >= 2 ? "good" : smaBiasPct <= -2 ? "bad" : "info",
   });
 
   /* ---------- Step 3: RSI ---------- */
   const r = rsi(series, 14) ?? 50;
-  const rsiLabel = r >= 70 ? "overbought" : r <= 30 ? "oversold" : "neutral zone";
+  const rsiZoneKey = r >= 70 ? "analysis.rsi.overbought" : r <= 30 ? "analysis.rsi.oversold" : "analysis.rsi.neutral";
+  const rsiNoteKey =
+    r >= 70 ? "analysis.rsi.noteOverbought" : r <= 30 ? "analysis.rsi.noteOversold" : "analysis.rsi.noteNeutral";
   steps.push({
     id: steps.length + 1,
-    title: "Momentum — RSI(14)",
+    title: t("analysis.steps.s3Title"),
     formula: "RSI = 100 − 100/(1 + avgGain/avgLoss)",
-    detail: `RSI(14) = ${r.toFixed(1)} → ${rsiLabel}. ${
-      r >= 70 ? "Stretched upside raises pullback odds." : r <= 30 ? "Capitulation levels often precede mean-reversion bounces." : "Momentum has room to extend in either direction."
-    }`,
+    detail: t("analysis.steps.s3Detail", {
+      rsi: r.toFixed(1),
+      zone: t(rsiZoneKey),
+      note: t(rsiNoteKey),
+    }),
     tone: r >= 70 ? "warn" : r <= 30 ? "good" : "info",
   });
 
@@ -114,28 +146,39 @@ export async function runAnalysis(
   const macdHist = m?.histogram ?? 0;
   steps.push({
     id: steps.length + 1,
-    title: "Trend flow — MACD(12,26,9)",
+    title: t("analysis.steps.s4Title"),
     formula: "MACD = EMA₁₂ − EMA₂₆ ,  hist = MACD − signal",
     detail:
       m == null
-        ? "Not enough data for MACD."
-        : `MACD = ${m.macd.toFixed(2)}, signal = ${m.signal.toFixed(2)}, histogram = ${macdHist >= 0 ? "+" : ""}${macdHist.toFixed(2)} → ${macdHist >= 0 ? "bullish cross regime" : "bearish cross regime"}.`,
+        ? t("analysis.steps.s4NoData")
+        : t("analysis.steps.s4Detail", {
+            macd: m.macd.toFixed(2),
+            signal: m.signal.toFixed(2),
+            hist: `${macdHist >= 0 ? "+" : ""}${macdHist.toFixed(2)}`,
+            regime: macdHist >= 0 ? t("analysis.regimes.bullish") : t("analysis.regimes.bearish"),
+          }),
     tone: macdHist >= 0 ? "good" : "bad",
   });
 
   /* ---------- Step 5: Bollinger ---------- */
   const bb = bollinger(series, 20, 2);
   const bbPos = bb ? ((last - bb.lower) / (bb.upper - bb.lower)) * 100 : 50;
+  const bbNoteKey =
+    bbPos > 85 ? "analysis.bb.strong" : bbPos < 15 ? "analysis.bb.weak" : "analysis.bb.inside";
   steps.push({
     id: steps.length + 1,
-    title: "Volatility envelope — Bollinger(20,2σ)",
+    title: t("analysis.steps.s5Title"),
     formula: "mid = SMA₂₀ , band = mid ± 2σ",
     detail:
       bb == null
-        ? "Not enough data for Bollinger bands."
-        : `Upper ${fmtUsd(bb.upper)} / lower ${fmtUsd(bb.lower)}. Price at ${bbPos.toFixed(0)}% of the envelope (bandwidth ${(bb.bandwidth * 100).toFixed(1)}%) → ${
-            bbPos > 85 ? "riding the upper band, trend-strong but extended" : bbPos < 15 ? "hugging the lower band, trend-weak or washed out" : "inside the envelope"
-          }.`,
+        ? t("analysis.steps.s5NoData")
+        : t("analysis.steps.s5Detail", {
+            upper: fmtUsd(bb.upper),
+            lower: fmtUsd(bb.lower),
+            position: bbPos.toFixed(0),
+            bandwidth: (bb.bandwidth * 100).toFixed(1),
+            note: t(bbNoteKey),
+          }),
     tone: bbPos > 85 || bbPos < 15 ? "warn" : "info",
   });
 
@@ -145,9 +188,12 @@ export async function runAnalysis(
   const volPct = dailySd * Math.sqrt(365) * 100; // annualized
   steps.push({
     id: steps.length + 1,
-    title: "Risk gauge — realized volatility",
+    title: t("analysis.steps.s6Title"),
     formula: "σ_daily = stdev(ln(cᵢ/cᵢ₋₁)) ,  σ_ann = σ_daily·√365",
-    detail: `30-day σ_daily = ${(dailySd * 100).toFixed(2)}% → annualized ≈ ${volPct.toFixed(0)}%. Position sizing should scale inverse to this figure.`,
+    detail: t("analysis.steps.s6Detail", {
+      daily: (dailySd * 100).toFixed(2),
+      annualized: volPct.toFixed(0),
+    }),
     tone: volPct > 90 ? "warn" : "info",
   });
 
@@ -155,9 +201,13 @@ export async function runAnalysis(
   const volTrendPct = ((asset.volume24h / (asset.volume24h * 0.82) - 1) * 100) | 0; // proxy vs 30d avg
   steps.push({
     id: steps.length + 1,
-    title: "Participation — volume trend",
+    title: t("analysis.steps.s7Title"),
     formula: "VT = (vol₂₄ₕ / vol₃₀d_avg − 1)·100",
-    detail: `24h volume ${fmtUsd(asset.volume24h)} tracks ≈ ${fmtPct(volTrendPct)} vs the 30-day average → ${volTrendPct >= 0 ? "participation expanding, moves carry conviction" : "liquidity cooling, breakouts less reliable"}.`,
+    detail: t("analysis.steps.s7Detail", {
+      volume: fmtUsd(asset.volume24h),
+      trend: fmtPct(volTrendPct),
+      note: volTrendPct >= 0 ? t("analysis.volume.expanding") : t("analysis.volume.cooling"),
+    }),
     tone: volTrendPct >= 0 ? "good" : "warn",
   });
 
@@ -196,21 +246,28 @@ export async function runAnalysis(
 
   steps.push({
     id: steps.length + 1,
-    title: "Factor blend — weighted composite",
+    title: t("analysis.steps.s8Title"),
     formula: "score = Σ wᵢ·sᵢ / Σ wᵢ  (i = your 6 vertices)",
-    detail: `Indicator-mapped axes: momentum ${norm.momentum.toFixed(0)}, trend ${norm.trend.toFixed(0)}, volatility ${norm.volatility.toFixed(0)}. Your vertex weights blended to a composite score of ${blendValue.toFixed(1)}/100.`,
+    detail: t("analysis.steps.s8Detail", {
+      momentum: norm.momentum.toFixed(0),
+      trend: norm.trend.toFixed(0),
+      volatility: norm.volatility.toFixed(0),
+      score: blendValue.toFixed(1),
+    }),
     tone: blendValue >= 62 ? "good" : blendValue <= 38 ? "bad" : "info",
   });
 
   /* ---------- Step 9: percentile context ---------- */
   const pRank = percentileRank(series, last);
+  const pNoteKey = pRank > 80 ? "analysis.percentile.upper" : pRank < 20 ? "analysis.percentile.lower" : "analysis.percentile.mid";
   steps.push({
     id: steps.length + 1,
-    title: "Context — 90-day price percentile",
+    title: t("analysis.steps.s9Title"),
     formula: "P = rank(c₉₀ in X)/90 · 100",
-    detail: `Current price sits in the ${pRank.toFixed(0)}th percentile of the 90-day range — ${
-      pRank > 80 ? "upper quartile: chase risk elevated" : pRank < 20 ? "lower quartile: accumulation zone candidates" : "mid-range: trend-following preferred over fade trades"
-    }.`,
+    detail: t("analysis.steps.s9Detail", {
+      rank: pRank.toFixed(0),
+      note: t(pNoteKey),
+    }),
     tone: pRank > 80 ? "warn" : pRank < 20 ? "good" : "info",
   });
 
@@ -234,17 +291,31 @@ export async function runAnalysis(
 
   steps.push({
     id: steps.length + 1,
-    title: "Forward projection",
+    title: t("analysis.steps.s10Title"),
     formula: "E[c_T] = c₉₀ · e^{(μ̂ + φ·score)·T}",
-    detail: `Over ${horizon} days with score-adjusted drift μ̂ = ${(driftAdj * 100).toFixed(3)}%/day → expected price ≈ ${fmtUsd(expectedPrice)} (${fmtPct(expectedChangePct)}).`,
+    detail: t("analysis.steps.s10Detail", {
+      days: String(horizon),
+      daysShort,
+      drift: (driftAdj * 100).toFixed(3),
+      perDayShort,
+      price: fmtUsd(expectedPrice),
+      change: fmtPct(expectedChangePct),
+    }),
     tone: expectedChangePct >= 0 ? "good" : "bad",
   });
 
   steps.push({
     id: steps.length + 1,
-    title: "Verdict",
+    title: t("analysis.steps.s11Title"),
     formula: "action = score ≥ 62 ? LONG : score ≤ 38 ? SHORT : NEUTRAL",
-    detail: `Composite ${score.toFixed(1)}/100 → ${action} bias with ${confidence}% confidence. Entry ${fmtUsd(last)}, stop ${fmtUsd(stop)}, first target ${fmtUsd(target1)}.`,
+    detail: t("analysis.steps.s11Detail", {
+      score: score.toFixed(1),
+      action: actionKey(action),
+      confidence: String(confidence),
+      entry: fmtUsd(last),
+      stop: fmtUsd(stop),
+      target: fmtUsd(target1),
+    }),
     tone: action === "LONG" ? "good" : action === "SHORT" ? "bad" : "info",
   });
 
@@ -279,4 +350,9 @@ function recentLow(series: number[], n: number): number {
 }
 function recentHigh(series: number[], n: number): number {
   return Math.max(...series.slice(-n));
+}
+
+/** Validates an untrusted locale string for API usage. */
+export function safeLocale(x: unknown): Locale {
+  return isLocale(x) ? x : DEFAULT_LOCALE;
 }

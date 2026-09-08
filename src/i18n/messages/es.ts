@@ -1,0 +1,194 @@
+/** Catálogo en español. Claves idénticas a en.ts. */
+
+import type { Messages } from "./en";
+
+const es: Messages = {
+  nav: {
+    markets: "Mercados",
+    news: "Noticias",
+    labs: "Laboratorios de señal",
+    analysis: "Análisis",
+    language: "Idioma",
+  },
+
+  hero: {
+    badge: "Los mercados nunca duermen — nosotros tampoco",
+    tagline: "inteligencia de mercado, visualizada",
+    subtitle:
+      "Seguimiento diario de tendencias de los criptoactivos con mayor volumen, agregado con fuentes de noticias confiables. Arrastra vértices de señal, ajusta funciones de proyección con deslizadores y observa cómo el análisis prospectivo se despliega paso a paso.",
+    ctaMarket: "Rastrear el mercado",
+    ctaAnalysis: "Ejecutar análisis prospectivo",
+  },
+
+  markets: {
+    index: "01 / MERCADOS",
+    title: "Seguimiento diario de tendencias — activos de alto volumen",
+    subtitle:
+      "Instantánea en vivo de los criptoactivos más líquidos. Los minigráficos muestran las últimas 30 sesiones; haz clic en cualquier tarjeta para enfocar todos los laboratorios y el motor de análisis en ese activo.",
+    vol: "Vol {value}",
+    mcap: "Cap. mercado {value}",
+    tracking: "RASTREANDO",
+    selectAria: "Seleccionar {name} para análisis",
+  },
+
+  labs: {
+    index: "02 / LABORATORIOS DE SEÑAL",
+    title: "Da forma a la señal y luego dobla la curva",
+    subtitle:
+      "El Polígono de Señal convierte los pesos de los factores en geometría — arrastra sus vértices y observa las lecturas en tiempo real. El Laboratorio de Proyección convierte esas suposiciones en una función de precio guiada por deslizadores con banda de confianza.",
+    polygonTitle: "Polígono de Señal",
+    projectionTitle: "Laboratorio de Proyección",
+    weightsTo: "pesos → análisis",
+    sourceLive: "CoinGecko en vivo · caché 2 min",
+    sourceModel: "modelo interno · caché 2 min",
+  },
+
+  factors: {
+    momentum: { label: "Impulso", hint: "Régimen de RSI / tasa de cambio" },
+    trend: { label: "Tendencia", hint: "Estructura de medias móviles" },
+    volume: { label: "Volumen", hint: "Participación y flujo" },
+    volatility: { label: "Volatilidad", hint: "Envolvente de riesgo realizado" },
+    sentiment: { label: "Sentimiento", hint: "Tono de noticias y narrativa" },
+    liquidity: { label: "Liquidez", hint: "Profundidad y spreads" },
+  },
+
+  polygon: {
+    aria: "Polígono de factores arrastrable — arrastra los vértices para ajustar los pesos",
+    dragHint: "Arrastra cualquier vértice — los valores se actualizan en tiempo real",
+    composite: "Compuesto en vivo",
+    compositeHint:
+      "Fusiona los pesos de tus vértices con señales de indicadores en vivo de {symbol}. Los pesos fluyen directamente al análisis prospectivo de abajo.",
+    autoTune: "Autoajustar según el mercado",
+    resetAria: "Restablecer factores a 50",
+  },
+
+  projection: {
+    loading: "Cargando modelo de proyección…",
+    horizon: { label: "Horizonte", hint: "Ventana de proyección" },
+    drift: { label: "Sesgo de deriva μ̂", hint: "Inclina la tendencia" },
+    vol: { label: "Volatilidad ×", hint: "Ancho de la banda de confianza" },
+    waveAmp: { label: "Amplitud de onda A", hint: "Tamaño del balanceo cíclico" },
+    wavePeriod: { label: "Periodo de onda T", hint: "Longitud del ciclo" },
+    daysShort: "d",
+    perDayShort: "/d",
+    projectedAt: "Proyección a {days}{daysShort}",
+    expectedMove: "Movimiento esperado",
+    driftPerDay: "Deriva μ̂ / día",
+    annVol: "σ anualizada",
+    today: "hoy",
+    now: "ahora {price}",
+  },
+
+  analysis: {
+    index: "03 / ANÁLISIS PROSPECTIVO",
+    title: "Veredictos de trading paso a paso, línea por línea",
+    subtitle:
+      "Una ejecución calcula el sesgo de SMA, RSI, MACD, la envolvente de Bollinger, la volatilidad realizada, la participación del volumen y tu mezcla de vértices — cada paso se revela línea por línea con lectura codificada por colores.",
+    run: "Ejecutar análisis prospectivo",
+    analyzing: "Analizando…",
+    placeholderBefore: "Pulsa",
+    placeholderAfter: "para desplegar la solución línea por línea.",
+    computing: "muestreando la serie de {symbol}, mezclando {count} vértices personalizados…",
+    emptyVerdict:
+      "El veredicto, la confianza y las zonas objetivo aparecerán aquí cuando termine la ejecución línea por línea.",
+    verdict: "Veredicto",
+    compositeScore: "Puntuación compuesta",
+    confidence: "Confianza ≈ {value}%",
+    modelExpects:
+      "El modelo espera {price} en {days}{daysShort} ({change}). Verifica con el flujo de noticias antes de actuar.",
+    inputs:
+      "Entradas actuales — {symbol}, horizonte {days}{daysShort}, vértices: {vertices}. Ajusta el Polígono de Señal de arriba y vuelve a ejecutar para comparar escenarios.",
+    targets: {
+      entry: "Entrada",
+      support: "Soporte",
+      resistance: "Resist.",
+      stop: "Stop",
+      t1: "Obj 1",
+      t2: "Obj 2",
+    },
+    actions: { long: "LARGO", short: "CORTO", neutral: "NEUTRAL" },
+    sourceLive: "CoinGecko en vivo",
+    sourceModel: "modelo interno",
+    directions: { above: "por encima", below: "por debajo" },
+    moods: { constructive: "constructivo", defensive: "defensivo" },
+    rsi: {
+      overbought: "sobrecompra",
+      oversold: "sobreventa",
+      neutral: "zona neutral",
+      noteOverbought: "Un alza estirada aumenta las probabilidades de retroceso.",
+      noteOversold: "Los niveles de capitulación suelen preceder rebotes de reversión a la media.",
+      noteNeutral: "El impulso tiene margen para extenderse en cualquier dirección.",
+    },
+    regimes: { bullish: "régimen de cruce alcista", bearish: "régimen de cruce bajista" },
+    bb: {
+      strong: "cabalgando la banda superior, tendencia fuerte pero extendida",
+      weak: "pegado a la banda inferior, tendencia débil o agotada",
+      inside: "dentro de la envolvente",
+    },
+    volume: {
+      expanding: "participación en expansión, los movimientos llevan convicción",
+      cooling: "liquidez enfriándose, las rupturas son menos fiables",
+    },
+    percentile: {
+      upper: "cuartil superior: aumenta el riesgo de perseguir subidas",
+      lower: "cuartil inferior: candidatos a zona de acumulación",
+      mid: "rango medio: mejor seguir la tendencia que operar en contra",
+    },
+    steps: {
+      s1Title: "Cargar serie del modelo",
+      s1Detail: "Se cargaron {count} cierres diarios terminando en {price} (fuente: {source}).",
+      s2Title: "Línea base de tendencia — sesgo SMA",
+      s2Detail:
+        "SMA₅₀ = {sma50}, SMA₂₀ = {sma20}. El precio está {bias} {direction} de la media de 50 días → contexto de tendencia {mood}.",
+      s3Title: "Impulso — RSI(14)",
+      s3Detail: "RSI(14) = {rsi} → {zone}. {note}",
+      s4Title: "Flujo de tendencia — MACD(12,26,9)",
+      s4Detail: "MACD = {macd}, señal = {signal}, histograma = {hist} → {regime}.",
+      s4NoData: "No hay datos suficientes para el MACD.",
+      s5Title: "Envolvente de volatilidad — Bollinger(20,2σ)",
+      s5Detail:
+        "Superior {upper} / inferior {lower}. Precio en el {position}% de la envolvente (ancho de banda {bandwidth}%) → {note}.",
+      s5NoData: "No hay datos suficientes para las bandas de Bollinger.",
+      s6Title: "Medidor de riesgo — volatilidad realizada",
+      s6Detail:
+        "σ_diaria 30 días = {daily}% → anualizada ≈ {annualized}%. El tamaño de posición debe escalar de forma inversa a esta cifra.",
+      s7Title: "Participación — tendencia del volumen",
+      s7Detail: "El volumen de 24 h {volume} equivale a ≈ {trend} frente al promedio de 30 días → {note}.",
+      s8Title: "Mezcla de factores — compuesto ponderado",
+      s8Detail:
+        "Ejes mapeados por indicadores: impulso {momentum}, tendencia {trend}, volatilidad {volatility}. Tus pesos de vértices se mezclaron en una puntuación compuesta de {score}/100.",
+      s9Title: "Contexto — percentil de precio de 90 días",
+      s9Detail: "El precio actual está en el percentil {rank} del rango de 90 días — {note}.",
+      s10Title: "Proyección prospectiva",
+      s10Detail:
+        "En {days}{daysShort}, con deriva ajustada por puntuación μ̂ = {drift}{perDayShort} → precio esperado ≈ {price} ({change}).",
+      s11Title: "Veredicto",
+      s11Detail:
+        "Compuesto {score}/100 → sesgo {action} con {confidence}% de confianza. Entrada {entry}, stop {stop}, primer objetivo {target}.",
+    },
+  },
+
+  news: {
+    index: "04 / AGREGACIÓN DE NOTICIAS",
+    title: "Lo que publican hoy los medios confiables",
+    subtitle:
+      "Agregado de mesas editoriales establecidas de cripto y mercados (CoinDesk, Cointelegraph, Reuters, Bloomberg, The Block y más), deduplicado y clasificado — fuentes confiables primero.",
+    feed: "Flujo",
+    refresh: "Actualizar flujo",
+    refreshing: "Agregando…",
+    trustedOnly: "Solo fuentes confiables",
+    allSources: "Todas las fuentes",
+    liveVia: "en vivo vía búsqueda web",
+    cachedBrief: "resumen en caché (búsqueda no disponible)",
+    noMatch: "Ninguna historia coincide con el filtro actual. Prueba “Todas las fuentes” o actualiza.",
+  },
+
+  footer: {
+    about:
+      "CryptoPulse — seguimiento diario de tendencias de criptoactivos de alto volumen. Noticias agregadas de medios públicos confiables.",
+    disclaimer:
+      "Solo con fines informativos. Nada de esto es asesoría financiera — los modelos pueden fallar y los mercados pueden ser más extraños. Gestiona tu riesgo.",
+  },
+};
+
+export default es;

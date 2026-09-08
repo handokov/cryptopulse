@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useCryptoStore, FACTOR_META } from "@/store/crypto-store";
+import { useLocaleStore } from "@/store/locale-store";
 import { Button } from "@/components/ui/button";
 import { fmtPrice, fmtPct } from "@/lib/format";
 import type { AnalysisStep, StepTone } from "@/lib/analysis-engine";
-import { Radar, Play, Loader2, CircleCheck, Minus, TriangleAlert, XCircle } from "lucide-react";
+import { Radar, Loader2, CircleCheck, Minus, TriangleAlert, XCircle } from "lucide-react";
 
 const TONE_STYLES: Record<StepTone, { icon: React.ReactNode; text: string }> = {
   info: { icon: <Minus className="h-3.5 w-3.5 text-sky-300/80" />, text: "text-foreground/80" },
@@ -16,6 +18,9 @@ const TONE_STYLES: Record<StepTone, { icon: React.ReactNode; text: string }> = {
 };
 
 export function AnalysisEngine() {
+  const t = useTranslations("analysis");
+  const tFactors = useTranslations("factors");
+  const tProjection = useTranslations("projection");
   const selected = useCryptoStore((s) => s.selected);
   const factors = useCryptoStore((s) => s.factors);
   const horizon = useCryptoStore((s) => s.horizon);
@@ -26,6 +31,7 @@ export function AnalysisEngine() {
   const setAnalysis = useCryptoStore((s) => s.setAnalysis);
   const revealStep = useCryptoStore((s) => s.revealStep);
   const firePulse = useCryptoStore((s) => s.firePulse);
+  const locale = useLocaleStore((s) => s.locale);
 
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -34,11 +40,11 @@ export function AnalysisEngine() {
   useEffect(() => {
     if (!analysis || analyzing) return;
     if (revealedSteps >= analysis.steps.length) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       revealStep();
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
     }, 420);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [analysis, analyzing, revealedSteps, revealStep]);
 
   const runAnalysis = async () => {
@@ -49,7 +55,7 @@ export function AnalysisEngine() {
       const res = await fetch("/api/analysis", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ symbol: selected, horizon, factors }),
+        body: JSON.stringify({ symbol: selected, horizon, factors, locale }),
       });
       if (!res.ok) throw new Error(`Analysis failed (${res.status})`);
       const data = (await res.json()) as Parameters<typeof setAnalysis>[0];
@@ -61,13 +67,20 @@ export function AnalysisEngine() {
     }
   };
 
-  const verdictDone = analysis && !analyzing && revealedSteps >= analysis.steps.length;
+  const verdictDone = !!analysis && !analyzing && revealedSteps >= analysis.steps.length;
   const verdictTone =
     analysis?.verdict.action === "LONG"
       ? { badge: "bg-primary/15 text-primary border-primary/40", glow: "verdict-glow" }
       : analysis?.verdict.action === "SHORT"
         ? { badge: "bg-destructive/15 text-destructive border-destructive/40", glow: "" }
         : { badge: "bg-accent/15 text-accent border-accent/40", glow: "" };
+
+  const actionLabel =
+    analysis?.verdict.action === "LONG"
+      ? t("actions.long")
+      : analysis?.verdict.action === "SHORT"
+        ? t("actions.short")
+        : t("actions.neutral");
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -84,7 +97,8 @@ export function AnalysisEngine() {
               <span className="h-2.5 w-2.5 rounded-full bg-accent/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-primary/70" />
             </span>
-            forward-analysis — {selected.toLowerCase()}@{horizon}d
+            forward-analysis — {selected.toLowerCase()}@{horizon}
+            {tProjection("daysShort")}
           </div>
           {analyzing && (
             <span className="flex items-center gap-1.5 font-mono text-[11px] text-accent">
@@ -96,16 +110,20 @@ export function AnalysisEngine() {
         <div ref={listRef} className="nice-scroll flex-1 space-y-3 overflow-y-auto p-4 font-mono text-xs">
           {!analysis && !analyzing && (
             <p className="flex h-full items-center justify-center text-center text-muted-foreground">
-              Press <span className="mx-1 rounded bg-primary/15 px-1.5 py-0.5 font-semibold text-primary">Run forward analysis</span>
-              to unfold the solution line by line.
+              {t("placeholderBefore")}{" "}
+              <span className="mx-1 rounded bg-primary/15 px-1.5 py-0.5 font-semibold text-primary">{t("run")}</span>{" "}
+              {t("placeholderAfter")}
             </p>
           )}
           {analyzing && !analysis && (
             <div className="space-y-2.5 text-muted-foreground">
               {[0, 1, 2].map((i) => (
                 <p key={i} className="step-in" style={{ animationDelay: `${i * 0.25}s` }}>
-                  <span className="text-accent">▚</span> sampling {selected} series, blending{" "}
-                  {FACTOR_META.filter((f) => factors[f.key] !== 50).length} custom vertices…
+                  <span className="text-accent">▚</span>{" "}
+                  {t("computing", {
+                    symbol: selected,
+                    count: String(FACTOR_META.filter((f) => factors[f.key] !== 50).length),
+                  })}
                 </p>
               ))}
             </div>
@@ -146,11 +164,11 @@ export function AnalysisEngine() {
         >
           {analyzing ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Analyzing…
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("analyzing")}
             </>
           ) : (
             <>
-              <Radar className="h-4 w-4" /> Run forward analysis
+              <Radar className="h-4 w-4" /> {t("run")}
             </>
           )}
         </Button>
@@ -159,14 +177,14 @@ export function AnalysisEngine() {
           {analysis && verdictDone ? (
             <>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Verdict</span>
+                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("verdict")}</span>
                 <span className={`rounded-md border px-2.5 py-1 text-sm font-extrabold tracking-wide ${verdictTone.badge}`}>
-                  {analysis.verdict.action}
+                  {actionLabel}
                 </span>
               </div>
               <div className="mt-3">
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Composite score</span>
+                  <span className="text-muted-foreground">{t("compositeScore")}</span>
                   <span className="tnum font-bold">{analysis.verdict.score.toFixed(1)}/100</span>
                 </div>
                 <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
@@ -178,16 +196,18 @@ export function AnalysisEngine() {
                     style={{ background: "linear-gradient(90deg,#f43f5e,#f59e0b,#10b981)" }}
                   />
                 </div>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">Confidence ≈ {analysis.verdict.confidence}%</p>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  {t("confidence", { value: String(analysis.verdict.confidence) })}
+                </p>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                 {[
-                  ["Entry", analysis.targets.entry, "text-foreground"],
-                  ["Support", analysis.targets.support, "text-destructive"],
-                  ["Resist.", analysis.targets.resistance, "text-primary"],
-                  ["Stop", analysis.targets.stop, "text-destructive"],
-                  ["Tgt 1", analysis.targets.target1, "text-primary"],
-                  ["Tgt 2", analysis.targets.target2, "text-primary"],
+                  [t("targets.entry"), analysis.targets.entry, "text-foreground"],
+                  [t("targets.support"), analysis.targets.support, "text-destructive"],
+                  [t("targets.resistance"), analysis.targets.resistance, "text-primary"],
+                  [t("targets.stop"), analysis.targets.stop, "text-destructive"],
+                  [t("targets.t1"), analysis.targets.target1, "text-primary"],
+                  [t("targets.t2"), analysis.targets.target2, "text-primary"],
                 ].map(([label, val, tone]) => (
                   <div key={label as string} className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5">
                     <span className="shrink-0 text-muted-foreground">{label as string}</span>
@@ -196,23 +216,29 @@ export function AnalysisEngine() {
                 ))}
               </div>
               <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                Model expects {fmtPrice(analysis.projection.expectedPrice)} over {analysis.projection.horizonDays} days
-                ({fmtPct(analysis.projection.expectedChangePct, 1)}). Verify against the news feed before acting.
+                {t("modelExpects", {
+                  price: fmtPrice(analysis.projection.expectedPrice),
+                  days: String(analysis.projection.horizonDays),
+                  daysShort: tProjection("daysShort"),
+                  change: fmtPct(analysis.projection.expectedChangePct, 1),
+                })}
               </p>
             </>
           ) : (
             <div className="flex h-full min-h-[180px] flex-col items-center justify-center text-center text-muted-foreground">
               <Radar className="mb-2 h-8 w-8 text-primary/50" />
-              <p className="text-xs">Verdict, confidence and target zones appear here once the line-by-line run completes.</p>
+              <p className="text-xs">{t("emptyVerdict")}</p>
             </div>
           )}
         </div>
 
         <div className="rounded-xl border border-border bg-card/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
-          Current inputs — <span className="font-semibold text-foreground/80">{selected}</span>, horizon{" "}
-          <span className="tnum">{horizon}d</span>, vertices:{" "}
-          {FACTOR_META.map((f) => `${f.label} ${Math.round(factors[f.key])}`).join(" · ")}. Adjust the Signal
-          Polygon above and re-run to compare scenarios.
+          {t("inputs", {
+            symbol: selected,
+            days: String(horizon),
+            daysShort: tProjection("daysShort"),
+            vertices: FACTOR_META.map((f) => `${tFactors(`${f.key}.label`)} ${Math.round(factors[f.key])}`).join(" · "),
+          })}
         </div>
       </div>
     </div>

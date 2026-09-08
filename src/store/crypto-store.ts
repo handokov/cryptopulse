@@ -7,17 +7,15 @@ import type { AnalysisResult } from "@/lib/analysis-engine";
 
 export interface FactorMeta {
   key: FactorKey;
-  label: string;
-  hint: string;
 }
 
 export const FACTOR_META: FactorMeta[] = [
-  { key: "momentum", label: "Momentum", hint: "RSI / rate-of-change regime" },
-  { key: "trend", label: "Trend", hint: "Moving-average structure" },
-  { key: "volume", label: "Volume", hint: "Participation & flow" },
-  { key: "volatility", label: "Volatility", hint: "Realized risk envelope" },
-  { key: "sentiment", label: "Sentiment", hint: "News & narrative tone" },
-  { key: "liquidity", label: "Liquidity", hint: "Depth & spreads" },
+  { key: "momentum" },
+  { key: "trend" },
+  { key: "volume" },
+  { key: "volatility" },
+  { key: "sentiment" },
+  { key: "liquidity" },
 ];
 
 export type Factors = Record<FactorKey, number>;

@@ -37,3 +37,25 @@ Stage Summary:
 - All requested features implemented and browser-verified: morphing hero shape, real-time vertex readings, slider-driven function graphs, color-pulsing query/analysis feedback, line-by-line solutions, trusted news aggregation, high-volume asset tracking.
 - APIs: /api/market (live), /api/news (live), /api/analysis (200).
 - Lint clean, dev.log clean, no hydration errors.
+
+---
+Task ID: 2
+Agent: Super Z (main agent)
+Task: Add translation support (i18n) for multiple languages incl. Indonesian, plus flag icons for language settings.
+
+Work Log:
+- Installed flag-icons@7.5.0; imported flag-icons CSS in layout.tsx.
+- Built i18n infrastructure:
+  - src/i18n/config.ts — 6 locales (en, id, zh, es, pt, ja) with native labels + ISO country codes for flags; isLocale/safeLocale guards.
+  - src/i18n/messages/{en,id,zh,es,pt,ja}.ts — full typed catalogs (~130 keys each, id typed as Messages = typeof en for structural completeness). Covers nav/hero/markets/labs/factors/polygon/projection/analysis (incl. 11 step templates + variants)/news/footer.
+  - src/i18n/messages/index.ts — ALL_MESSAGES record.
+  - src/store/locale-store.ts — zustand + persist (localStorage "cryptopulse-locale"), invalid-locale guard on rehydrate.
+  - src/i18n/intl-provider.tsx — NextIntlClientProvider (no URL routing, single / route preserved), keyed remount on locale switch, syncs document.documentElement.lang.
+- Server-side: analysis-engine runAnalysis now takes locale; uses createTranslator from use-intl/core with the same catalogs — step titles/details/variants fully localized; /api/analysis accepts validated locale param.
+- Client: all components converted to useTranslations (header, hero, market grid, signal polygon, projection lab, analysis engine, news feed, lab panels, footer, page headings); FACTOR_META slimmed to keys with labels/hints from catalogs; analysis POST now sends locale.
+- LanguageSwitcher: circular SVG flags (flag-icons fis) + native names + check mark; trigger shows Languages icon + current flag + code; added to header (responsive, flag-only on mobile).
+- Fixed Japanese catalog typos (每日→毎日, 色分き→色分け, 提示え込み→仕込み) via script.
+- Verification: lint clean; API returns Indonesian steps (curl verified); Agent Browser verified dropdown with 6 flags, switch to Bahasa Indonesia (nav/headings/badges/labs/sliders/chart labels fully translated), Indonesian analysis run (PUTARAN/NETRAL verdict, Entri/Support/Stop targets, localized steps line-by-line), Japanese rendering (non-Latin), persistence across reload, mobile switcher layout, zero console/page errors.
+
+Stage Summary:
+- Site now supports 6 languages with instant client-side switching, persisted preference, localized server-generated analysis steps, and flag-icon language menu. Single-route constraint preserved.

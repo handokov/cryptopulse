@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExternalLink, RefreshCw, ShieldCheck, Newspaper, Signal } from "lucide-react";
@@ -22,6 +23,7 @@ interface NewsResponse {
 }
 
 export function NewsFeed() {
+  const t = useTranslations("news");
   const [data, setData] = useState<NewsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [trustedOnly, setTrustedOnly] = useState(true);
@@ -60,7 +62,7 @@ export function NewsFeed() {
           className={`bg-primary/15 text-primary hover:bg-primary/25 ${flash ? "flash-pulse" : ""}`}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Aggregating…" : "Refresh feed"}
+          {refreshing ? t("refreshing") : t("refresh")}
         </Button>
         <Button
           size="sm"
@@ -69,17 +71,17 @@ export function NewsFeed() {
           aria-pressed={trustedOnly}
         >
           <ShieldCheck className="h-3.5 w-3.5" />
-          {trustedOnly ? "Trusted sources only" : "All sources"}
+          {trustedOnly ? t("trustedOnly") : t("allSources")}
         </Button>
         {data && (
           <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground">
             {data.source === "live" ? (
               <>
-                <Signal className="h-3 w-3 text-primary" /> live via web search
+                <Signal className="h-3 w-3 text-primary" /> {t("liveVia")}
               </>
             ) : (
               <>
-                <Newspaper className="h-3 w-3 text-accent" /> cached brief (search unavailable)
+                <Newspaper className="h-3 w-3 text-accent" /> {t("cachedBrief")}
               </>
             )}
             · {new Date(data.updatedAt).toLocaleTimeString()}
@@ -100,7 +102,7 @@ export function NewsFeed() {
 
         {!loading && items.length === 0 && (
           <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-            No stories matched the current filter. Try “All sources” or refresh.
+            {t("noMatch")}
           </p>
         )}
 

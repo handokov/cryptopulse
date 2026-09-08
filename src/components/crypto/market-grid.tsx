@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useCryptoStore } from "@/store/crypto-store";
 import { fmtPrice, fmtCompactUsd, fmtPct } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +33,7 @@ function Sparkline({ data, color, up }: { data: number[]; color: string; up: boo
 }
 
 function AssetCard({ symbol }: { symbol: string }) {
+  const t = useTranslations("markets");
   const asset = useCryptoStore((s) => s.assets.find((a) => a.symbol === symbol));
   const selected = useCryptoStore((s) => s.selected);
   const selectAsset = useCryptoStore((s) => s.selectAsset);
@@ -70,7 +72,7 @@ function AssetCard({ symbol }: { symbol: string }) {
       whileTap={{ scale: 0.98 }}
       onClick={() => selectAsset(asset.symbol)}
       aria-pressed={isSelected}
-      aria-label={`Select ${asset.name} for analysis`}
+      aria-label={t("selectAria", { name: asset.name })}
       className={`group relative w-full rounded-xl border bg-card p-4 text-left transition-colors ${
         isSelected ? "border-primary/70" : "border-border hover:border-primary/40"
       } ${flash ? "flash-pulse" : ""}`}
@@ -104,13 +106,13 @@ function AssetCard({ symbol }: { symbol: string }) {
       </div>
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span className="tnum">Vol {fmtCompactUsd(asset.volume24h)}</span>
-        <span className="tnum">MCap {fmtCompactUsd(asset.marketCap)}</span>
+        <span className="tnum">{t("vol", { value: fmtCompactUsd(asset.volume24h) })}</span>
+        <span className="tnum">{t("mcap", { value: fmtCompactUsd(asset.marketCap) })}</span>
       </div>
 
       {isSelected && (
         <span className="absolute right-3 top-3 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-          TRACKING
+          {t("tracking")}
         </span>
       )}
     </motion.button>
