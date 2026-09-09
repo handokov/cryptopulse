@@ -104,4 +104,38 @@ const N = 120;
   );
 }
 
+/* --- cases 6-7: wave position NOW (posPct + rising) ---
+   The fit anchors t=0 at the LAST point, so today's wave value is b and the
+   direction is sign(a). With T=20, N=120, φ as chosen, the analytic wave at
+   the final point is 3%·sin(2π·119/20 + φ): φ=0 → below trend AND rising
+   (climbing out of a trough); φ=π → above trend AND falling (rolling off a
+   peak). Tiny noise keeps the phase estimate clean. */
+{
+  const mk = (phi: number) => {
+    const rng = mulberry32(777);
+    let cum = 0;
+    const prices: number[] = [];
+    for (let t = 0; t < N; t++) {
+      cum += gauss(rng) * 0.001;
+      prices.push(100 * Math.exp(0.0002 * t + 0.03 * Math.sin((2 * Math.PI * t) / 20 + phi) + cum));
+    }
+    return prices;
+  };
+  const below = cycleFit(mk(0), 7, 60);
+  if (!below) throw new Error("case6: expected a fit");
+  console.log(
+    `case6 trough-side → pos=${below.posPct.toFixed(2)}% rising=${below.rising} (expect <0, true)`,
+  );
+  if (below.posPct >= 0 || below.posPct < -2.2) throw new Error("case6: posPct out of range");
+  if (!below.rising) throw new Error("case6: wave should be rising out of the trough");
+
+  const above = cycleFit(mk(Math.PI), 7, 60);
+  if (!above) throw new Error("case7: expected a fit");
+  console.log(
+    `case7 peak-side  → pos=${above.posPct.toFixed(2)}% rising=${above.rising} (expect >0, false)`,
+  );
+  if (above.posPct <= 0 || above.posPct > 2.2) throw new Error("case7: posPct out of range");
+  if (above.rising) throw new Error("case7: wave should be falling off the peak");
+}
+
 console.log("ALL CYCLE-FIT CHECKS PASSED");

@@ -9,7 +9,7 @@ import { logReturns, stdev, cycleFit } from "@/lib/indicators";
 import { buildPath, projectPrice, substitutedExpr } from "@/lib/projection";
 import { bootstrapBand, shrinkDrift } from "@/lib/monte-carlo";
 import { fmtPrice, fmtPct } from "@/lib/format";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Wand2 } from "lucide-react";
 
 const W = 720;
 const H = 320;
@@ -214,17 +214,22 @@ export function ProjectionLab() {
       {/* detected cycle strength — honest context for the wave sliders */}
       <div className="flex flex-wrap items-center gap-2 text-[11px] leading-relaxed">
         {model.cycle ? (
-          <span
-            className={`tnum whitespace-nowrap rounded-md border px-2 py-0.5 font-mono font-semibold ${
-              model.cycle.r2 > 0.5
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : model.cycle.r2 >= 0.3
-                  ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
-                  : "border-border text-muted-foreground"
-            }`}
-          >
-            CYCLE R² {model.cycle.r2.toFixed(2)} · T*≈{model.cycle.period}d
-          </span>
+          <>
+            <span
+              className={`tnum whitespace-nowrap rounded-md border px-2 py-0.5 font-mono font-semibold ${
+                model.cycle.r2 > 0.5
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : model.cycle.r2 >= 0.3
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                    : "border-border text-muted-foreground"
+              }`}
+            >
+              CYCLE R² {model.cycle.r2.toFixed(2)} · T*≈{model.cycle.period}d
+            </span>
+            <span className="tnum whitespace-nowrap rounded-md border border-border px-2 py-0.5 font-mono font-semibold text-foreground/80">
+              NOW {fmtPct(model.cycle.posPct, 1)} {model.cycle.rising ? "↑" : "↓"}
+            </span>
+          </>
         ) : (
           <span className="whitespace-nowrap rounded-md border border-border px-2 py-0.5 font-mono font-semibold text-muted-foreground">
             CYCLE —
@@ -239,8 +244,32 @@ export function ProjectionLab() {
               })
             : t("cycleNone")}
         </span>
+        {model.cycle && (
+          <span className="text-muted-foreground/90">
+            {t("cyclePos", {
+              pos: fmtPct(model.cycle.posPct, 1),
+              dir: model.cycle.rising ? t("cycleRising") : t("cycleFalling"),
+            })}
+          </span>
+        )}
         {model.cycle && model.cycle.r2 < 0.3 && (
           <span className="text-amber-500/90">{t("cycleWeakNote")}</span>
+        )}
+        {model.cycle && model.cycle.r2 >= 0.3 && (
+          <button
+            type="button"
+            onClick={() => {
+              setSlider("wavePeriod", model.cycle!.period);
+              setSlider(
+                "waveAmp",
+                Math.min(5, Math.max(0, Math.round(model.cycle!.ampPct * 10) / 10)),
+              );
+            }}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 font-semibold text-primary transition-colors hover:bg-primary/20"
+          >
+            <Wand2 className="h-3 w-3" aria-hidden />
+            {t("useCycle")}
+          </button>
         )}
       </div>
 
@@ -259,7 +288,9 @@ export function ProjectionLab() {
         {model.cycle && (
           <>
             <br />
-            cycle fit: T*={model.cycle.period}d · R²={model.cycle.r2.toFixed(3)} · A*≈{model.cycle.ampPct.toFixed(2)}% (free-phase sine, detrended log)
+            cycle fit: T*={model.cycle.period}d · R²={model.cycle.r2.toFixed(3)} · A*≈
+            {model.cycle.ampPct.toFixed(2)}% · now {fmtPct(model.cycle.posPct, 2)} (
+            {model.cycle.rising ? "rising" : "falling"}) — free-phase sine, detrended log
           </>
         )}
       </div>
@@ -275,6 +306,16 @@ export function ProjectionLab() {
         <SliderRow label={t("waveAmp.label")} hint={t("waveAmp.hint")} display={`${waveAmp.toFixed(1)}%`} min={0} max={5} step={0.1} value={waveAmp} onChange={(v) => setSlider("waveAmp", v)} />
         <SliderRow label={t("wavePeriod.label")} hint={t("wavePeriod.hint")} display={`${wavePeriod}${t("daysShort")}`} min={7} max={60} step={1} value={wavePeriod} onChange={(v) => setSlider("wavePeriod", v)} />
       </div>
+
+      {/* how to actually use this for decisions — the lab explains itself */}
+      <details className="rounded-xl border border-border bg-card/60 px-3 py-2.5 text-xs">
+        <summary className="cursor-pointer select-none font-medium text-primary">{t("howtoTitle")}</summary>
+        <ul className="mt-2 list-disc space-y-1.5 pl-4 leading-relaxed text-muted-foreground">
+          <li>{t("howtoSliders")}</li>
+          <li>{t("howtoApply")}</li>
+          <li>{t("howtoDecide")}</li>
+        </ul>
+      </details>
 
       {/* readouts */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

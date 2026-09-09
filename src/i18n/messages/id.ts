@@ -114,6 +114,17 @@ const id: Messages = {
     cycleNote: "Ritme terkini terkuat: periode ≈{days} hari, menjelaskan {r2}% variasi harga (tanpa tren) di jendela ini, amplitudo ≈{amp}%.",
     cycleNone: "Tidak ada siklus yang bisa dipakai di jendela terkini — slider gelombang tetap alat skenario.",
     cycleWeakNote: "R² di bawah 30% — perlakukan slider gelombang sebagai skenario, bukan pola yang terdeteksi.",
+    cyclePos: "Posisi sekarang: {pos} dari tren — {dir}.",
+    cycleRising: "naik",
+    cycleFalling: "turun",
+    useCycle: "Terapkan siklus terdeteksi",
+    howtoTitle: "Cara memakai ini untuk keputusan beli/jual",
+    howtoSliders:
+      "Lima slider adalah skenario ANDA, bukan prediksi — kurva menjawab \u201cbagaimana jika\u201d. Badge R² menunjukkan isi data itu sendiri: makin tinggi, makin besar hak gelombang untuk dipertimbangkan.",
+    howtoApply:
+      "Pada R² 30% atau lebih, tekan \u201cTerapkan siklus terdeteksi\u201d: periode & amplitudo langsung mengikuti nilai terdeteksi (T→T*, A→A*) sebagai titik awal. Di bawah 30% gelombang murni what-if — jangan jadikan dasar keputusan.",
+    howtoDecide:
+      "Daftar periksa keputusan: \u2460 kemiringan drift (arah tren), \u2461 posisi gelombang (chip NOW — dekat lembah menyukai beli bertahap, dekat puncak menyukai kehati-hatian), \u2462 zona P10–P90 (target di luar zona itu terlalu optimis), \u2463 ukuran posisi & stop-loss. Alat skenario edukasi — bukan nasihat keuangan.",
     today: "hari ini",
     now: "kini {price}",
   },

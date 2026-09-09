@@ -115,6 +115,17 @@ const en = {
     cycleNote: "Strongest recent rhythm: period ≈{days}d, explaining {r2}% of detrended price variation in this window, amplitude ≈{amp}%.",
     cycleNone: "No usable cycle in the recent window — the wave sliders stay a scenario tool.",
     cycleWeakNote: "R² under 30% — treat the wave sliders as a scenario, not a detected pattern.",
+    cyclePos: "Position now: {pos} vs trend — {dir}.",
+    cycleRising: "rising",
+    cycleFalling: "falling",
+    useCycle: "Apply detected cycle",
+    howtoTitle: "How to use this for buy/sell decisions",
+    howtoSliders:
+      "The five sliders are YOUR scenario, not a prediction — the curve answers \u201cwhat if\u201d. The R² badge shows what the data itself contains: the higher it is, the more weight the wave deserves.",
+    howtoApply:
+      "At R² 30% or more, press \u201cApply detected cycle\u201d: period and amplitude jump to the detected values (T→T*, A→A*) as a starting point. Below 30% the wave is pure what-if — don't anchor decisions on it.",
+    howtoDecide:
+      "Decision checklist: \u2460 drift slope (trend direction), \u2461 wave position (NOW chip — near a trough favors staged buying, near a peak favors caution), \u2462 the P10–P90 band (a target outside it is too optimistic), \u2463 position sizing and stop-loss. Educational scenario tool — never financial advice.",
     today: "today",
     now: "now {price}",
   },

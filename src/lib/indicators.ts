@@ -106,15 +106,20 @@ export interface CycleFit {
   r2: number;
   /** Fitted amplitude as % of price (log-scale amplitude ≈ percent). */
   ampPct: number;
+  /** Fitted wave value TODAY as % of price, signed: + above the trend, − below. */
+  posPct: number;
+  /** Wave direction today: fitted slope > 0 (rising) vs ≤ 0 (falling). */
+  rising: boolean;
 }
 
 /**
  * Dominant-cycle detection on log prices. Detrends the most recent window
  * (≤ 2·maxT points) with an OLS log-linear trend, then scans periods and fits
  * a·sin(2πt/T) + b·cos(2πt/T) + c — free phase/amplitude — keeping the T with
- * the highest R². Descriptive only: on a random walk a window-fitted R² can
- * flatter, so callers must frame it as "variation explained in THIS window",
- * never as predictive power. Pure math, deterministic, O(grid · window).
+ * the highest R². Also reports today's position in that wave (b·100 ≈ signed %
+ * vs trend) and its direction (sign of a). Descriptive only: on a random walk a
+ * window-fitted R² can flatter, so callers must frame it as "variation explained
+ * in THIS window", never as predictive power. Pure math, deterministic, O(grid · window).
  */
 export function cycleFit(prices: number[], minT = 7, maxT = 60): CycleFit | null {
   const n = prices.length;
@@ -192,7 +197,16 @@ export function cycleFit(prices: number[], minT = 7, maxT = 60): CycleFit | null
     }
     const r2 = Math.max(0, 1 - ssRes / ssTot);
     if (!best || r2 > best.r2) {
-      best = { period: T, r2, ampPct: Math.sqrt(a * a + b * b) * 100 };
+      /* Wave position NOW (t=0 is the last point): value = b·cos(0) = b,
+         slope ∝ a·cos(0) = a — so b is today's signed offset from trend
+         (log ≈ %) and sign(a) is today's direction. */
+      best = {
+        period: T,
+        r2,
+        ampPct: Math.sqrt(a * a + b * b) * 100,
+        posPct: b * 100,
+        rising: a > 0,
+      };
     }
   }
   return best;

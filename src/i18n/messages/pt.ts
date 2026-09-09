@@ -114,6 +114,17 @@ const pt: Messages = {
     cycleNote: "Ritmo recente mais forte: período ≈{days}d, explicando {r2}% da variação destendenciada do preço nesta janela, com amplitude ≈{amp}%.",
     cycleNone: "Nenhum ciclo utilizável na janela recente — os controles de onda continuam sendo cenário.",
     cycleWeakNote: "R² abaixo de 30% — trate os controles de onda como cenário, não como um padrão detectado.",
+    cyclePos: "Posição atual: {pos} vs tendência — {dir}.",
+    cycleRising: "subindo",
+    cycleFalling: "caindo",
+    useCycle: "Aplicar ciclo detectado",
+    howtoTitle: "Como usar isto para decidir comprar/vender",
+    howtoSliders:
+      "Os cinco controles são o SEU cenário, não uma previsão — a curva responde a \u201ce se…\u201d. O selo R² mostra o que os próprios dados contêm: quanto maior, mais peso a onda merece.",
+    howtoApply:
+      "Com R² de 30% ou mais, pressione \u201cAplicar ciclo detectado\u201d: período e amplitude passam aos valores detectados (T→T*, A→A*) como ponto de partida. Abaixo de 30% a onda é pura hipótese — não baseie decisões nela.",
+    howtoDecide:
+      "Checklist de decisão: \u2460 inclinação do drift (direção da tendência); \u2461 posição da onda (selo NOW — perto do vale favorece compras escalonadas, perto do pico favorece cautela); \u2462 a faixa P10–P90 (uma meta fora dela é otimista demais); \u2463 tamanho da posição e stop-loss. Ferramenta educativa de cenários — nunca aconselhamento financeiro.",
     today: "hoje",
     now: "agora {price}",
   },

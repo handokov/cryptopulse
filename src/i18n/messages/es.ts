@@ -114,6 +114,17 @@ const es: Messages = {
     cycleNote: "Ritmo reciente más fuerte: periodo ≈{days}d, explica el {r2}% de la variación destendenciada del precio en esta ventana, con amplitud ≈{amp}%.",
     cycleNone: "No hay un ciclo utilizable en la ventana reciente: los deslizadores de onda siguen siendo un escenario.",
     cycleWeakNote: "R² inferior al 30%: trata los deslizadores de onda como un escenario, no como un patrón detectado.",
+    cyclePos: "Posición actual: {pos} frente a la tendencia — {dir}.",
+    cycleRising: "subiendo",
+    cycleFalling: "bajando",
+    useCycle: "Aplicar ciclo detectado",
+    howtoTitle: "Cómo usar esto para decidir comprar/vender",
+    howtoSliders:
+      "Los cinco deslizadores son TU escenario, no una predicción: la curva responde a \u201c¿qué pasaría si…?\u201d. La insignia R² muestra lo que contienen los datos: cuanto más alta, más peso merece la onda.",
+    howtoApply:
+      "Con R² del 30% o más, pulsa \u201cAplicar ciclo detectado\u201d: el periodo y la amplitud saltan a los valores detectados (T→T*, A→A*) como punto de partida. Por debajo del 30% la onda es pura hipótesis: no bases decisiones en ella.",
+    howtoDecide:
+      "Lista de decisión: \u2460 pendiente del drift (dirección de la tendencia); \u2461 posición de la onda (chip NOW — cerca del valle favorece compras escalonadas, cerca del pico favorece la cautela); \u2462 la banda P10–P90 (un objetivo fuera de ella es demasiado optimista); \u2463 tamaño de posición y stop-loss. Herramienta educativa de escenarios: nunca asesoramiento financiero.",
     today: "hoy",
     now: "ahora {price}",
   },

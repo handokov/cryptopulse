@@ -583,3 +583,21 @@ Work Log:
 
 Stage Summary:
 - Task 18 (cycle R² badge) COMPLETE end-to-end: code → GitHub → production. Users now see CYCLE R² / T* / tier-colored quality context above the wave sliders.
+
+---
+Task ID: 19
+Agent: Super Z (main agent)
+Task: Make the Projection Lab self-explanatory — user asked how to read the sliders/R² badge and how to turn it into buy/sell decisions.
+
+Work Log:
+- cycleFit extended (src/lib/indicators.ts): CycleFit gains posPct (fitted wave value TODAY, signed % vs trend = b·100 since t=0 is the last point) and rising (sign of a). Zero extra math — a, b were already computed.
+- verify-cycle-fit.ts cases 6-7 added: T=20 sine φ=0 → pos −0.94% (analytic −0.93%!) + rising; φ=π → +0.90% + falling. ALL 7 CASES PASSED.
+- projection-lab.tsx: second mono chip "NOW ±x.x% ↑/↓" beside CYCLE R²; new i18n sentence cyclePos {pos}{dir}; "Apply detected cycle" button (visible only at R² ≥ 0.30) that sets wavePeriod=T* and waveAmp=clamp(A*, 0..5, rounded to 0.1); native <details> how-to block under the sliders (3 bullets: sliders=scenario vs badge=data, apply workflow, decision checklist ①drift ②wave position ③P10–P90 band ④sizing+stop-loss, ends with educational-not-advice); mono audit line extended with "now ±x.xx% (rising|falling)".
+- i18n +8 keys ×6 (cyclePos, cycleRising, cycleFalling, useCycle, howtoTitle, howtoSliders, howtoApply, howtoDecide) → 403/403 parity ALL CLEAN.
+- Verification: bun verify (7 cases) ✓; eslint clean; production build passed; dev server lock conflict from a stale next process — killed all next procs, removed .next/dev/lock, restarted clean. Agent Browser E2E: BTC R² 0.19 → weak path (no button, warning shown), SOL R² 0.50 → NOW +5.4% ↓ + Apply button; clicking it moved A 1.5→5.0% (clamped from 12.1%) and T 21→44d, τ recomputed 88d; Indonesian locale renders correctly; how-to details expands; zero console/page errors.
+- Push: committed with Task 19; used PAT #5 for push (user had been advised to revoke earlier tokens).
+
+Stage Summary:
+- The lab now answers "are the sliders free?" in-product: badge = what the data contains, sliders = your scenario, Apply button = one-click data-driven starting point, details block = the decision checklist.
+- Known limitation kept honest: the scenario wave starts at midline-rising (no phase parameter in P(t)); the NOW chip tells where the DETECTED wave sits today. Phase-aligned projection is a possible future task.
+- Backlog still open: @vercel/speed-insights, monetization (affiliate + disclaimer), session epoch hardening.
