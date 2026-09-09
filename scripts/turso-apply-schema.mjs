@@ -9,8 +9,9 @@
  * Credentials come from the environment only — never hardcode them here:
  *   TURSO_DATABASE_URL=libsql://...   TURSO_AUTH_TOKEN=eyJ...
  *
- * Idempotence: designed for an EMPTY database. Re-running on an existing
- * schema fails on CREATE TABLE — that is a safe guard, not a bug.
+ * Idempotence: every CREATE statement is rewritten to `... IF NOT EXISTS`,
+ * so the script is safe to re-run as the schema evolves (additive changes
+ * only — column alterations still need manual care).
  *
  * Run: TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... node scripts/turso-apply-schema.mjs
  */
@@ -27,10 +28,15 @@ if (!url || !authToken) {
 }
 
 console.log('[1/3] Generating DDL from prisma/schema.prisma ...')
-const ddl = execSync(
+const rawDdl = execSync(
   'npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script',
   { cwd: PROJECT_ROOT, encoding: 'utf8', env: process.env },
 )
+// Make idempotent: skip objects that already exist on the remote DB.
+const ddl = rawDdl
+  .replace(/CREATE TABLE /g, 'CREATE TABLE IF NOT EXISTS ')
+  .replace(/CREATE UNIQUE INDEX /g, 'CREATE UNIQUE INDEX IF NOT EXISTS ')
+  .replace(/CREATE INDEX /g, 'CREATE INDEX IF NOT EXISTS ')
 console.log('--- DDL start ---')
 console.log(ddl)
 console.log('--- DDL end ---')

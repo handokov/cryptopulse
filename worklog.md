@@ -510,3 +510,19 @@ Stage Summary:
 - Sign-in eye toggle + forgot/reset password flow is on GitHub.
 - Production still needs: RESEND_API_KEY (+ optional EMAIL_FROM) in Vercel env, and Turso schema push (PasswordResetToken table) via scripts/turso-apply-schema.mjs — user asked to re-send the Turso token.
 - Fourth PAT exposed in chat — user must revoke it after confirming the deploy; recommend fine-grained repo-scoped tokens.
+
+---
+Task ID: 17-c
+Agent: Super Z (main agent)
+Task: Apply the PasswordResetToken schema to the production Turso DB (user re-sent the Turso token).
+
+Work Log:
+- scripts/turso-apply-schema.mjs made idempotent: generated DDL now rewritten to CREATE TABLE/INDEX ... IF NOT EXISTS — safe re-runs as the schema evolves (additive changes); doc header updated.
+- Schema pushed to libsql://cryptopulse-handokov.aws-ap-northeast-1.turso.io — re-run executed cleanly (idempotency proven), remote tables verified: ExchangeConnection, Holding, PasswordResetToken, PortfolioSnapshot, PriceAlert, User.
+- scripts/turso-verify-reset-token.ts (new, bun): full roundtrip through the REAL dual-mode src/lib/db.ts in NODE_ENV=production — create user → mint token → read via User.resetTokens relation + tokenHash unique lookup → burn via updateMany → delete user → cascade leaves 0 tokens. ALL PASSED.
+- Committed both scripts and pushed to handokov/cryptopulse main.
+
+Stage Summary:
+- Production DB now matches Prisma schema — the forgot-password endpoint can write tokens as soon as the new code deploys.
+- Remaining for full production forgot-password: RESEND_API_KEY (+ optional EMAIL_FROM) in Vercel env. Without it the endpoint still answers safely (constant anti-enumeration response; UI shows the "email not configured" note).
+- Turso token exposed in chat again — user can rotate it anytime from the Turso dashboard (database → Tokens).
