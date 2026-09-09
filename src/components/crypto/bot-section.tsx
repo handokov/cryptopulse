@@ -21,6 +21,8 @@ interface BotConfig {
   orderSizeUsdt: number;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
+  takeProfitPct: number | null;
+  stopLossPct: number | null;
 }
 
 interface BotPosition {
@@ -55,6 +57,21 @@ interface BotSummary {
   maxTradesPerDay: number | null;
 }
 
+interface BotStats {
+  closedCount: number;
+  winCount: number;
+  lossCount: number;
+  winRate: number | null;
+  totalPnlUsdt: number;
+  avgWinUsdt: number | null;
+  avgLossUsdt: number | null;
+  bestUsdt: number | null;
+  worstUsdt: number | null;
+  expectancyUsdt: number | null;
+  exitCounts: Record<string, number>;
+  dailyPnl: { day: string; pnl: number }[];
+}
+
 interface TickResult {
   action: string;
   reason: string;
@@ -74,6 +91,7 @@ export function BotSection() {
   const [positions, setPositions] = useState<BotPosition[]>([]);
   const [trades, setTrades] = useState<BotTrade[]>([]);
   const [summary, setSummary] = useState<BotSummary | null>(null);
+  const [stats, setStats] = useState<BotStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -92,6 +110,7 @@ export function BotSection() {
         setPositions(data.positions ?? []);
         setTrades(data.trades ?? []);
         setSummary(data.summary ?? null);
+        setStats(data.stats ?? null);
         if (data.summary?.presets) setPreset(data.summary.presets);
       }
     } finally {
@@ -309,6 +328,49 @@ export function BotSection() {
             <span className="text-xs font-medium">{t("enabled")}</span>
             <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} aria-label={t("enable")} />
           </div>
+
+          {/* advanced exit-ladder overrides */}
+          <details className="sm:col-span-2 rounded-lg border border-border/70 px-3 py-2.5">
+            <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground hover:text-foreground">
+              {t("advTitle")}
+            </summary>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              {t("advHint", {
+                tp: (modePreset?.takeProfitPct ?? preset?.MODERATE.takeProfitPct ?? 1.8).toFixed(1),
+                sl: (modePreset?.stopLossPct ?? preset?.MODERATE.stopLossPct ?? 1.2).toFixed(1),
+              })}
+            </p>
+            <div className="mt-2.5 grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="bot-tp" className="text-xs">{t("tpOverride")}</Label>
+                <Input
+                  id="bot-tp"
+                  type="number"
+                  min={0.3}
+                  max={50}
+                  step={0.1}
+                  className="tnum mt-1.5"
+                  value={cfg.takeProfitPct ?? ""}
+                  onChange={(e) => setCfg({ ...cfg, takeProfitPct: e.target.value === "" ? null : Number(e.target.value) })}
+                  placeholder="1.8"
+                />
+              </div>
+              <div>
+                <Label htmlFor="bot-sl" className="text-xs">{t("slOverride")}</Label>
+                <Input
+                  id="bot-sl"
+                  type="number"
+                  min={0.2}
+                  max={50}
+                  step={0.1}
+                  className="tnum mt-1.5"
+                  value={cfg.stopLossPct ?? ""}
+                  onChange={(e) => setCfg({ ...cfg, stopLossPct: e.target.value === "" ? null : Number(e.target.value) })}
+                  placeholder="1.2"
+                />
+              </div>
+            </div>
+          </details>
         </div>
 
         {!cfg.paper && (
@@ -347,6 +409,85 @@ export function BotSection() {
         <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/75">{t("autoNote")}</p>
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/75">{t("needKeyNote")}</p>
       </div>
+
+      {/* performance report */}
+      {stats && stats.closedCount > 0 && (() => {
+        let acc = 0;
+        for (const d of stats.dailyPnl) {
+          acc += d.pnl;
+        };
+        const maxAbs = Math.max(1e-9, ...stats.dailyPnl.map((d) => Math.abs(d.pnl)));
+        return (
+          <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">{t("reportTitle")}</h3>
+              <span className="text-[10px] text-muted-foreground">{t("reportMode", { count: stats.closedCount })}</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-border/70 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("winRate")}</p>
+                <p className="tnum mt-0.5 text-sm font-bold">{stats.winRate != null ? `${(stats.winRate * 100).toFixed(0)}%` : "—"}</p>
+                <p className="text-[10px] text-muted-foreground">{stats.winCount}W / {stats.lossCount}L</p>
+              </div>
+              <div className="rounded-lg border border-border/70 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("totalPnl")}</p>
+                <p className={`tnum mt-0.5 text-sm font-bold ${stats.totalPnlUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                  {stats.totalPnlUsdt >= 0 ? "+" : ""}{stats.totalPnlUsdt.toFixed(2)} $
+                </p>
+                <p className="tnum text-[10px] text-muted-foreground">{t("expectancy", { value: (stats.expectancyUsdt ?? 0).toFixed(3) })}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("avgWin")} / {t("avgLoss")}</p>
+                <p className="tnum mt-0.5 text-sm font-bold">
+                  <span className="text-primary">+{(stats.avgWinUsdt ?? 0).toFixed(2)}</span>
+                  {" / "}
+                  <span className="text-destructive">{(stats.avgLossUsdt ?? 0).toFixed(2)}</span>
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/70 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("bestWorst")}</p>
+                <p className="tnum mt-0.5 text-sm font-bold">
+                  <span className="text-primary">+{(stats.bestUsdt ?? 0).toFixed(2)}</span>
+                  {" / "}
+                  <span className="text-destructive">{(stats.worstUsdt ?? 0).toFixed(2)}</span>
+                </p>
+              </div>
+            </div>
+            {/* 14-day realized PnL bars */}
+            <div className="mt-4">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pnl14d")}</p>
+              <div className="mt-1.5 flex h-16 items-end gap-1">
+                {stats.dailyPnl.map((d) => {
+                  const h = Math.max(2, Math.round((Math.abs(d.pnl) / maxAbs) * 100));
+                  return (
+                    <div key={d.day} className="group relative flex-1" title={`${d.day}: ${d.pnl >= 0 ? "+" : ""}${d.pnl.toFixed(2)} $`}>
+                      <div
+                        className={`w-full rounded-sm ${d.pnl > 0 ? "bg-primary/80" : d.pnl < 0 ? "bg-destructive/80" : "bg-muted/40"}`}
+                        style={{ height: `${d.pnl === 0 ? 2 : h}%` }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-1 flex justify-between text-[9px] text-muted-foreground/70">
+                <span>{stats.dailyPnl[0]?.day.slice(5)}</span>
+                <span>{t("cumLabel", { value: acc.toFixed(2) })}</span>
+                <span>{stats.dailyPnl[stats.dailyPnl.length - 1]?.day.slice(5)}</span>
+              </p>
+            </div>
+            {/* exit reason breakdown */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {Object.entries(stats.exitCounts).map(([k, v]) => (
+                <span key={k} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                  k === "take-profit" ? "bg-primary/10 text-primary" : k === "stop-loss" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+                }`}>
+                  {t(`exit_${k.replace("-", "_")}` as Parameters<typeof t>[0], { count: v })}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* open positions */}
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">

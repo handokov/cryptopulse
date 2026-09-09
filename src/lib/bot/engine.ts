@@ -52,6 +52,8 @@ interface BotConfigRow {
   orderSizeUsdt: number;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
+  takeProfitPct: number | null;
+  stopLossPct: number | null;
   lastTickAt: Date | null;
 }
 
@@ -135,6 +137,9 @@ export async function runBotTicks(opts: { userId?: string; force?: boolean } = {
 
 async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> {
   const preset = MODE_PRESETS[(cfg.mode as BotMode) in MODE_PRESETS ? (cfg.mode as BotMode) : "MODERATE"];
+  /* Exit ladder: user overrides win when set (>0), otherwise the mode preset. */
+  const tpPct = cfg.takeProfitPct && cfg.takeProfitPct > 0 ? cfg.takeProfitPct : preset.takeProfitPct;
+  const slPct = cfg.stopLossPct && cfg.stopLossPct > 0 ? cfg.stopLossPct : preset.stopLossPct;
   const creds = cfg.paper ? null : await loadCreds(cfg.userId);
   if (!cfg.paper && !creds) {
     await logTrade(cfg, {
@@ -262,8 +267,8 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         qty,
         sizeUsdt,
         paper: true,
-        stopPrice: price * (1 - preset.stopLossPct / 100),
-        targetPrice: price * (1 + preset.takeProfitPct / 100),
+        stopPrice: price * (1 - slPct / 100),
+        targetPrice: price * (1 + tpPct / 100),
         status: "OPEN",
       },
     });
@@ -300,8 +305,8 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         qty,
         sizeUsdt,
         paper: false,
-        stopPrice: entryPrice * (1 - preset.stopLossPct / 100),
-        targetPrice: entryPrice * (1 + preset.takeProfitPct / 100),
+        stopPrice: entryPrice * (1 - slPct / 100),
+        targetPrice: entryPrice * (1 + tpPct / 100),
         status: "OPEN",
       },
     });

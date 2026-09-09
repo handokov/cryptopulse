@@ -65,6 +65,10 @@ model BotConfig {
   maxTradesPerDay   Int       @default(4)
   // Stop trading for the UTC day once realized PnL ≤ −limit.
   dailyLossLimitUsdt Float    @default(20)
+  // Optional USER overrides of the mode-preset exit ladder (percent).
+  // null = use the preset for the selected mode. Ranges validated in the API.
+  takeProfitPct     Float?
+  stopLossPct       Float?
   lastTickAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

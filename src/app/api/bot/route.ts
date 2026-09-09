@@ -58,7 +58,57 @@ export async function GET() {
     presets: MODE_PRESETS,
   };
 
-  return NextResponse.json({ config: config ?? { ...defaults(user.id), id: null }, positions, trades, summary });
+  /* ---- performance stats (all-time, for the current paper/live mode) ---- */
+  const closed = configId
+    ? await db.botPosition.findMany({ where: { configId, status: "CLOSED", paper: paperFlag }, orderBy: { closedAt: "asc" } })
+    : [];
+  const pnls = closed.map((p) => p.realizedPnlUsdt ?? 0);
+  const wins = pnls.filter((p) => p > 0);
+  const losses = pnls.filter((p) => p < 0);
+  const exitCounts: Record<string, number> = {};
+  for (const p of closed) {
+    const key = p.exitReason?.startsWith("take-profit")
+      ? "take-profit"
+      : p.exitReason?.startsWith("stop-loss")
+        ? "stop-loss"
+        : p.exitReason?.startsWith("signal")
+          ? "signal-flip"
+          : "other";
+    exitCounts[key] = (exitCounts[key] ?? 0) + 1;
+  }
+  /* per-UTC-day realized PnL, last 14 days (cumulative curve built client-side) */
+  const dailyPnl: { day: string; pnl: number }[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+    dailyPnl.push({ day: d, pnl: 0 });
+  }
+  const dayIndex = new Map(dailyPnl.map((r, i) => [r.day, i]));
+  for (const p of closed) {
+    if (!p.closedAt) continue;
+    const key = p.closedAt.toISOString().slice(0, 10);
+    const idx = dayIndex.get(key);
+    if (idx !== undefined) dailyPnl[idx].pnl += p.realizedPnlUsdt ?? 0;
+  }
+  const winRate = closed.length ? wins.length / closed.length : null;
+  const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null;
+  const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : null;
+  const stats = {
+    closedCount: closed.length,
+    winCount: wins.length,
+    lossCount: losses.length,
+    winRate,
+    totalPnlUsdt: pnls.reduce((a, b) => a + b, 0),
+    avgWinUsdt: avgWin,
+    avgLossUsdt: avgLoss,
+    bestUsdt: closed.length ? Math.max(...pnls) : null,
+    worstUsdt: closed.length ? Math.min(...pnls) : null,
+    /* expectancy: average PnL per closed trade */
+    expectancyUsdt: closed.length ? pnls.reduce((a, b) => a + b, 0) / closed.length : null,
+    exitCounts,
+    dailyPnl,
+  };
+
+  return NextResponse.json({ config: config ?? { ...defaults(user.id), id: null }, positions, trades, summary, stats });
 }
 
 export async function PUT(req: NextRequest) {
@@ -96,6 +146,25 @@ export async function PUT(req: NextRequest) {
   const enabled = Boolean(body.enabled);
   const confirmLive = Boolean(body.confirmLive);
 
+  /* Optional exit-ladder overrides. null/empty/undefined = use the mode preset. */
+  const toPctOrNull = (v: unknown, min: number, max: number) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return { err: "not a number" as const };
+    if (n < min || n > max) return { err: `must be ${min}..${max}` as const };
+    return { n };
+  };
+  const tp = toPctOrNull(body.takeProfitPct, 0.3, 50);
+  if (tp && "err" in tp) {
+    return NextResponse.json({ error: "validation", message: `take-profit ${tp.err} (%)` }, { status: 400 });
+  }
+  const sl = toPctOrNull(body.stopLossPct, 0.2, 50);
+  if (sl && "err" in sl) {
+    return NextResponse.json({ error: "validation", message: `stop-loss ${sl.err} (%)` }, { status: 400 });
+  }
+  const takeProfitPct = tp ? tp.n : null;
+  const stopLossPct = sl ? sl.n : null;
+
   if (!paper && enabled && !confirmLive) {
     return NextResponse.json(
       { error: "confirm_live", message: "enabling a LIVE bot requires explicit confirmation" },
@@ -105,8 +174,8 @@ export async function PUT(req: NextRequest) {
 
   const config = await db.botConfig.upsert({
     where: { userId: user.id },
-    update: { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt },
-    create: { userId: user.id, mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt },
+    update: { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct },
+    create: { userId: user.id, mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct },
   });
 
   return NextResponse.json({ ok: true, config });

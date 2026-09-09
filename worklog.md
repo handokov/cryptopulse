@@ -687,3 +687,23 @@ Work Log:
 Stage Summary:
 - The "does it run with the tab closed?" question is now answered in-product right under the status strip, in all 6 languages.
 - Backlog: exchange-native stop orders for live mode (protection independent of our engine); cron-lag note already covered by the guard design (4-min min gap).
+
+---
+Task ID: 21
+Agent: Super Z (main agent)
+Task: Multi-day bot evaluation kit — user wants to test for a few days whether the bot behaves / minimizes losses, and asked for additional settings to align the bot with the site's analysis.
+
+Work Log:
+- Schema: BotConfig + takeProfitPct Float? / stopLossPct Float? (null = mode preset). db:push local OK; PRODUCTION Turso altered via new scripts/turso-add-bot-tpsl.mjs (PRAGMA-guarded ALTER TABLE, idempotent — token still valid) with column verification.
+- Engine: exit ladder now resolves tpPct/slPct = user override (>0) ?? preset; applied in both paper and live entry paths (stopPrice/targetPrice). BotConfigRow extended.
+- API PUT: optional takeProfitPct (0.3..50) / stopLossPct (0.2..50), empty/null = clear override; strict validation errors otherwise. API GET: new stats block computed from CLOSED positions of the active paper/live mode — closedCount, W/L, winRate, totalPnl, avgWin/avgLoss, best/worst, expectancy per trade, exitCounts (take-profit/stop-loss/signal-flip/other via exitReason prefix), dailyPnl last 14 UTC days.
+- UI bot-section: Performance report card (4 stat tiles + 14-day PnL bar chart with cumulative label + exit-reason chips, hidden until first closed trade); Advanced <details> in the config card with TP/SL % inputs (placeholder = preset, empty = preset, applies to positions opened after saving).
+- i18n ×6: bot +18 keys (reportTitle, reportMode, winRate, totalPnl, avgWin, avgLoss, bestWorst, expectancy, pnl14d, cumLabel, exit_take_profit, exit_stop_loss, exit_signal_flip, exit_other, advTitle, advHint, tpOverride, slOverride) → 471/471 ×6 ALL CLEAN.
+- New scripts/verify-bot-tpsl.ts (bun): forced BUY with overrides → position TP exactly +3.00% / SL −0.80% (user values, not preset 1.8/1.2); nulls → preset fallback exact; cascade cleanup 0 rows. ALL PASSED. verify-bot-engine.ts re-run after the engine change: ALL PASSED (real Bitget prices).
+- Verification: eslint clean; production build passed (compiled 17.4s); dev restored :3000. API curl suite: PUT saves tp 2.5/sl 1.0; TP=99 → 400 validation; GET stats shape (14 days, exitCounts); manual tick OK. Browser E2E: login → Advanced panel opens with saved values → UI edit 3/0.9 → Save → DB roundtrip confirmed (tp 3, sl 0.9) → seeded 3 closed positions → report card renders "3 closed trades", WIN RATE 67% (2W/1L), exit chips take-profit ×2 / stop-loss ×1, cum 0.07 $ (hand-checked: 0.045+0.0375−0.012 = 0.0705 ✓), 14-day axis 08-27→09-09; zero page errors. All t21 test users deleted.
+- Committed + pushed.
+
+Stage Summary:
+- The bot now has an evaluation loop for the user's multi-day test: performance report (win rate, PnL, expectancy, exit breakdown, 14-day chart) + user-tunable risk (custom TP/SL overriding mode presets).
+- Suggested test protocol communicated: MODERATE, $1.5–2/order, 4 trades/day, loss limit ≤ $10, custom SL ≤ 1.2% for tighter loss control; judge after ≥20 closed trades on expectancy > 0, not on individual wins.
+- Backlog unchanged: exchange-native stop orders (live-mode protection independent of our engine), phase-aligned projection.
