@@ -540,3 +540,21 @@ Stage Summary:
 - Task 17 feature COMPLETE in production: eye toggle + forgot/reset flow + Turso schema + email delivery all live.
 - Deliverability follow-up for the user: verify a domain in Resend → inbox delivery + emails to arbitrary addresses; then optionally set EMAIL_FROM (e.g. CryptoPulse <noreply@domain>).
 - Optional Vercel polish: rename project (Settings → General → Project Name) to shorten the URL — subdomain must stay globally unique; old URL dies after rename.
+
+---
+Task ID: 18
+Agent: Super Z (main agent)
+Task: Cycle R² badge in the Projection Lab (user asked for the best next item from the backlog) — honest context for the wave sliders.
+
+Work Log:
+- Root design insight: A/T/τ in the projection formula are user sliders (scenario), not estimates — so the badge measures the DATA, not the sliders. New cycleFit in src/lib/indicators.ts: OLS log-linear detrend of the last ≤120 points (window ≤ 2·maxT), then scan T=7..60 fitting a·sin+b·cos+c via normal equations + Cramer's rule (free phase/amplitude), keep max-R² period, amplitude √(a²+b²) as % of price. Deterministic, O(grid·window) ≈ 13k ops.
+- Bug caught during self-review: cofactor expansion mixed ss1 (Σsin) with s11 (point count) — fixed and re-derived; sub-point accuracy proves it (case 1).
+- scripts/verify-cycle-fit.ts (bun, seeded): case1 sine 3%@21d + σ0.4% noise → T*=21d exact, R²=0.891, A*=2.97%; case2 realistic pure random walk (σ1.2%) → best-of-54-scan R² only 0.296 (spurious-fit guard documented); case3 flat → null; case4 8-point sparkline → null; case5 determinism. ALL PASSED. Key statistical finding: Brownian-bridge residual (SS≈σ²w²/6) swamps modest sines (SS≈A²w/2) — with realistic crypto noise honest R² IS usually low, which is exactly the badge's message.
+- Tier calibration from case2: weak <0.30 (muted + scenario warning), moderate 0.30–0.50 (amber), strong >0.50 (emerald) — thresholds account for the max-of-scan selection bias.
+- projection-lab.tsx: cycle computed per asset in the model memo; badge row between chart and mono readout (tier-colored chip "CYCLE R² x.xx · T*≈NNd" + plain-language note + weak-only scenario warning, CYCLE — placeholder when null); mono audit line extended with "cycle fit: T* · R² · A* (free-phase sine, detrended log)".
+- i18n ×6: projection +3 keys (cycleNote {days}{r2}{amp}, cycleNone, cycleWeakNote) — 395/395 ×6 ALL CLEAN.
+- Verification: eslint clean; production build passed; dev restarted; Agent Browser: BTC badge CYCLE R² 0.19 T*≈36d (weak, warning shown), SOL R² 0.50 T*≈44d (stronger tier) — badge reacts per asset; Indonesian note with correct placeholder substitution; zero console/page errors.
+
+Stage Summary:
+- The wave sliders now carry honest context: users see when the data actually contains a dominant rhythm (rare) vs when the wave is pure scenario (usual). Backlog remaining: @vercel/speed-insights, monetization (affiliate + disclaimer), centralized math helper.
+- Committed locally; push pending a fresh PAT (previous token revoked as advised — worklog-only commit d8037ea rides along).

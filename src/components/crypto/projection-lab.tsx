@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useCryptoStore } from "@/store/crypto-store";
 import { Slider } from "@/components/ui/slider";
-import { logReturns, stdev } from "@/lib/indicators";
+import { logReturns, stdev, cycleFit } from "@/lib/indicators";
 import { buildPath, projectPrice, substitutedExpr } from "@/lib/projection";
 import { bootstrapBand, shrinkDrift } from "@/lib/monte-carlo";
 import { fmtPrice, fmtPct } from "@/lib/format";
@@ -79,7 +79,11 @@ export function ProjectionLab() {
       horizonDays: horizon,
       paths: 1000,
     });
-    return { hist, p0, mu, sdDaily, path, band, shrink, tau, outcome, muHist };
+    /* Detected dominant cycle: free-phase sine fit on the detrended log
+       price over the last ≤120 days. Honest context for the wave sliders —
+       on noisy series R² stays low and the wave is a scenario tool. */
+    const cycle = cycleFit(asset.history, 7, 60);
+    return { hist, p0, mu, sdDaily, path, band, shrink, tau, outcome, muHist, cycle };
   }, [asset, horizon, driftMod, volMult, waveAmp, wavePeriod]);
 
   const chart = useMemo(() => {
@@ -207,6 +211,39 @@ export function ProjectionLab() {
         </svg>
       </div>
 
+      {/* detected cycle strength — honest context for the wave sliders */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px] leading-relaxed">
+        {model.cycle ? (
+          <span
+            className={`tnum whitespace-nowrap rounded-md border px-2 py-0.5 font-mono font-semibold ${
+              model.cycle.r2 > 0.5
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : model.cycle.r2 >= 0.3
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                  : "border-border text-muted-foreground"
+            }`}
+          >
+            CYCLE R² {model.cycle.r2.toFixed(2)} · T*≈{model.cycle.period}d
+          </span>
+        ) : (
+          <span className="whitespace-nowrap rounded-md border border-border px-2 py-0.5 font-mono font-semibold text-muted-foreground">
+            CYCLE —
+          </span>
+        )}
+        <span className="text-muted-foreground/90">
+          {model.cycle
+            ? t("cycleNote", {
+                days: String(model.cycle.period),
+                r2: (model.cycle.r2 * 100).toFixed(0),
+                amp: model.cycle.ampPct.toFixed(1),
+              })
+            : t("cycleNone")}
+        </span>
+        {model.cycle && model.cycle.r2 < 0.3 && (
+          <span className="text-amber-500/90">{t("cycleWeakNote")}</span>
+        )}
+      </div>
+
       {/* live function readout — symbolic formula + exact substituted values,
           so every card on screen can be verified against this line */}
       <div className="rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
@@ -219,6 +256,12 @@ export function ProjectionLab() {
         drift-only: {fmtPrice(outcome.driftPrice)} ({fmtPct(outcome.driftChangePct, 1)}) · cyclical: {fmtPct(outcome.waveContributionPct, 2)}
         <br />
         P10–P90@{horizon}d: {fmtPrice(model.band.p10[model.band.p10.length - 1])} – {fmtPrice(model.band.p90[model.band.p90.length - 1])} · μ̂auto {(model.muHist * 100).toFixed(3)}% × {model.shrink.n}/{model.shrink.n + model.shrink.k} = {(model.shrink.muEff * 100).toFixed(3)}% (SE ±{(model.shrink.se * 100).toFixed(3)}%) + slider {driftMod >= 0 ? "+" : ""}{driftMod.toFixed(2)}% → {(model.mu * 100).toFixed(3)}%
+        {model.cycle && (
+          <>
+            <br />
+            cycle fit: T*={model.cycle.period}d · R²={model.cycle.r2.toFixed(3)} · A*≈{model.cycle.ampPct.toFixed(2)}% (free-phase sine, detrended log)
+          </>
+        )}
       </div>
 
       {/* plain-language note for the honest-statistics changes */}
