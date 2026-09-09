@@ -30,6 +30,7 @@ export function SiteHeader() {
           <a href="#analysis" className="whitespace-nowrap transition-colors hover:text-foreground">{t("analysis")}</a>
           <a href="#news" className="whitespace-nowrap transition-colors hover:text-foreground">{t("news")}</a>
           <a href="#portfolio" className="whitespace-nowrap transition-colors hover:text-foreground">{t("portfolio")}</a>
+          <a href="#bot" className="whitespace-nowrap transition-colors hover:text-foreground">{t("bot")}</a>
         </nav>
 
         <div className="flex items-center gap-2 text-xs sm:gap-2.5">

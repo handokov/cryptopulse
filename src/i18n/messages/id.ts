@@ -11,6 +11,7 @@ const id: Messages = {
     language: "Bahasa",
     top100: "Top 100",
     portfolio: "Portofolio",
+    bot: "Bot Trading",
   },
 
   hero: {
@@ -471,6 +472,63 @@ const id: Messages = {
       "Pelacakan tren harian untuk aset kripto bervolume tinggi. Berita diagregasi dari outlet publik tepercaya.",
     disclaimer:
       "Hanya untuk tujuan informasi. Bukan nasihat keuangan — model bisa salah, pasar bisa lebih aneh. Kelola risiko Anda.",
+  },
+
+  bot: {
+    index: "07",
+    title: "Bot Trading",
+    subtitle:
+      "Bot spot Bitget yang digerakkan mesin sinyal situs ini sendiri — mode paper dulu, order nyata hanya saat Anda izinkan.",
+    signInTitle: "Masuk untuk memakai bot",
+    signInBody:
+      "Bot membutuhkan akun agar konfigurasi, posisi, dan log transaksi tetap privat milik Anda.",
+    signInCta: "Masuk / Buat akun",
+    mode: "Mode",
+    moderate: "Moderat",
+    moderateHint: "Masuk saat sinyal lebih kuat · TP +1,8% · SL −1,2%",
+    aggressive: "Agresif",
+    aggressiveHint: "Masuk lebih awal · TP +2,6% · SL −1,8% · lebih sering transaksi",
+    symbol: "Simbol (spot Bitget)",
+    orderSize: "Ukuran order (USDT)",
+    minOrderNote: "Minimum live Bitget diterapkan otomatis saat eksekusi.",
+    maxTrades: "Maks transaksi / hari",
+    lossLimit: "Batas rugi harian (USDT)",
+    paper: "Mode paper",
+    live: "Mode live",
+    liveWarn:
+      "Mode LIVE mengirim market order sungguhan dengan API key Bitget Anda. Tetap di paper mode sampai log transaksi meyakinkan Anda.",
+    liveConfirm: "Saya memahami risiko order nyata",
+    enabled: "Bot aktif",
+    enable: "Aktifkan bot",
+    save: "Simpan konfigurasi",
+    saved: "Konfigurasi bot tersimpan",
+    saveError: "Konfigurasi gagal disimpan",
+    runNow: "Jalankan satu tick sekarang",
+    running: "Menjalankan…",
+    autoNote:
+      "Selama halaman ini terbuka bot melakukan tick tiap 5 menit. Untuk trading 24/7 aktifkan cron terjadwal (GitHub Actions) dengan secret yang sama di server.",
+    todayPnl: "Realisasi hari ini",
+    tradesToday: "Transaksi hari ini",
+    openPosition: "Posisi terbuka",
+    none: "Tidak ada",
+    entry: "Entri",
+    target: "Target",
+    stop: "Stop",
+    trades: "Log transaksi",
+    noTrades: "Belum ada transaksi — jalankan tick atau tunggu cron.",
+    time: "Waktu",
+    action: "Aksi",
+    status: "Status",
+    reason: "Alasan",
+    size: "Ukuran",
+    price: "Harga",
+    pnl: "PnL",
+    paperBadge: "PAPER",
+    liveBadge: "LIVE",
+    needKeyNote:
+      "Mode live membutuhkan koneksi Bitget (bagian Portofolio) dengan API key berizin spot-trade. Mode paper jalan tanpa key apa pun.",
+    disclaimer:
+      "Otomasi edukasi, bukan nasihat keuangan. Kripto sangat volatil — jangan pernah memakai uang yang tidak siap Anda kehilangan.",
   },
 };
 

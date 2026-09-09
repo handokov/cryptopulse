@@ -601,3 +601,24 @@ Stage Summary:
 - The lab now answers "are the sliders free?" in-product: badge = what the data contains, sliders = your scenario, Apply button = one-click data-driven starting point, details block = the decision checklist.
 - Known limitation kept honest: the scenario wave starts at midline-rising (no phase parameter in P(t)); the NOW chip tells where the DETECTED wave sits today. Phase-aligned projection is a possible future task.
 - Backlog still open: @vercel/speed-insights, monetization (affiliate + disclaimer), session epoch hardening.
+
+---
+Task ID: 20
+Agent: Super Z (main agent)
+Task: Bitget spot trading bot (user asked for a profit-generating bot built on the site's own signal engine; min order $1.5/user-adjustable per Bitget rules; Moderate/Aggressive modes).
+
+Work Log:
+- Schema: BotConfig (1:1 user; mode/symbol/paper/enabled/orderSizeUsdt/maxTradesPerDay/dailyLossLimitUsdt/lastTickAt), BotPosition (LONG, paper flag, stop/target, realized pnl), BotTrade (full audit trail: action/status/orderId/clientOid unique/reason/detail JSON/pnl). db:push local OK. TURSO PUSH PENDING — needs a fresh Turso token from the user (additive tables, idempotent script ready).
+- src/lib/bot/bitget-trade.ts: Bitget v2 client — public candles (granularity "4h"), ticker, /api/v2/spot/public/symbols (minTradeUSDT — BTCUSDT = 1 USDT live-verified), signed market orders (BUY quantity = USDT quote amount, SELL = base qty, clientOid idempotency) + best-effort order fill lookup. Sandbox can reach api.bitget.com (real prices verified).
+- src/lib/bot/strategy.ts (pure): score ∈ [−1,1] = 0.40·trend(EMA20/60) + 0.30·momentum(RSI14) + 0.15·cycle(cycleFit trough/peak position × R²) + 0.15·drift(shrunk μ̂); vol>400% halves conviction. Presets: MODERATE entry 0.55 / TP 1.8% / SL 1.2% / 4 trades-day / 45m cooldown; AGGRESSIVE 0.40 / 2.6% / 1.8% / 8 / 15m. verify-bot-strategy.ts: 6 cases (uptrend 0.725, downtrend −0.644, noise no-trade, flat, exit ladder, determinism) ALL PASSED.
+- src/lib/bot/engine.ts: tick = exits first (take-profit/stop-loss/signal-flip) → risk gates (max trades/day, daily loss limit, cooldown) → entry. Paper fills at live ticker; live sends signed market order and refines entry from fill. 4-minute cron guard; manual ticks bypass enabled-flag (test without enabling) and the guard. Every action logged.
+- API: GET/PUT /api/bot (strict validation, size floor 1.5 USDT, live enable requires confirmLive:true) + POST /api/bot/tick (session = manual user tick; x-bot-secret = cron all-bots; wrong secret 401, unset server secret 404).
+- UI bot-section (#bot, nav item ×6): status strip (enabled/PAPER-LIVE/realized today/trades today), mode cards with preset hints, symbol/size/max-trades/loss-limit inputs, paper+enabled switches, live-mode amber warning with risk checkbox, Save + Run-now, auto-tick every 5 min while page open, open positions table, trade log table (max-h-96 scroll), disclaimer.
+- i18n: nav.bot + bot namespace (46 keys) ×6 → 452/452 parity ALL CLEAN.
+- Cron: .github/workflows/bot-tick.yml (*/5 min, workflow_dispatch, concurrency-safe) — user must add BOT_TICK_SECRET to GitHub + Vercel envs.
+- Verification: eslint clean; production build passed; engine lifecycle verify (bun, REAL Bitget prices): forced BUY → position+trade logged, HOLD, forced take-profit SELL → pnl recorded, cooldown gate, cascade cleanup — ALL PASSED. Browser E2E: registered user, nav shows Trading Bot, form renders, Save ok, Run-now shows live decision "HOLD · score 0.21 < entry 0.55" (honest no-trade), security gates 401 verified. Dev log clean.
+
+Stage Summary:
+- Bot v1 is complete in code: paper-first spot long-only bot with the site's own signals, both modes, risk gates, audit trail, cron wiring. Live mode is gated behind an explicit checkbox and a Bitget connection with spot-trade permission.
+- USER SETUP NEEDED: ① fresh Turso token → run scripts/turso-apply-schema.mjs (3 new tables), ② Vercel env BOT_TICK_SECRET + redeploy, ③ GitHub repo secret BOT_TICK_SECRET + enable the workflow, ④ (for live mode later) Bitget API key with Spot Trade permission added in Portfolio. Default stays PAPER until the user flips it deliberately.
+- Honest expectations documented in UI: educational automation, no profit guarantee.

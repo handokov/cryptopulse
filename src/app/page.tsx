@@ -11,6 +11,7 @@ import { LabPanels } from "@/components/crypto/lab-panels";
 import { AnalysisEngine } from "@/components/crypto/analysis-engine";
 import { NewsFeed } from "@/components/crypto/news-feed";
 import { PortfolioSection } from "@/components/crypto/portfolio-section";
+import { BotSection } from "@/components/crypto/bot-section";
 import { Newspaper } from "lucide-react";
 
 function SectionHeading({
@@ -38,6 +39,7 @@ export default function Home() {
   const tAnalysis = useTranslations("analysis");
   const tNews = useTranslations("news");
   const tPortfolio = useTranslations("portfolio");
+  const tBot = useTranslations("bot");
 
   return (
     <div id="top" className="flex min-h-screen flex-col bg-background bg-grid">
@@ -108,6 +110,16 @@ export default function Home() {
             subtitle={tPortfolio("subtitle")}
           />
           <PortfolioSection />
+        </section>
+
+        {/* 07 — Trading bot */}
+        <section id="bot" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tBot("title")}>
+          <SectionHeading
+            index={tBot("index")}
+            title={tBot("title")}
+            subtitle={tBot("subtitle")}
+          />
+          <BotSection />
         </section>
       </main>
 

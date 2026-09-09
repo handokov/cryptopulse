@@ -12,6 +12,7 @@ const en = {
     language: "Language",
     top100: "Top 100",
     portfolio: "Portfolio",
+    bot: "Trading Bot",
   },
 
   hero: {
@@ -471,6 +472,63 @@ const en = {
       "Daily trend tracking for high-volume crypto assets. News aggregated from trusted public outlets.",
     disclaimer:
       "For informational purposes only. Nothing here is financial advice — models can be wrong, markets can be weirder. Manage your risk.",
+  },
+
+  bot: {
+    index: "07",
+    title: "Trading Bot",
+    subtitle:
+      "A Bitget spot bot driven by this site's own signal engine — paper mode first, real orders only when you say so.",
+    signInTitle: "Sign in to use the bot",
+    signInBody:
+      "The bot needs an account so your configuration, positions and trade log stay private to you.",
+    signInCta: "Sign in / Create account",
+    mode: "Mode",
+    moderate: "Moderate",
+    moderateHint: "Enters at stronger signals · TP +1.8% · SL −1.2%",
+    aggressive: "Aggressive",
+    aggressiveHint: "Enters earlier · TP +2.6% · SL −1.8% · trades more often",
+    symbol: "Symbol (Bitget spot)",
+    orderSize: "Order size (USDT)",
+    minOrderNote: "Bitget's live minimum is applied automatically at execution.",
+    maxTrades: "Max trades / day",
+    lossLimit: "Daily loss limit (USDT)",
+    paper: "Paper mode",
+    live: "Live mode",
+    liveWarn:
+      "LIVE mode sends real market orders with your Bitget API key. Stay in paper mode until the trade log convinces you.",
+    liveConfirm: "I understand the risk of real orders",
+    enabled: "Bot enabled",
+    enable: "Enable bot",
+    save: "Save configuration",
+    saved: "Bot configuration saved",
+    saveError: "Could not save the configuration",
+    runNow: "Run one tick now",
+    running: "Running…",
+    autoNote:
+      "While this page is open the bot ticks every 5 minutes. For 24/7 trading activate the scheduled cron tick (GitHub Actions) with the same secret on the server.",
+    todayPnl: "Realized today",
+    tradesToday: "Trades today",
+    openPosition: "Open position",
+    none: "None",
+    entry: "Entry",
+    target: "Target",
+    stop: "Stop",
+    trades: "Trade log",
+    noTrades: "No trades yet — run a tick or wait for the cron.",
+    time: "Time",
+    action: "Action",
+    status: "Status",
+    reason: "Reason",
+    size: "Size",
+    price: "Price",
+    pnl: "PnL",
+    paperBadge: "PAPER",
+    liveBadge: "LIVE",
+    needKeyNote:
+      "Live mode needs a Bitget connection (Portfolio section) whose API key has spot-trade permission. Paper mode works without any key.",
+    disclaimer:
+      "Educational automation, not financial advice. Crypto is volatile — never trade money you cannot afford to lose.",
   },
 };
 

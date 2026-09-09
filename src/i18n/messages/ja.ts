@@ -11,6 +11,7 @@ const ja: Messages = {
     language: "言語",
     top100: "トップ100",
     portfolio: "ポートフォリオ",
+    bot: "トレードボット",
   },
 
   hero: {
@@ -470,6 +471,62 @@ const ja: Messages = {
       "高出来高暗号資産の毎日のトレンド追跡。ニュースは信頼できる公開メディアから集約。",
     disclaimer:
       "情報提供のみを目的としています。投資助言ではありません ― モデルは間違うことも、市場はもっと不条理なことも。リスク管理を。",
+  },
+
+  bot: {
+    index: "07",
+    title: "トレードボット",
+    subtitle:
+      "このサイト自身のシグナルエンジンが動かす Bitget スポットボット — まずペーパーモード、実注文はあなたが許可したときだけ。",
+    signInTitle: "ボット利用にはログインを",
+    signInBody: "ボットはアカウント単位で動作し、設定・ポジション・取引記録はあなた自身の非公開データになります。",
+    signInCta: "ログイン / アカウント作成",
+    mode: "モード",
+    moderate: "穏健",
+    moderateHint: "より強いシグナルでエントリー · 利確 +1.8% · 損切 −1.2%",
+    aggressive: "アグレッシブ",
+    aggressiveHint: "早めにエントリー · 利確 +2.6% · 損切 −1.8% · 取引頻度高め",
+    symbol: "シンボル（Bitget スポット）",
+    orderSize: "注文サイズ（USDT）",
+    minOrderNote: "実行時、Bitget のリアルタイム最小注文額を自動適用します。",
+    maxTrades: "最大取引回数 / 日",
+    lossLimit: "1日の損失上限（USDT）",
+    paper: "ペーパーモード",
+    live: "ライブモード",
+    liveWarn:
+      "ライブモードは Bitget の API key で実際の成行注文を送ります。取引記録が信頼できると確信できるまでペーパーモードを続けてください。",
+    liveConfirm: "実注文のリスクを理解しています",
+    enabled: "ボット有効",
+    enable: "ボットを有効化",
+    save: "設定を保存",
+    saved: "ボット設定を保存しました",
+    saveError: "設定を保存できませんでした",
+    runNow: "今すぐ 1tick 実行",
+    running: "実行中…",
+    autoNote:
+      "このページが開いている間、ボットは 5 分ごとに tick します。24/7 取引にはサーバー側で同じ secret を使う定時 cron（GitHub Actions）を有効化してください。",
+    todayPnl: "本日の実現損益",
+    tradesToday: "本日の取引回数",
+    openPosition: "保有ポジション",
+    none: "なし",
+    entry: "エントリー",
+    target: "目標",
+    stop: "ストップ",
+    trades: "取引記録",
+    noTrades: "取引はまだありません — tick を実行するか cron をお待ちください。",
+    time: "時刻",
+    action: "方向",
+    status: "状態",
+    reason: "理由",
+    size: "サイズ",
+    price: "価格",
+    pnl: "損益",
+    paperBadge: "ペーパー",
+    liveBadge: "ライブ",
+    needKeyNote:
+      "ライブモードには「ポートフォリオ」の Bitget 接続（スポット取引権限付き API key）が必要です。ペーパーモードは key 不要で動作します。",
+    disclaimer:
+      "教育目的のオートメーションであり、投資助言ではありません。暗号資産は変動が激しいため、失っても構わない資金だけでお願いします。",
   },
 };
 

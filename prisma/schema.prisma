@@ -25,6 +25,9 @@ model User {
   alerts       PriceAlert[]
   exchanges    ExchangeConnection[]
   resetTokens  PasswordResetToken[]
+  botConfig    BotConfig?
+  botTrades    BotTrade[]
+  botPositions BotPosition[]
 }
 
 // One-time password reset tokens. Only the SHA-256 hash of the token is
@@ -39,6 +42,94 @@ model PasswordResetToken {
   createdAt DateTime  @default(now())
 
   @@index([userId])
+}
+
+// Trading-bot configuration — exactly one per user (v1). Spot long-only on
+// Bitget; paper mode simulates fills at the live ticker price and is the
+// DEFAULT so the strategy must prove itself before real money moves.
+model BotConfig {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "MODERATE" | "AGGRESSIVE" — selects entry/exit thresholds + TP/SL presets.
+  mode              String    @default("MODERATE")
+  // Spot symbol, e.g. "BTCUSDT".
+  symbol            String    @default("BTCUSDT")
+  // true = simulated fills (default). false = real orders on Bitget spot.
+  paper             Boolean   @default(true)
+  // Master kill switch — a disabled bot is skipped by every tick.
+  enabled           Boolean   @default(false)
+  // Per-order budget in USDT; execution clamps UP to the exchange's live
+  // minimum (minTradeUSDT) and logs a note when it does.
+  orderSizeUsdt     Float     @default(5)
+  maxTradesPerDay   Int       @default(4)
+  // Stop trading for the UTC day once realized PnL ≤ −limit.
+  dailyLossLimitUsdt Float    @default(20)
+  lastTickAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  trades    BotTrade[]
+  positions BotPosition[]
+}
+
+// One bot position (v1: LONG only). Paper positions live here too so both
+// modes share the same exit bookkeeping.
+model BotPosition {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  configId       String
+  config         BotConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  symbol         String
+  side           String    @default("LONG")
+  entryPrice     Float
+  qty            Float
+  sizeUsdt       Float
+  paper          Boolean   @default(true)
+  stopPrice      Float
+  targetPrice    Float
+  // "OPEN" | "CLOSED"
+  status         String    @default("OPEN")
+  exitPrice      Float?
+  realizedPnlUsdt Float?
+  exitReason     String?
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+
+  @@index([userId, status])
+  @@index([configId, status])
+}
+
+// Every bot action (entry, exit, rejection, failure) — the audit trail.
+model BotTrade {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  configId      String
+  config        BotConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  symbol        String
+  // "BUY" | "SELL"
+  action        String
+  paper         Boolean   @default(true)
+  sizeUsdt      Float?
+  qty           Float?
+  price         Float?
+  // Bitget orderId for live fills.
+  orderId       String?
+  // Idempotency key — unique so a retried tick can never double-send.
+  clientOid     String?   @unique
+  // "PAPER" | "SUBMITTED" | "REJECTED" | "FAILED"
+  status        String
+  // Short human-readable trigger, e.g. "score 0.71 ≥ 0.55" or "take-profit".
+  reason        String
+  // JSON snapshot of the signal context (score, r2, drift, posPct, …).
+  detail        String?
+  pnlUsdt       Float?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([configId, createdAt])
 }
 
 model Holding {

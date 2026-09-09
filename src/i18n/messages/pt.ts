@@ -11,6 +11,7 @@ const pt: Messages = {
     language: "Idioma",
     top100: "Top 100",
     portfolio: "Portfólio",
+    bot: "Bot de trading",
   },
 
   hero: {
@@ -471,6 +472,62 @@ const pt: Messages = {
       "Acompanhamento diário de tendências de criptoativos de alto volume. Notícias agregadas de veículos públicos confiáveis.",
     disclaimer:
       "Apenas para fins informativos. Nada aqui é recomendação financeira — modelos podem errar e os mercados podem ser mais estranhos. Gerencie seu risco.",
+  },
+
+  bot: {
+    index: "07",
+    title: "Bot de trading",
+    subtitle:
+      "Um bot de spot da Bitget movido pelo próprio motor de sinais deste site — primeiro modo papel, ordens reais só quando você permitir.",
+    signInTitle: "Entre para usar o bot",
+    signInBody: "O bot precisa de uma conta para que sua configuração, posições e registro de operações fiquem privados.",
+    signInCta: "Entrar / Criar conta",
+    mode: "Modo",
+    moderate: "Moderado",
+    moderateHint: "Entra com sinais mais fortes · TP +1,8% · SL −1,2%",
+    aggressive: "Agressivo",
+    aggressiveHint: "Entra mais cedo · TP +2,6% · SL −1,8% · opera com mais frequência",
+    symbol: "Par (spot da Bitget)",
+    orderSize: "Tamanho da ordem (USDT)",
+    minOrderNote: "O mínimo real da Bitget é aplicado automaticamente na execução.",
+    maxTrades: "Máx. operações / dia",
+    lossLimit: "Limite de perda diária (USDT)",
+    paper: "Modo papel",
+    live: "Modo real",
+    liveWarn:
+      "O modo REAL envia ordens de mercado reais com sua API key da Bitget. Fique no modo papel até o registro de operações te convencer.",
+    liveConfirm: "Entendo o risco de ordens reais",
+    enabled: "Bot ativado",
+    enable: "Ativar bot",
+    save: "Salvar configuração",
+    saved: "Configuração do bot salva",
+    saveError: "Não foi possível salvar a configuração",
+    runNow: "Executar um tick agora",
+    running: "Executando…",
+    autoNote:
+      "Enquanto esta página estiver aberta, o bot faz tick a cada 5 minutos. Para operar 24/7, ative o cron agendado (GitHub Actions) com o mesmo segredo no servidor.",
+    todayPnl: "Realizado hoje",
+    tradesToday: "Operações hoje",
+    openPosition: "Posição aberta",
+    none: "Nenhuma",
+    entry: "Entrada",
+    target: "Alvo",
+    stop: "Stop",
+    trades: "Registro de operações",
+    noTrades: "Ainda sem operações — execute um tick ou espere o cron.",
+    time: "Hora",
+    action: "Ação",
+    status: "Status",
+    reason: "Motivo",
+    size: "Tamanho",
+    price: "Preço",
+    pnl: "PnL",
+    paperBadge: "PAPEL",
+    liveBadge: "REAL",
+    needKeyNote:
+      "O modo real precisa de uma conexão Bitget (seção Portfólio) com API key com permissão de trading spot. O modo papel funciona sem nenhuma key.",
+    disclaimer:
+      "Automação educativa, não aconselhamento financeiro. Cripto é volátil — nunca opere com dinheiro que você não pode perder.",
   },
 };
 

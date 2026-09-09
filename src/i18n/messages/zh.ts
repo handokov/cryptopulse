@@ -11,6 +11,7 @@ const zh: Messages = {
     language: "语言",
     top100: "百强榜",
     portfolio: "投资组合",
+    bot: "交易机器人",
   },
 
   hero: {
@@ -468,6 +469,62 @@ const zh: Messages = {
       "面向高成交量加密资产的每日趋势追踪。新闻聚合自可信的公开媒体。",
     disclaimer:
       "仅供参考，不构成投资建议 —— 模型可能出错，市场可能更离谱。请管理好自己的风险。",
+  },
+
+  bot: {
+    index: "07",
+    title: "交易机器人",
+    subtitle:
+      "由本站自己的信号引擎驱动的 Bitget 现货机器人——先模拟盘，只有你允许时才下真实订单。",
+    signInTitle: "登录以使用机器人",
+    signInBody: "机器人需要账户，让你的配置、持仓和交易记录保持私密。",
+    signInCta: "登录 / 创建账户",
+    mode: "模式",
+    moderate: "稳健",
+    moderateHint: "信号更强时才入场 · 止盈 +1.8% · 止损 −1.2%",
+    aggressive: "激进",
+    aggressiveHint: "更早入场 · 止盈 +2.6% · 止损 −1.8% · 交易更频繁",
+    symbol: "交易对（Bitget 现货）",
+    orderSize: "每单金额（USDT）",
+    minOrderNote: "执行时自动套用 Bitget 的实时最小下单额。",
+    maxTrades: "每日最大交易次数",
+    lossLimit: "每日亏损上限（USDT）",
+    paper: "模拟盘",
+    live: "实盘",
+    liveWarn:
+      "实盘模式会用你的 Bitget API key 发送真实市价单。在交易记录令你信服之前，请留在模拟盘。",
+    liveConfirm: "我了解真实订单的风险",
+    enabled: "机器人已启用",
+    enable: "启用机器人",
+    save: "保存配置",
+    saved: "机器人配置已保存",
+    saveError: "配置保存失败",
+    runNow: "立即运行一次 tick",
+    running: "运行中…",
+    autoNote:
+      "本页打开期间机器人每 5 分钟 tick 一次。若要 24/7 交易，请在服务器上用相同 secret 启用定时 cron（GitHub Actions）。",
+    todayPnl: "今日已实现盈亏",
+    tradesToday: "今日交易次数",
+    openPosition: "当前持仓",
+    none: "无",
+    entry: "入场价",
+    target: "目标价",
+    stop: "止损价",
+    trades: "交易记录",
+    noTrades: "暂无交易——运行一次 tick 或等待 cron。",
+    time: "时间",
+    action: "方向",
+    status: "状态",
+    reason: "原因",
+    size: "金额",
+    price: "价格",
+    pnl: "盈亏",
+    paperBadge: "模拟",
+    liveBadge: "实盘",
+    needKeyNote:
+      "实盘模式需要“投资组合”区的 Bitget 连接，且 API key 具备现货交易权限。模拟盘无需任何 key。",
+    disclaimer:
+      "教育性质的自动化，不构成投资建议。加密货币波动剧烈——切勿动用你承受不起损失的资金。",
   },
 };
 
