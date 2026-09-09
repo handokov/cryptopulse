@@ -743,3 +743,19 @@ Stage Summary:
 - The bot now has an indicator-based exit style that scales TP/SL to each asset's own volatility and trails winners; the LIT noise-stop that triggered the request is exactly the failure mode VOL fixes.
 - After deploy: user switches Exit Style → VOLATILITY in the bot card and saves; applies to positions opened AFTER saving (an open FIXED position keeps its own bands).
 - Honest caveats told to user: wider SL = bigger per-trade loss when it does hit (fewer, fairer stops); calm assets (BTC σ≈0.7%) clamp at SL 1%/TP 1.5%; trail % is the trigger level, fills are at market; nothing changed for existing FIXED configs.
+
+---
+Task ID: 24
+Agent: Super Z (main agent)
+Task: User pasted a fresh GitHub PAT to unblock the Task 23 push; push attempt + fresh LIT monitor run.
+
+Work Log:
+- PAT verified: GET /user 200, repo metadata read 200 (fine-grained token, no classic scopes header). Two local UUID auto-sync commits inspected before push (d98956b: bot-lit-monitor.ts + worklog; 67a8fee: worklog only) — benign, no secrets; outgoing diff scanned for token patterns — clean.
+- git push → 403 "Permission to handokov/cryptopulse.git denied to handokov": token authenticated but lacks Repository permission Contents: Read and write. Fix requires the token owner: GitHub → Settings → Developer settings → Fine-grained tokens → edit token → Repository permissions → Contents → Read and write (token value unchanged; no regeneration needed). PUSH BLOCKED until then.
+- LIT monitor rerun 09:36Z (public data, no creds): price 5.171 (24h +6.82%); score 0.78 (still ≥ 0.55 buy zone); post-SL cooldown (~08:35Z close + 45 min) expired ~09:20Z → re-BUY likely fired around 09:20–09:25Z tick (unconfirmed — DB creds not in session; official state in user's Bot card). σ(4H)=2.95% unchanged → FIXED −1.2% SL still inside one-bar noise.
+- VOL bands math for LIT today (MODERATE, σref 1.5%): SL = 1.2·2.95/1.5 ≈ 2.36%, TP = 1.8·2.95/1.5 ≈ 3.54%, trail arms at +2.95% with 2.36% trail distance — on $1.5: worst SL ≈ −$0.035, TP ≈ +$0.053.
+
+Stage Summary:
+- Task 23 (VOL exit style) is fully built, verified and sitting in 3 local commits — only the push is blocked on the token's Contents:write permission.
+- LIT keeps illustrating the point: fresh re-entry likely already exposed again to the same 1.2% noise band while VOL support waits in the wings.
+- Next: user fixes token perm → I push → Vercel deploys → first cron tick runs ensureBotColumns() self-migration on prod Turso → user switches Exit Style to VOLATILITY in the bot card.
