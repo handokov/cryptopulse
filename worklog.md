@@ -724,3 +724,22 @@ Stage Summary:
 - BUY verified as strategy-consistent (score 0.81 ≥ 0.55 at entry time); position currently +0.63% unrealized, TP only 1.17% away; official numbers live in the Bot card (entry/target/stop) and the Performance report after close.
 - scripts/bot-lit-monitor.ts is the reusable daily checker for the multi-day test (rerun on demand; needs no credentials).
 - Outstanding: user's possible custom TP/SL overrides would replace preset 1.8/1.2 in the Bot card display; paper mode ignores fees (~0.2% round trip matters for LIVE later).
+
+---
+Task ID: 23
+Agent: Super Z (main agent)
+Task: User's LITUSDT paper position stopped out; user asked whether indicator-based triggers (calculated by our formula) should be added. Answer + full implementation of a VOL exit style.
+
+Work Log:
+- Post-mortem with public data (scripts/analyze-lit-sl.ts): entry was in the 5.28–5.30 band (any tick 07:25–08:20Z fits); the 08:30–08:40Z wick (lows 5.224/5.214) hit the FIXED −1.2% stop, price recovered right after — a textbook noise-stop. LIT σ(4H)=2.94% → a 1.2% stop is 0.41σ, inside routine noise. Counterfactual: VOL bands (SL 0.8σ=2.35% → 5.173) would NOT have been touched; position survives. Re-entry risk flagged (cooldown 45min after ~08:35Z SL → eligible ~09:20Z+, score 0.80 → likely FIXED re-BUY; price 5.251 at 09:21Z).
+- Implementation "Exit style: FIXED | VOL": strategy.ts adds SIGMA_REF_PCT=1.5, volBands() (SL = preset.sl·σ/σref clamp 1–12%, TP = preset.tp·σ/σref clamp 1.5–18%, trail arm +1σ, trail dist = SL band) and shouldExit(effStopPrice?) param. engine.ts: VOL bands at entry (explicit user TP/SL overrides still win per-band), highestPrice tracking persisted on HOLD, trail ratchet effStop=max(fixed, highest·(1−trail%)), stop-outs above the fixed stop relabeled "trail-stop: locked ≥X% (peak …)", VOL audit note in entry reason, highestPrice seeded at position create.
+- Schema: BotConfig.exitStyle TEXT NOT NULL DEFAULT 'FIXED', BotPosition.highestPrice REAL (nullable); local db push OK. New src/lib/bot/migrate.ts ensureBotColumns() — idempotent probe-SELECT + ALTER, memoized per process, wired into /api/bot (GET+PUT) and /api/bot/tick → production Turso self-migrates on the first cron tick after deploy (no manual token needed).
+- API: PUT validates exitStyle (anything but "VOL" → FIXED, old clients safe); GET defaults include exitStyle; stats exitCounts gained trail-stop bucket (before stop-loss prefix check).
+- UI: exit-style segmented control under mode selector with hints + VOL footnote; trail-stop chip styled positive. i18n +7 keys ×6 (exitStyle, exitStyleFixed/Vol + hints, exitStyleVolNote, exit_trail_stop) → 478/478 ALL CLEAN.
+- Verification: scripts/verify-bot-exits.ts 25/25 PASS — volBands math (exact + clamps, MODERATE & AGGRESSIVE), shouldExit effStop semantics (TP priority preserved), engine E2E on real BTC data: VOL bands exact, highestPrice lifecycle, trail HOLD then trail-stop SELL locking +11% cushion (realized +0.167$ on $1.5), user override beats VOL, cascade clean. Test-design lessons: trail exit fills at MARKET (reason % is the level, not the fill — entry cushion needed for positive-PnL assertions) and real SELLs arm the 45-min cooldown (backdate closedAt before forced re-entry tests). Regressions: verify-bot-engine.ts + verify-bot-tpsl.ts ALL PASSED (FIXED default unchanged). eslint clean, production build passed, dev restored (:3000 → 200).
+- Committed locally (feat(bot): VOL exit style … (23)). PUSH BLOCKED: no stored GitHub credentials after session restart (PAT #5 lost — rotation was advised anyway). Options handed to user: ① paste a fresh PAT (Contents:write) → I push; ② upload the 8 changed files via GitHub web.
+
+Stage Summary:
+- The bot now has an indicator-based exit style that scales TP/SL to each asset's own volatility and trails winners; the LIT noise-stop that triggered the request is exactly the failure mode VOL fixes.
+- After deploy: user switches Exit Style → VOLATILITY in the bot card and saves; applies to positions opened AFTER saving (an open FIXED position keeps its own bands).
+- Honest caveats told to user: wider SL = bigger per-trade loss when it does hit (fewer, fairer stops); calm assets (BTC σ≈0.7%) clamp at SL 1%/TP 1.5%; trail % is the trigger level, fills are at market; nothing changed for existing FIXED configs.
