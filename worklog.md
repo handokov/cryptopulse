@@ -622,3 +622,15 @@ Stage Summary:
 - Bot v1 is complete in code: paper-first spot long-only bot with the site's own signals, both modes, risk gates, audit trail, cron wiring. Live mode is gated behind an explicit checkbox and a Bitget connection with spot-trade permission.
 - USER SETUP NEEDED: ① fresh Turso token → run scripts/turso-apply-schema.mjs (3 new tables), ② Vercel env BOT_TICK_SECRET + redeploy, ③ GitHub repo secret BOT_TICK_SECRET + enable the workflow, ④ (for live mode later) Bitget API key with Spot Trade permission added in Portfolio. Default stays PAPER until the user flips it deliberately.
 - Honest expectations documented in UI: educational automation, no profit guarantee.
+
+---
+Task ID: 20-b
+Agent: Super Z (main agent)
+Task: Ship Task 20 despite the PAT's missing `workflow` scope; verify production deploy.
+
+Work Log:
+- Push rejected when .github/workflows/bot-tick.yml was included (PAT lacks `workflow` scope) → moved the workflow to docs/bot-tick.workflow.yml with activation instructions, amended the commit, pushed c31a54b → faa9085.
+- Production verified: homepage 200; /api/bot and /api/bot/tick answer 401 without a session (safe). BOT_TICK_SECRET appears to already be set on Vercel (tick returned 401-shape rather than 404) — confirm in the dashboard.
+
+Stage Summary:
+- Bot v1 is on GitHub and deployed. Remaining user steps: Turso token for the 3 bot tables (blocks actual bot usage in prod), BOT_TICK_SECRET repo secret + workflow activation (docs/bot-tick.workflow.yml), optional scoped PAT to move the workflow into .github/.
