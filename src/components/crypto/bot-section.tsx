@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Bot, Loader2, Play, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Bot, Loader2, Play, Server, ShieldCheck, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -212,6 +212,12 @@ export function BotSection() {
           </p>
         </div>
       </div>
+
+      {/* server-side execution note — answers "does it stop when I close the tab?" */}
+      <p className="flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
+        <Server className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+        <span>{t("alwaysOn")}</span>
+      </p>
 
       {/* configuration */}
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">

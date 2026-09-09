@@ -527,6 +527,8 @@ const id: Messages = {
     liveBadge: "LIVE",
     needKeyNote:
       "Mode live membutuhkan koneksi Bitget (bagian Portofolio) dengan API key berizin spot-trade. Mode paper jalan tanpa key apa pun.",
+    alwaysOn:
+      "Berjalan di server: cron men-tick tiap 5 menit — halaman ini tidak perlu tetap terbuka. Posisi terbuka tetap dijaga take-profit / stop-loss saat Anda pergi.",
     disclaimer:
       "Otomasi edukasi, bukan nasihat keuangan. Kripto sangat volatil — jangan pernah memakai uang yang tidak siap Anda kehilangan.",
   },

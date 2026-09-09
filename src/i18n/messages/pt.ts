@@ -526,6 +526,8 @@ const pt: Messages = {
     liveBadge: "REAL",
     needKeyNote:
       "O modo real precisa de uma conexão Bitget (seção Portfólio) com API key com permissão de trading spot. O modo papel funciona sem nenhuma key.",
+    alwaysOn:
+      "Roda no servidor: o cron executa a cada 5 minutos — não precisa deixar esta página aberta. As posições abertas mantêm take-profit / stop-loss enquanto você está fora.",
     disclaimer:
       "Automação educativa, não aconselhamento financeiro. Cripto é volátil — nunca opere com dinheiro que você não pode perder.",
   },

@@ -523,6 +523,8 @@ const zh: Messages = {
     liveBadge: "实盘",
     needKeyNote:
       "实盘模式需要“投资组合”区的 Bitget 连接，且 API key 具备现货交易权限。模拟盘无需任何 key。",
+    alwaysOn:
+      "在服务器端运行：cron 每 5 分钟执行一次——无需保持本页面打开。你离开时，持仓的止盈 / 止损仍然有效。",
     disclaimer:
       "教育性质的自动化，不构成投资建议。加密货币波动剧烈——切勿动用你承受不起损失的资金。",
   },

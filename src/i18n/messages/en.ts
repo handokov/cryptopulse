@@ -527,6 +527,8 @@ const en = {
     liveBadge: "LIVE",
     needKeyNote:
       "Live mode needs a Bitget connection (Portfolio section) whose API key has spot-trade permission. Paper mode works without any key.",
+    alwaysOn:
+      "Runs server-side: cron ticks every 5 minutes — you don't need this page open. Open positions keep their take-profit / stop-loss while you're away.",
     disclaimer:
       "Educational automation, not financial advice. Crypto is volatile — never trade money you cannot afford to lose.",
   },

@@ -670,3 +670,20 @@ Stage Summary:
 - BOT AUTOMATION IS FULLY LIVE: Turso tables ✓, Vercel env ✓, GitHub secret ✓, scheduled workflow verified with a real cron-mode 200. The bot now ticks every 5 minutes around the clock; any user who enables a bot (paper default) starts appearing in results.
 - Only optional step left: Bitget API key (Spot Trade only) via Portfolio for LIVE mode.
 - Exposed-credential rotation reminders outstanding: Turso token + PAT #5.
+
+---
+Task ID: 20-e
+Agent: Super Z (main agent)
+Task: User asked whether the bot stops when the web is closed and whether an open position gets closed too — answer + embed in product.
+
+Work Log:
+- Confirmed from engine.ts: cron path (x-bot-secret) runs ALL enabled bots server-side; browser auto-tick is a supplement only. "Exits first" ordering (line 158) means open BotPosition rows are re-checked every tick, so TP/SL/signal-flip SELLs fire from the server regardless of any browser. Positions live in Turso, not in the page.
+- Honest caveats communicated: GitHub cron can lag minutes (SL/TP execute on next tick, not per-second); in LIVE mode the stop-loss is engine-side, not an exchange-native stop order (if Vercel+GitHub were both down, a live position temporarily lacks exchange-side protection — future improvement candidate).
+- bot-section.tsx: new always-on note under the status strip (Server icon + t("alwaysOn")): "Runs server-side: cron ticks every 5 minutes — you don't need this page open. Open positions keep their take-profit / stop-loss while you're away."
+- i18n ×6: bot.alwaysOn added (en/id/zh/es/pt/ja) → 453/453 parity ALL CLEAN.
+- Verification: eslint clean; production build passed; dev restored :3000 (homepage 200).
+- Committed + pushed.
+
+Stage Summary:
+- The "does it run with the tab closed?" question is now answered in-product right under the status strip, in all 6 languages.
+- Backlog: exchange-native stop orders for live mode (protection independent of our engine); cron-lag note already covered by the guard design (4-min min gap).
