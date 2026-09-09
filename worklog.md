@@ -495,3 +495,18 @@ Work Log:
 Stage Summary:
 - Feature complete locally. FOR PRODUCTION: (1) add RESEND_API_KEY (+ optional EMAIL_FROM) to Vercel env — Resend free tier sends only to the account owner's email until a domain is verified; (2) apply the Prisma schema to Turso (PasswordResetToken table + User.resetTokens) via scripts/turso-apply-schema.mjs with TURSO_DATABASE_URL + TURSO_AUTH_TOKEN — until then forgot-password will 500 in production while login/register stay unaffected.
 - Existing sessions are stateless HMAC (no server-side revocation) — password reset does not kill live sessions; noted as future hardening (session epoch).
+
+---
+Task ID: 17-b
+Agent: Super Z (main agent)
+Task: Publish the blocked auth commit after the user supplied a fresh GitHub PAT.
+
+Work Log:
+- New PAT verified → account handokov, repo handokov/cryptopulse access 200.
+- Local history gained one auto-checkpoint commit (974150f, file-mode only) on top of 06b260a; chain intact, fast-forward push (no force needed).
+- Push OK: remote main c537bc9 → 974150f (feature 06b260a + checkpoint); local and remote fully synced; Vercel auto-deploy expected.
+
+Stage Summary:
+- Sign-in eye toggle + forgot/reset password flow is on GitHub.
+- Production still needs: RESEND_API_KEY (+ optional EMAIL_FROM) in Vercel env, and Turso schema push (PasswordResetToken table) via scripts/turso-apply-schema.mjs — user asked to re-send the Turso token.
+- Fourth PAT exposed in chat — user must revoke it after confirming the deploy; recommend fine-grained repo-scoped tokens.
