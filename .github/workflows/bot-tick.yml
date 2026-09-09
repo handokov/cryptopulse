@@ -1,0 +1,41 @@
+# ⚠️ This file lives in docs/ because pushing .github/workflows/ requires a
+# PAT with the `workflow` scope. To activate the 24/7 cron tick, either:
+#   A) GitHub web UI: create .github/workflows/bot-tick.yml and paste the YAML
+#      below (Actions tab → new workflow → paste), or
+#   B) hand me a PAT with `workflow` scope and I'll move this into place.
+# Then add the BOT_TICK_SECRET secret (repo + Vercel env). See steps below.
+
+# Trading-bot heartbeat: hits /api/bot/tick every 5 minutes so enabled bots
+# can act around the clock (Vercel hobby cron can't do sub-daily schedules).
+#
+# One-time setup for the repo owner:
+#   1. GitHub repo → Settings → Secrets and variables → Actions → New secret:
+#        BOT_TICK_SECRET  = (same value as the BOT_TICK_SECRET env var on Vercel)
+#   2. Vercel project → Settings → Environment Variables → add BOT_TICK_SECRET
+#      (the tick endpoint answers 404 to everything without it).
+#   3. Enable scheduled workflows: repo → Actions tab → allow the workflow.
+#
+# The engine itself guards against overlapping ticks (4-minute min gap),
+# so a delayed/overlapping run is harmless.
+
+name: bot-tick
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {} # manual run for testing
+
+concurrency:
+  group: bot-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call bot tick endpoint
+        run: |
+          curl -sS -m 50 -X POST \
+            -H "x-bot-secret: ${{ secrets.BOT_TICK_SECRET }}" \
+            https://cryptopulse-iota-self.vercel.app/api/bot/tick \
+            | head -c 2000
