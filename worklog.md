@@ -707,3 +707,20 @@ Stage Summary:
 - The bot now has an evaluation loop for the user's multi-day test: performance report (win rate, PnL, expectancy, exit breakdown, 14-day chart) + user-tunable risk (custom TP/SL overriding mode presets).
 - Suggested test protocol communicated: MODERATE, $1.5–2/order, 4 trades/day, loss limit ≤ $10, custom SL ≤ 1.2% for tighter loss control; judge after ≥20 closed trades on expectancy > 0, not on individual wins.
 - Backlog unchanged: exchange-native stop orders (live-mode protection independent of our engine), phase-aligned projection.
+
+---
+Task ID: 22
+Agent: Super Z (main agent)
+Task: User enabled the bot on LITUSDT (paper), a BUY fired; user asked to verify TP/SL behavior and analyze the margin achieved.
+
+Work Log:
+- Session restart lost runtime credentials (Turso token / PAT / prod BOT_TICK_SECRET — none stored on disk by design); chose the public-data path instead: Bitget public REST + exact strategy replay via src/lib/bot/strategy.ts.
+- New scripts/bot-lit-monitor.ts: fetches ticker + 160×4H + 200×5m candles + product rules for LITUSDT; computes the composite score exactly as the next cron tick sees it (forming 4H bar included); replays 5-min ticks (cron emulation) over ~16 h to find score≥0.55 windows; derives candidate BUY tick after 07:18Z (last cron with results:[]); computes TP/SL levels, unrealized PnL, size scenarios, 4H vol context and rough first-passage timing.
+- Results 08:08Z: price 5.298 (+14.85%/24h, 24h range 4.611–5.321); score NOW 0.814 (trend 1.0, momentum 0.882, cycle R² 0.594 pos 4.5% rising, vol 138% ann). BUY window opened 09-08 15:35Z and is still open; candidate BUY tick = 07:20Z @ 5.265 (first tick after user enable). TP 5.3598 (+1.8%), SL 5.2018 (−1.2%); current PnL +0.63%; distance TP 1.17% / SL 1.82%. LIT minTradeUSDT = 1 → $1.5 order NOT clamped. σ(4H)=2.94%, |move|avg 2.27% → 1.8/1.2% bands typically inside ONE 4H bar → resolution within hours.
+- Brownian first-passage w/ drift (σ 0.424%/5min, μ 0.0046%/5min): P(TP first) ≈ 42%, EV ≈ +0.07% of size per trade (momentum persistence likely lifts it; clearly labeled as rough model).
+- Confirmed from engine.ts: paper exits fire on ticker price each 5-min cron tick; after close, 45-min cooldown then re-entry allowed while score ≥0.55 (max 4 trades/day) → chained trades expected today.
+
+Stage Summary:
+- BUY verified as strategy-consistent (score 0.81 ≥ 0.55 at entry time); position currently +0.63% unrealized, TP only 1.17% away; official numbers live in the Bot card (entry/target/stop) and the Performance report after close.
+- scripts/bot-lit-monitor.ts is the reusable daily checker for the multi-day test (rerun on demand; needs no credentials).
+- Outstanding: user's possible custom TP/SL overrides would replace preset 1.8/1.2 in the Bot card display; paper mode ignores fees (~0.2% round trip matters for LIVE later).
