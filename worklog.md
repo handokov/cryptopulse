@@ -477,3 +477,21 @@ Work Log:
 
 Stage Summary:
 - The Lab's uncertainty zone is now empirically honest: bootstrap fat tails instead of normal-σ̂√t, and a shrunk drift with visible SE so users can see when the trend estimate is noise. All numbers on screen remain reproducible (seeded) and verifiable against the mono audit line.
+
+---
+Task ID: 17
+Agent: Super Z (main agent)
+Task: Sign-in UX upgrade — user request: eye icon in the password box + "forgot password" flow.
+
+Work Log:
+- Prisma: new PasswordResetToken model (userId FK cascade, tokenHash @unique, expiresAt, usedAt?, @@index([userId])) + User.resetTokens relation; bun run db:push OK (client regenerated). Turso remote NOT yet pushed — needs TURSO_* env (see Stage Summary).
+- API POST /api/auth/forgot-password: validates email → 3 req/10min per email + 10/10min per IP (in-memory limiter) → user lookup → burns previous unused tokens → mints 32-byte base64url token (SHA-256 stored, 1 h TTL) → sends localized email via Resend REST (fetch, no SDK; EMAIL_FROM override, AbortSignal 5 s) → response CONSTANT for unknown emails (anti-enumeration); devUrl (/?reset=<token>) returned only when no RESEND_API_KEY AND NODE_ENV=development; 6-locale inline email templates.
+- API POST /api/auth/reset-password: sha256(token) lookup → unused+unexpired checks → $transaction: update passwordHash (same scrypt scheme) + burn this token + burn all other outstanding tokens; 400 invalid_token / validation; min length 6 consistent with register.
+- password-input.tsx (new): shadcn Input wrapper with eye toggle (Eye/EyeOff), aria-label + aria-pressed + title from i18n, hover/focus styling, type managed internally.
+- auth-dialog.tsx: AuthMode extended to login|register|forgot|reset; "Forgot password?" link under the login password field; forgot mode (email form → success panel: forgotSent copy + dev-link box in dev / emailNotConfiguredNote when provider missing); reset mode entered via deep-link /?reset=<token> (detected on mount, token scrubbed from URL via history.replaceState) with New password + Confirm password (both with eye icons) → success panel → Sign in button; segmented switcher + localOnly note only in account modes; error mapping extended (invalid_token, rate_limited, client-side mismatch).
+- i18n ×6: auth namespace +21 keys (showPassword, hidePassword, forgotPassword, forgotTitle, forgotSubtitle, forgotCta, forgotSent, forgotDevNote, openReset, emailNotConfiguredNote, backToSignIn, resetTitle, resetSubtitle, newPassword, confirmPassword, resetCta, resetSuccess, errTokenInvalid, errMismatch, errRateLimited) — en/id/zh/es/pt/ja; i18n-check 392/392 ×6 ALL CLEAN.
+- Verification: eslint clean; production build passed (21 routes incl. both new auth endpoints); dev restarted :3000. API curl suite: register→forgot(devUrl)→reset{ok}→login NEW 200→login OLD 401→token reuse invalid_token→unknown email constant response. Agent Browser E2E: eye toggle flips type password↔text with aria swap; Forgot link → panel; deep link opens reset dialog with URL scrubbed; both reset fields masked with eye buttons; reset success → Sign in → login with the new password lands authenticated ("Reset Tester"). Zero console/page errors. Test user deleted (tokens left: 0).
+
+Stage Summary:
+- Feature complete locally. FOR PRODUCTION: (1) add RESEND_API_KEY (+ optional EMAIL_FROM) to Vercel env — Resend free tier sends only to the account owner's email until a domain is verified; (2) apply the Prisma schema to Turso (PasswordResetToken table + User.resetTokens) via scripts/turso-apply-schema.mjs with TURSO_DATABASE_URL + TURSO_AUTH_TOKEN — until then forgot-password will 500 in production while login/register stay unaffected.
+- Existing sessions are stateless HMAC (no server-side revocation) — password reset does not kill live sessions; noted as future hardening (session epoch).

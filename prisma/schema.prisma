@@ -24,6 +24,21 @@ model User {
   snapshots    PortfolioSnapshot[]
   alerts       PriceAlert[]
   exchanges    ExchangeConnection[]
+  resetTokens  PasswordResetToken[]
+}
+
+// One-time password reset tokens. Only the SHA-256 hash of the token is
+// stored — the raw token lives exclusively inside the emailed reset link.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Holding {
