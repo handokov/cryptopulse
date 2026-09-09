@@ -526,3 +526,17 @@ Stage Summary:
 - Production DB now matches Prisma schema — the forgot-password endpoint can write tokens as soon as the new code deploys.
 - Remaining for full production forgot-password: RESEND_API_KEY (+ optional EMAIL_FROM) in Vercel env. Without it the endpoint still answers safely (constant anti-enumeration response; UI shows the "email not configured" note).
 - Turso token exposed in chat again — user can rotate it anytime from the Turso dashboard (database → Tokens).
+
+---
+Task ID: 17-d
+Agent: Super Z (main agent)
+Task: Production verification of the forgot-password feature (user confirmed).
+
+Work Log:
+- User added RESEND_API_KEY to Vercel env; probed https://cryptopulse-iota-self.vercel.app — /api/auth/me {user:null}, homepage title OK, forgot-password returns {ok:true, emailSent:true, devUrl:null} (provider active, anti-enumeration intact), malformed email 400.
+- User executed a real reset request: the email was delivered (landed in spam — expected for the onboarding@resend.dev sandbox sender without a verified domain).
+
+Stage Summary:
+- Task 17 feature COMPLETE in production: eye toggle + forgot/reset flow + Turso schema + email delivery all live.
+- Deliverability follow-up for the user: verify a domain in Resend → inbox delivery + emails to arbitrary addresses; then optionally set EMAIL_FROM (e.g. CryptoPulse <noreply@domain>).
+- Optional Vercel polish: rename project (Settings → General → Project Name) to shorten the URL — subdomain must stay globally unique; old URL dies after rename.
