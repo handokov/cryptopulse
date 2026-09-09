@@ -759,3 +759,19 @@ Stage Summary:
 - Task 23 (VOL exit style) is fully built, verified and sitting in 3 local commits — only the push is blocked on the token's Contents:write permission.
 - LIT keeps illustrating the point: fresh re-entry likely already exposed again to the same 1.2% noise band while VOL support waits in the wings.
 - Next: user fixes token perm → I push → Vercel deploys → first cron tick runs ensureBotColumns() self-migration on prod Turso → user switches Exit Style to VOLATILITY in the bot card.
+
+---
+Task ID: 24-b
+Agent: Super Z (main agent)
+Task: User supplied a classic PAT (repo scope) — push Task 23, verify production deploy + self-migration, investigate tick scheduling.
+
+Work Log:
+- Classic PAT verified: x-oauth-scopes "repo" → push accepted. df6cafe..f4f4aac → origin/main now = local main. Pushed commits: a813800 (VOL exit style, Task 23) + 3 benign auto-sync commits (monitor script, worklog). Outgoing diff secret-scan clean.
+- Vercel commit status: pending → **success** (~2 min build). Production bundle check: "exitStyle" strings present in deployed chunks (5456bf80…, 86613643…) → new UI is live.
+- Self-migration proof: manual workflow_dispatch of bot-tick.yml (HTTP 204) → run 34336629257 SUCCESS → tick log shows {"ok":true,"mode":"cron"} with the user's LITUSDT paper bot in results: action SKIP / reason "tick guard" (ticked <4 min ago — browser auto-tick active). The route reached db.botConfig.findMany (SELECT includes exitStyle) without error ⇒ ensureBotColumns() migration on prod Turso succeeded.
+- CRITICAL FINDING — GitHub schedule not firing: workflow (schedule */5, state active, repo public, added today 07:15Z) has ZERO scheduled runs ever (total_count=2, both manual dispatches). Task 20's "24/7 live" claim was wrong — ticks so far came from browser auto-tick + manual dispatch. Options for user: (a) nudge schedule by trivial web-UI edit of the workflow, (b) free third-party cron (cron-job.org → POST /api/bot/tick, header x-bot-secret) — most reliable, (c) PAT with workflow scope → I modify the workflow. Vercel Hobby cron can't do 5-min ticks (daily max).
+- LIT monitor 09:36Z (Task 24): price 5.171, score 0.78 (buy zone), post-SL re-BUY likely ~09:20-09:25Z, σ(4H)=2.95% → LIT VOL bands ≈ SL −2.36% / TP +3.54%, trail arm +2.95%.
+
+Stage Summary:
+- Task 23 VOL exit style is LIVE IN PRODUCTION: deployed, migrated, bundle verified, tick chain green. User action: Bot card → Exit Style → VOLATILITY → save (affects positions opened after saving).
+- Open risk: 24/7 tick coverage depends on browser tab or GitHub cron that currently isn't firing — mitigation options handed to user; engine's 4-min tick guard makes overlapping sources harmless.
