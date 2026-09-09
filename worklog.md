@@ -634,3 +634,20 @@ Work Log:
 
 Stage Summary:
 - Bot v1 is on GitHub and deployed. Remaining user steps: Turso token for the 3 bot tables (blocks actual bot usage in prod), BOT_TICK_SECRET repo secret + workflow activation (docs/bot-tick.workflow.yml), optional scoped PAT to move the workflow into .github/.
+
+---
+Task ID: 20-c
+Agent: Super Z (main agent)
+Task: Apply the 3 bot tables to the production Turso DB (user sent a fresh Turso token — EdDSA JWT, rw access).
+
+Work Log:
+- Ran scripts/turso-apply-schema.mjs against libsql://cryptopulse-handokov.aws-ap-northeast-1.turso.io with the user-supplied TURSO_AUTH_TOKEN — idempotent DDL applied cleanly.
+- Remote tables verified: BotConfig, BotPosition, BotTrade, ExchangeConnection, Holding, PasswordResetToken, PortfolioSnapshot, PriceAlert, User.
+- New scripts/turso-verify-bot-tables.mjs (roundtrip proof, not just presence): temp user → BotConfig (orderSizeUsdt 1.5, MODERATE) + BotPosition (LONG, paper) + BotTrade (BUY, PAPER, reason snapshot) → read back via correlated subqueries → DELETE user → cascade wipes all 3 bot rows. ALL PASSED (orderSize=1.5 mode=MODERATE positions=1 trades=1; cascade 0/0/0).
+- Production probe: homepage 200; /api/auth/me {user:null}; POST /api/bot/tick without session → 404 {"error":"unauthorized"} — per tick/route.ts line 30 (status: secret ? 401 : 404) this PROVES BOT_TICK_SECRET is still UNSET in Vercel env (refines the 20-b suspicion).
+- Committed the verifier script + worklog; pushed to handokov/cryptopulse main.
+
+Stage Summary:
+- Bot v1 is now FULLY UNBLOCKED in production at the data layer: the deployed /api/bot + /api/bot/tick can read/write BotConfig/BotPosition/BotTrade the moment a user signs in. Paper mode works as soon as the user opens the site, registers, and saves a bot config.
+- Remaining user steps (exactly 2 for automation, 1 optional for live): ① add BOT_TICK_SECRET to Vercel env + redeploy (cron path currently 404s), ② add the same secret to GitHub repo secrets + enable the workflow from docs/bot-tick.workflow.yml, ③ optional — Bitget API key (Spot Trade only) in Portfolio when ready for LIVE mode. Default stays PAPER.
+- Turso token exposed in chat → user can rotate it anytime from the Turso dashboard (database → Tokens).
