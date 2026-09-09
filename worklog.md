@@ -651,3 +651,22 @@ Stage Summary:
 - Bot v1 is now FULLY UNBLOCKED in production at the data layer: the deployed /api/bot + /api/bot/tick can read/write BotConfig/BotPosition/BotTrade the moment a user signs in. Paper mode works as soon as the user opens the site, registers, and saves a bot config.
 - Remaining user steps (exactly 2 for automation, 1 optional for live): ① add BOT_TICK_SECRET to Vercel env + redeploy (cron path currently 404s), ② add the same secret to GitHub repo secrets + enable the workflow from docs/bot-tick.workflow.yml, ③ optional — Bitget API key (Spot Trade only) in Portfolio when ready for LIVE mode. Default stays PAPER.
 - Turso token exposed in chat → user can rotate it anytime from the Turso dashboard (database → Tokens).
+
+---
+Task ID: 20-d
+Agent: Super Z (main agent)
+Task: Close the bot activation loop — user created the workflow via GitHub web UI (asked "which PAT?"), verify the whole cron chain end-to-end.
+
+Work Log:
+- Answered the PAT question: none needed — the user chose option A (web UI), so the `workflow`-scope PAT (option B) is moot.
+- Fetched the user-created .github/workflows/bot-tick.yml from GitHub via API — content matches the prepared YAML exactly (cron */5, workflow_dispatch, concurrency group, x-bot-secret header, prod URL).
+- git pull --rebase synced the remote workflow commit (0e56510) into local.
+- Triggered workflow_dispatch via API (204) → run 34323153491 completed SUCCESS → downloaded job logs: server answered {"ok":true,"mode":"cron","ranAt":"2026-09-09T07:18:16.964Z","results":[]}.
+- Chain proof: masked header (*** ) ⇒ GitHub repo secret BOT_TICK_SECRET SET; mode:"cron" accepted ⇒ Vercel env matches (refines 20-c: the 404→401 flip already showed it was added + redeployed). results:[] ⇒ zero enabled bots (expected — awaiting user).
+- Removed the now-redundant docs/bot-tick.workflow.yml (its live twin exists in .github/workflows/); committed + pushed.
+- .github/workflows/bot-tick.yml itself left untouched — editing workflow files via push would need the workflow scope PAT #5 lacks (stale header comment is harmless).
+
+Stage Summary:
+- BOT AUTOMATION IS FULLY LIVE: Turso tables ✓, Vercel env ✓, GitHub secret ✓, scheduled workflow verified with a real cron-mode 200. The bot now ticks every 5 minutes around the clock; any user who enables a bot (paper default) starts appearing in results.
+- Only optional step left: Bitget API key (Spot Trade only) via Portfolio for LIVE mode.
+- Exposed-credential rotation reminders outstanding: Turso token + PAT #5.
