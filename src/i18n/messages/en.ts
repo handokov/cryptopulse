@@ -548,6 +548,13 @@ const en = {
       "Leave empty to use the mode preset (TP +{tp}% / SL −{sl}%). Applies to positions opened after saving.",
     tpOverride: "Take-profit %",
     slOverride: "Stop-loss %",
+    exitStyle: "Exit style",
+    exitStyleFixed: "Fixed %",
+    exitStyleFixedHint: "TP/SL as fixed percent — the mode preset or your custom values.",
+    exitStyleVol: "Volatility (auto)",
+    exitStyleVolHint: "Bands scale with the asset's own 4H volatility: SL 0.8σ, TP 1.2σ + trailing stop.",
+    exitStyleVolNote: "σ = stdev of the last 90 4H returns. A custom TP/SL in Advanced still wins when filled. Applies to positions opened after saving.",
+    exit_trail_stop: "trail-stop ×{count}",
     disclaimer:
       "Educational automation, not financial advice. Crypto is volatile — never trade money you cannot afford to lose.",
   },

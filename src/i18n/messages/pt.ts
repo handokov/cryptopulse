@@ -547,6 +547,13 @@ const pt: Messages = {
       "Deixe vazio para usar o preset do modo (TP +{tp}% / SL −{sl}%). Vale para posições abertas após salvar.",
     tpOverride: "Take-profit %",
     slOverride: "Stop-loss %",
+    exitStyle: "Estilo de saída",
+    exitStyleFixed: "Percentual fixo",
+    exitStyleFixedHint: "TP/SL em percentual fixo — predefinição do modo ou seus valores personalizados.",
+    exitStyleVol: "Volatilidade (auto)",
+    exitStyleVolHint: "Faixas escaladas pela volatilidade 4H do ativo: SL 0,8σ, TP 1,2σ + stop móvel.",
+    exitStyleVolNote: "σ = desvio padrão dos últimos 90 retornos de 4H. Um TP/SL personalizado em Avançado ainda vence quando preenchido. Vale para posições abertas após salvar.",
+    exit_trail_stop: "stop móvel ×{count}",
     disclaimer:
       "Automação educativa, não aconselhamento financeiro. Cripto é volátil — nunca opere com dinheiro que você não pode perder.",
   },

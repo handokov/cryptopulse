@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { MODE_PRESETS, type BotMode } from "@/lib/bot/strategy";
+import { ensureBotColumns } from "@/lib/bot/migrate";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,14 @@ function defaults(userId: string) {
     orderSizeUsdt: 5,
     maxTradesPerDay: MODE_PRESETS.MODERATE.maxTradesPerDay,
     dailyLossLimitUsdt: 20,
+    exitStyle: "FIXED" as const,
   };
 }
 
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  await ensureBotColumns();
 
   const config = (await db.botConfig.findUnique({ where: { userId: user.id } })) ?? null;
   const configId = config?.id ?? "";
@@ -69,11 +72,13 @@ export async function GET() {
   for (const p of closed) {
     const key = p.exitReason?.startsWith("take-profit")
       ? "take-profit"
-      : p.exitReason?.startsWith("stop-loss")
-        ? "stop-loss"
-        : p.exitReason?.startsWith("signal")
-          ? "signal-flip"
-          : "other";
+      : p.exitReason?.startsWith("trail-stop")
+        ? "trail-stop"
+        : p.exitReason?.startsWith("stop-loss")
+          ? "stop-loss"
+          : p.exitReason?.startsWith("signal")
+            ? "signal-flip"
+            : "other";
     exitCounts[key] = (exitCounts[key] ?? 0) + 1;
   }
   /* per-UTC-day realized PnL, last 14 days (cumulative curve built client-side) */
@@ -114,6 +119,7 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  await ensureBotColumns();
 
   let body: Record<string, unknown>;
   try {
@@ -165,6 +171,10 @@ export async function PUT(req: NextRequest) {
   const takeProfitPct = tp ? tp.n : null;
   const stopLossPct = sl ? sl.n : null;
 
+  /* Exit style: FIXED (percent bands) or VOL (volatility-scaled + trailing).
+     Anything but an explicit "VOL" resolves to FIXED — old clients stay valid. */
+  const exitStyle = body.exitStyle === "VOL" ? "VOL" : "FIXED";
+
   if (!paper && enabled && !confirmLive) {
     return NextResponse.json(
       { error: "confirm_live", message: "enabling a LIVE bot requires explicit confirmation" },
@@ -174,8 +184,8 @@ export async function PUT(req: NextRequest) {
 
   const config = await db.botConfig.upsert({
     where: { userId: user.id },
-    update: { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct },
-    create: { userId: user.id, mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct },
+    update: { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle },
+    create: { userId: user.id, mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle },
   });
 
   return NextResponse.json({ ok: true, config });

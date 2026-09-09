@@ -157,7 +157,7 @@ export function shouldEnter(signal: BotSignal, mode: BotMode): boolean {
   return signal.score >= MODE_PRESETS[mode].entryScore;
 }
 
-export type ExitKind = "take-profit" | "stop-loss" | "signal-flip" | null;
+export type ExitKind = "take-profit" | "stop-loss" | "trail-stop" | "signal-flip" | null;
 
 export function shouldExit(
   signal: BotSignal,
@@ -165,13 +165,62 @@ export function shouldExit(
   price: number,
   targetPrice: number,
   stopPrice: number,
-  mode: BotMode
+  mode: BotMode,
+  effStopPrice?: number
 ): { exit: ExitKind; reason: string } {
   if (price >= targetPrice) return { exit: "take-profit", reason: `price ≥ target ${targetPrice.toPrecision(6)}` };
-  if (price <= stopPrice) return { exit: "stop-loss", reason: `price ≤ stop ${stopPrice.toPrecision(6)}` };
+  const stop = typeof effStopPrice === "number" && effStopPrice > 0 ? effStopPrice : stopPrice;
+  if (price <= stop) return { exit: "stop-loss", reason: `price ≤ stop ${stop.toPrecision(6)}` };
   if (signal.score <= -MODE_PRESETS[mode].exitScore) {
     return { exit: "signal-flip", reason: `score ${signal.score.toFixed(2)} ≤ −${MODE_PRESETS[mode].exitScore.toFixed(2)}` };
   }
   const pnlPct = ((price - entryPrice) / entryPrice) * 100;
   return { exit: null, reason: `hold (pnl ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%)` };
+}
+
+/* ------------------------------------------------------------------ */
+/* VOL exit style — bands scale with each asset's own volatility       */
+/*                                                                     */
+/* A fixed 1.2 % stop is 0.41σ for an asset that moves 2.9 % per 4H    */
+/* bar (LIT) — the stop sits INSIDE routine noise and gets hit by      */
+/* ordinary wicks. The fix: express both bands in units of σ, the      */
+/* stdev of the last 90 4H log returns (the same window the engine's   */
+/* volatility figure uses).                                            */
+/*                                                                     */
+/*   σref = 1.5 %/bar  (an asset this calm gets the preset verbatim)   */
+/*   SL    = preset.stopLossPct    · σ / σref      clamp 1..12 %        */
+/*   TP    = preset.takeProfitPct  · σ / σref      clamp 1.5..18 %      */
+/*   trail arm   = +1σ unrealized (the move has left the noise band)   */
+/*   trail dist  = SL band below the highest price since entry         */
+/*                 (worst-case locked profit ≈ +0.2σ > 0)               */
+/* ------------------------------------------------------------------ */
+
+/** σ of a calm asset maps to the exact mode preset. */
+export const SIGMA_REF_PCT = 1.5;
+
+export interface VolBands {
+  /** Per-4H-bar stdev of log returns, in percent. */
+  sigmaPct: number;
+  tpPct: number;
+  slPct: number;
+  /** Unrealized gain (%) that arms the trailing stop. */
+  trailArmPct: number;
+  /** Trailing distance (%) below the highest price since entry. */
+  trailPct: number;
+}
+
+const clampPct = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+/** Volatility-scaled exit bands for a mode. Pure — same inputs, same bands. */
+export function volBands(sigmaPct: number, mode: BotMode): VolBands {
+  const preset = MODE_PRESETS[mode];
+  const sl = clampPct(preset.stopLossPct * (sigmaPct / SIGMA_REF_PCT), 1.0, 12.0);
+  const tp = clampPct(preset.takeProfitPct * (sigmaPct / SIGMA_REF_PCT), 1.5, 18.0);
+  return {
+    sigmaPct,
+    tpPct: tp,
+    slPct: sl,
+    trailArmPct: sigmaPct,
+    trailPct: sl,
+  };
 }

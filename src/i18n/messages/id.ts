@@ -548,6 +548,13 @@ const id: Messages = {
       "Kosongkan untuk memakai preset mode (TP +{tp}% / SL −{sl}%). Berlaku untuk posisi yang dibuka setelah disimpan.",
     tpOverride: "Take-profit %",
     slOverride: "Stop-loss %",
+    exitStyle: "Gaya exit",
+    exitStyleFixed: "Persen tetap",
+    exitStyleFixedHint: "TP/SL persen tetap — preset mode atau nilai kustom Anda.",
+    exitStyleVol: "Volatilitas (otomatis)",
+    exitStyleVolHint: "Band menyesuaikan volatilitas 4H aset: SL 0,8σ, TP 1,2σ + trailing stop.",
+    exitStyleVolNote: "σ = simpangan baku 90 return 4H terakhir. TP/SL kustom di Advanced tetap menang bila diisi. Berlaku untuk posisi yang dibuka setelah menyimpan.",
+    exit_trail_stop: "trail-stop ×{count}",
     disclaimer:
       "Otomasi edukasi, bukan nasihat keuangan. Kripto sangat volatil — jangan pernah memakai uang yang tidak siap Anda kehilangan.",
   },

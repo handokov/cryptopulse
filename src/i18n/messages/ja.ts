@@ -546,6 +546,13 @@ const ja: Messages = {
       "空欄ならモードのプリセットを使用（TP +{tp}% / SL −{sl}%）。保存後に新しく開いた建玉に適用されます。",
     tpOverride: "テイクプロフィット %",
     slOverride: "ストップロス %",
+    exitStyle: "決済スタイル",
+    exitStyleFixed: "固定％",
+    exitStyleFixedHint: "TP/SLを固定パーセントで設定 — モードのプリセットまたはカスタム値。",
+    exitStyleVol: "ボラティリティ（自動）",
+    exitStyleVolHint: "資産の4Hボラティリティに応じて帯域を調整：SL 0.8σ、TP 1.2σ + トレーリングストップ。",
+    exitStyleVolNote: "σ = 直近90本の4Hリターンの標準偏差。高度な設定のカスタムTP/SL入力時はそちらが優先。保存後に開いたポジションに適用。",
+    exit_trail_stop: "トレーリング ×{count}",
     disclaimer:
       "教育目的のオートメーションであり、投資助言ではありません。暗号資産は変動が激しいため、失っても構わない資金だけでお願いします。",
   },

@@ -69,6 +69,11 @@ model BotConfig {
   // null = use the preset for the selected mode. Ranges validated in the API.
   takeProfitPct     Float?
   stopLossPct       Float?
+  // "FIXED" = percent TP/SL (preset or user override).
+  // "VOL"   = volatility-scaled bands (SL 0.8σ / TP 1.2σ) + trailing stop,
+  //           σ = stdev of the last 90 4H log returns of the traded symbol.
+  //           Explicit user TP/SL overrides still win per-band when set.
+  exitStyle         String    @default("FIXED")
   lastTickAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -93,6 +98,9 @@ model BotPosition {
   paper          Boolean   @default(true)
   stopPrice      Float
   targetPrice    Float
+  // VOL exit style: highest ticker price seen since entry (drives the
+  // trailing stop). null on legacy rows — the engine treats it as entryPrice.
+  highestPrice   Float?
   // "OPEN" | "CLOSED"
   status         String    @default("OPEN")
   exitPrice      Float?

@@ -544,6 +544,13 @@ const zh: Messages = {
       "留空则使用模式预设（止盈 +{tp}% / 止损 −{sl}%）。仅适用于保存后新开的持仓。",
     tpOverride: "止盈 %",
     slOverride: "止损 %",
+    exitStyle: "退出方式",
+    exitStyleFixed: "固定百分比",
+    exitStyleFixedHint: "TP/SL 为固定百分比——模式预设或你的自定义值。",
+    exitStyleVol: "波动率（自动）",
+    exitStyleVolHint: "区间随资产 4H 波动率缩放：SL 0.8σ、TP 1.2σ + 移动止盈止损。",
+    exitStyleVolNote: "σ = 最近 90 根 4H 收益率的标准差。高级设置中已填写的自定义 TP/SL 仍然优先。仅适用于保存后新开的仓位。",
+    exit_trail_stop: "移动止损 ×{count}",
     disclaimer:
       "教育性质的自动化，不构成投资建议。加密货币波动剧烈——切勿动用你承受不起损失的资金。",
   },

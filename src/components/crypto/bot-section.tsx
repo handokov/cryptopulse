@@ -23,6 +23,7 @@ interface BotConfig {
   dailyLossLimitUsdt: number;
   takeProfitPct: number | null;
   stopLossPct: number | null;
+  exitStyle: "FIXED" | "VOL";
 }
 
 interface BotPosition {
@@ -271,6 +272,35 @@ export function BotSection() {
             )}
           </div>
 
+          {/* exit style — fixed percent bands vs volatility-scaled + trailing */}
+          <div className="sm:col-span-2">
+            <Label className="text-xs">{t("exitStyle")}</Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              {(["FIXED", "VOL"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setCfg({ ...cfg, exitStyle: s })}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                    (cfg.exitStyle ?? "FIXED") === s
+                      ? "border-primary/50 bg-primary/10"
+                      : "border-border hover:border-foreground/25"
+                  }`}
+                >
+                  <span className={`text-sm font-semibold ${(cfg.exitStyle ?? "FIXED") === s ? "text-primary" : ""}`}>
+                    {s === "FIXED" ? t("exitStyleFixed") : t("exitStyleVol")}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                    {s === "FIXED" ? t("exitStyleFixedHint") : t("exitStyleVolHint")}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {(cfg.exitStyle ?? "FIXED") === "VOL" && (
+              <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground/80">{t("exitStyleVolNote")}</p>
+            )}
+          </div>
+
           <div>
             <Label htmlFor="bot-symbol" className="text-xs">{t("symbol")}</Label>
             <Input
@@ -479,7 +509,7 @@ export function BotSection() {
             <div className="mt-3 flex flex-wrap gap-1.5">
               {Object.entries(stats.exitCounts).map(([k, v]) => (
                 <span key={k} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                  k === "take-profit" ? "bg-primary/10 text-primary" : k === "stop-loss" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+                  k === "take-profit" || k === "trail-stop" ? "bg-primary/10 text-primary" : k === "stop-loss" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
                 }`}>
                   {t(`exit_${k.replace("-", "_")}` as Parameters<typeof t>[0], { count: v })}
                 </span>

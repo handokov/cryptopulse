@@ -13,11 +13,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { runBotTicks } from "@/lib/bot/engine";
+import { ensureBotColumns } from "@/lib/bot/migrate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  await ensureBotColumns();
+
   const secret = process.env.BOT_TICK_SECRET;
   const provided = req.headers.get("x-bot-secret");
 
