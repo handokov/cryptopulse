@@ -790,3 +790,26 @@ Work Log:
 Stage Summary:
 - 24/7 tick chain now has 3 layers: GitHub scheduled (confirmed firing, sparse), browser auto-tick (5-min while tab open), manual dispatch. User's question answered: no trigger because score 0.32 is below the unchanged 0.55 entry gate — VOL only widens exits.
 - Multi-day test framing for user: day 1 = FIXED (4 rows, 2 round-trips, 1 noise-stop), day 2+ = VOL; judge after ≥20 closed trades on expectancy.
+
+---
+Task ID: 26
+Agent: Super Z (main agent)
+Task: Record user's DESIGN-ONLY plan for the bot/dashboard v2 — explicitly NOT implemented (user: "web jgn di tambah atau di ubah", catat untuk pengembangan lanjutan).
+
+Design notes (user's own words, structured):
+1. Main public dashboard: REMOVE Portfolio + Bot Trading sections from public view — both live only in the logged-in user dashboard area.
+2. Bot section gains a CANDLESTICK CHART with the bot's TRIGGER LINES drawn on it, so the user sees the price levels where the bot triggers (entry line, TP line, SL line).
+3. MULTI-BOT: 1 bot = 1 crypto, but a user can run several bots (one per symbol). Schema impact: BotConfig.userId is currently @unique (ONE config per user) → needs @@unique([userId, symbol]) + engine/API/UI changes (engine iterates configs already; API/UI assume singular today).
+4. NEW SETTING — TIMEFRAME: user picks the timeframe the bot runs on (engine today hardcodes 4H closes via fetchCloses). Impact: signal window/σ-bands/BARS_PER_YEAR must scale per timeframe; presets may need per-TF calibration.
+5. SLIDEABLE TRIGGER LINE: on the candle chart the user can drag the entry-trigger line up/down (manual price-level override for entries, more flexible than score-only gating).
+6. TP/SL AUTO-FOLLOW: when the trigger line is moved, TP and SL levels recalculate automatically relative to the new trigger price (bands keep their % / ATR distance, re-anchored).
+
+Open design questions to settle at implementation time:
+- Does the slideable line REPLACE the score gate (pure price trigger) or AND with it (score ≥ threshold AND price at/below line)?
+- Max bots per user (paper vs live quotas), and whether live mode also gets multi-symbol.
+- Timeframe options (1H/4H/1D?) and whether presets need re-tuning per TF.
+- Chart lib: lightweight-charts (TradingView, candlestick-native) vs recharts (already in app, no candlesticks).
+- Pending-entry state machine in engine (line set but price not reached yet → order waiting), interaction with cooldown/max-trades gates.
+
+Stage Summary:
+- DESIGN ONLY, nothing implemented; web untouched per explicit user instruction. Recorded for a future build phase; entry gate/exit engine in production remain as-is (VOL live, scheduled ticks sparse-but-working, cron-job.org option handed to user).
