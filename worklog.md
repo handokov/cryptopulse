@@ -895,3 +895,18 @@ Findings:
 
 Stage Summary:
 - Day-1 verdict: engine correct to the cent; losses = two legitimate −1.2% stops on a falling day with $5 sizing. Statistical verdict still needs ≥20 trades and, for fairness, a steady 5-min tick cadence.
+
+---
+Task ID: 28
+Agent: Super Z (main agent)
+Task: User declares roadmap — paper effectiveness test first, then v2 implementation, then REAL Bitget pilot at ≤$1.5/order; asks for help perfecting the web "until profitable" ("saya mengandalkan kamu").
+
+Work Log:
+- Verified Bitget LITUSDT rules via public API (v2/spot/public/symbols): minTradeUSDT = 1 → user's planned $1.5 live order size is VALID. Taker = maker = 0.1% → live round-trip drag ≈ 0.2% (~$0.003 on $1.5). Paper results will be ~0.2%/trade optimistic vs live (paper ignores fees). Qty precision 2, price precision 3, top-of-book depth ≈ $123 → $1.5 market order slippage negligible.
+- Fresh monitor 2026-09-10 09:46Z: LIT 4.501, 24h −12.96%, score 0.23 (< 0.55) → still zero entries; σ(4H) = 3.00%, vol-ann ≈ 140%.
+- Reconstructed Sep 9 evening protection chain: after the 2 SL hits (−$0.13), the daily row quota (4) was FULL → the 17:15–19:50Z score-eligible window (max 0.71 @ ~4.98) was SKIPPED by design; price since then 4.98 → 4.50 (−9.6%). All three rails (score gate, daily cap, cooldown) demonstrably prevented a 3rd loss on a −13% day. Direct answer to user's "buying at the peak" worry for the CURRENT build; v2 trigger line adds the missing 4th rail (price-level entry control).
+- Live pilot math at $1.5 (round trip incl. fee): FIXED risk ≈ −$0.021/SL, TP ≈ +$0.033 net; VOL risk ≈ −$0.038/SL. On $5: FIXED ≈ −$0.07/SL.
+- Responded with 3-phase roadmap: A) now → ~1 week paper data collection (cron-job.org 5-min POST still the user-side blocker) → verdict on ≥20 closed trades expectancy; B) v2 build (design decision-complete) starting on user's "go", deployed incrementally with zero-regression defaults so the running paper test stays clean; C) live pilot: 1 bot only, $1.5–2, spot-only, Bitget API key with trade permission ONLY and withdrawals disabled (non-negotiable), 10-trade review checkpoint. Honest expectation set: no profit guarantee — target is measured positive expectancy with capped per-trade downside.
+
+Stage Summary:
+- $1.5 live order size verified valid (Bitget LITUSDT min 1 USDT). Risk rails validated by Sep 9–10 data (daily cap skipped a −9.6% window). Awaiting user green light for v2 Phase 1 (multi-bot schema + login gating); cron-job.org remains the critical user-side action.
