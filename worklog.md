@@ -845,3 +845,22 @@ Work Log:
 
 Stage Summary:
 - Bot v2 design record complete: login-gating, candle chart + trigger lines, multi-bot (userId+symbol unique), per-mode TF options (MODERATE 1H/4H/1D, AGGRESSIVE 15M/30M/1H), draggable entry line AND-scored with the gate, TP/SL auto-follow, quotas 5 paper + 2 live.
+
+---
+Task ID: 26-d
+Agent: Super Z (main agent)
+Task: User question — does stopping the bot auto-sell an already-triggered (open) position? Answer + record v2 design addition. NO code changes.
+
+Verified current behavior (engine.ts line 115, api/bot/route.ts, bot-section.tsx):
+- Cron ticks ONLY enabled bots → disabling a bot stops ALL evaluation, including the exits-first ladder: open position gets NO TP, NO SL, NO signal-flip, NO trail. Stop ≠ sell.
+- Open position after stop: paper = virtual row frozen OPEN forever (excluded from report, which counts CLOSED only); live = real coins sit unmanaged in the Bitget spot wallet → user must sell manually on the exchange.
+- No "close position" button or endpoint exists; no cancellable orders exist either — entries are market orders (instant fill) and TP/SL are engine-side virtual levels, not exchange stop orders (ties into existing backlog: exchange-native stops for live).
+- Workaround today: keep the bot ENABLED and let its own ladder exit; or (live) sell manually on Bitget, then disable.
+
+Bot v2 design additions recorded (user request context):
+1. Stop action becomes a CHOICE: "Stop saja" (pause watching, with warning) vs "Stop & Jual" (disable + market-close the open position; paper simulates at ticker, live sends real SELL).
+2. Manual "Close position" button on the open-position card, working regardless of enabled state.
+3. Confirmation dialog when disabling while a position is open: warn that the position becomes unmanaged.
+
+Stage Summary:
+- Question answered honestly: current build does NOT auto-sell on stop — by design the engine only manages what it watches. v2 design now includes stop/close semantics; still ZERO code changes per standing constraint.
