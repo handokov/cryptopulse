@@ -832,3 +832,16 @@ My design recommendations recorded (awaiting user approval at build time):
 
 Stage Summary:
 - Design decisions converging; still ZERO code changes (explicit user constraint). Build order proposal stands: multi-bot → login gating → chart+lines → TF → draggable line.
+
+---
+Task ID: 26-c
+Agent: Super Z (main agent)
+Task: Record user's approved bot-quota decision — design backlog only, no implementation.
+
+Work Log:
+- User APPROVED: max bots per user = 5 paper + 2 live (was my open suggestion in 26-b).
+- Design backlog for bot v2 is now decision-complete on quotas; remaining open items: touch semantics (dip/breakout/any-touch) and final (mode × TF) preset calibration numbers — both settle at build time.
+- Still ZERO code changes per standing user constraint ("web jgn di tambah atau di ubah").
+
+Stage Summary:
+- Bot v2 design record complete: login-gating, candle chart + trigger lines, multi-bot (userId+symbol unique), per-mode TF options (MODERATE 1H/4H/1D, AGGRESSIVE 15M/30M/1H), draggable entry line AND-scored with the gate, TP/SL auto-follow, quotas 5 paper + 2 live.
