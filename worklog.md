@@ -775,3 +775,18 @@ Work Log:
 Stage Summary:
 - Task 23 VOL exit style is LIVE IN PRODUCTION: deployed, migrated, bundle verified, tick chain green. User action: Bot card → Exit Style → VOLATILITY → save (affects positions opened after saving).
 - Open risk: 24/7 tick coverage depends on browser tab or GitHub cron that currently isn't firing — mitigation options handed to user; engine's 4-min tick guard makes overlapping sources harmless.
+
+---
+Task ID: 25
+Agent: Super Z (main agent)
+Task: Day-2 follow-up — confirm scheduled ticks, explain why VOL-mode bot hasn't re-entered.
+
+Work Log:
+- Sandbox recycled between sessions: local repo restored from a stale pre-bot snapshot (9131dd0). Remote was intact (57d9086) → git reset --hard origin/main; monitor scripts recovered. Uploads dir survived.
+- SCHEDULED TICKS CONFIRMED: user's nudge-commit worked — 6 scheduled runs since Sep 9 12:22Z, all success (screenshot + API, total 9 runs). Caveat quantified: GitHub free cron fires ~every 1h43m–4h25m despite */5 — far sparser than nominal. Browser auto-tick remains the fine-grained source while the tab is open; cron-job.org still the real 5-min option.
+- Monitor 03:10Z: LIT 4.679 (24h −4.92%), score 0.317 < 0.55 entry gate (momentum ≈ 0 [RSI ~50], cycle −0.241 falling, drift negative). Last score≥0.55 window closed 2026-09-09 19:50Z; no window since → no BUY today = correct gate behavior, NOT a VOL-mode bug (VOL changes exits only, entries identical).
+- Counterfactual: a BUY at the last window (~5.136, 10:40Z yesterday) would now be −8.90% — the entry gate + daily cap saved the bot from a falling knife. σ(4H)=2.99% → LIT VOL bands when entry does fire: SL ≈ −2.39%, TP ≈ +3.59%, trail arm +2.99%.
+
+Stage Summary:
+- 24/7 tick chain now has 3 layers: GitHub scheduled (confirmed firing, sparse), browser auto-tick (5-min while tab open), manual dispatch. User's question answered: no trigger because score 0.32 is below the unchanged 0.55 entry gate — VOL only widens exits.
+- Multi-day test framing for user: day 1 = FIXED (4 rows, 2 round-trips, 1 noise-stop), day 2+ = VOL; judge after ≥20 closed trades on expectancy.
