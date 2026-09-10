@@ -876,3 +876,22 @@ Work Log:
 
 Stage Summary:
 - Two distinct effects disentangled for the user: (1) zero triggers today = correct score-gate behavior during a −13% correction; (2) loss size anomaly = infrastructure (tick cadence), not strategy. cron-job.org remains the blocking item for a fair multi-day FIXED-vs-VOL test.
+
+---
+Task ID: 27-b
+Agent: Super Z (main agent)
+Task: User sent trades screenshot — verify the −$0.13 slippage hypothesis against actual fills.
+
+Actual data (screenshot, Sep 9, GMT+7, order size $5.00 — NOT the $1.5 discussed earlier):
+- 14:51 BUY @ 5.29600 (score 0.81) → 15:35 SELL @ 5.23100, "price ≤ stop 5.23245" → −$0.06 (−1.227%; slippage vs band 0.03%)
+- 16:25 BUY @ 5.22700 (score 0.80) → 16:50 SELL @ 5.15700, "price ≤ stop 5.16428" → −$0.07 (−1.339%; slippage vs band 0.14%)
+- Stats: 0W/2L, total −$0.13, avg −$0.064/trade.
+
+Findings:
+- Tick-lag slippage hypothesis DISPROVEN — both fills landed 0.03%/0.14% from the band (browser ticks were watching). Execution is clean.
+- The −$0.13 is exactly 2 × (−1.2% × $5) + minor slippage; earlier "theoretical −$0.04" assumed the old $1.5 size. No anomaly whatsoever — engine performed to spec.
+- Counterfactual VOL on this day: round 1's noise wick (low 5.214 vs VOL stop 5.171) would have survived; but round 2's fall was SUSTAINED (LIT −13% day) → VOL would have exited deeper (−2.36%), i.e., wider bands are not a free lunch on trending-down days. Honest framing for the user.
+- Zero trades today = entry gate protecting during the crash (score 0.269 < 0.55). Sizing lever for the user: orderSizeUsdt $5 → per-VOL-stop risk −$0.12; $2 → −$0.05.
+
+Stage Summary:
+- Day-1 verdict: engine correct to the cent; losses = two legitimate −1.2% stops on a falling day with $5 sizing. Statistical verdict still needs ≥20 trades and, for fairness, a steady 5-min tick cadence.
