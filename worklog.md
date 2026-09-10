@@ -924,3 +924,24 @@ Work Log:
 
 Stage Summary:
 - cron-job.org setup is now the user's active task; once confirmed running, next milestone = "gas" for v2 Phase 1 (multi-bot + login gating) while paper data accumulates on a clean 5-minute cadence.
+
+---
+Task ID: 30
+Agent: Super Z (main agent)
+Task: Bot v2 Phase 1 — IMPLEMENT multi-bot per symbol (quotas 5 paper + 2 live) + login-gated dashboards. User green-lit after cron-job.org verified live.
+
+Work Log:
+- Cron-job.org CONFIRMED live by user screenshot (test run 200 OK, 889 ms, "ok":true,"mode":"cron") + my probes: POST without/wrong x-bot-secret → 401 (secret properly set on Vercel). LIT bot now on a true 5-min heartbeat; GitHub Actions stays as fallback (4-min tick guard makes overlap harmless).
+- Schema: BotConfig.userId @unique → plain + @@unique([userId, symbol]); User.botConfig? → botConfigs[]. Local dev synced via prisma db push.
+- Production Turso migration (migrate.ts): UNIQUE(userId) was an inline constraint → auto-index, un-droppable → requires TABLE REBUILD. Implemented as ONE interactive transaction: create BotConfig_new (exact Prisma DDL), copy rows, stash children in constraint-free _mbot_bak tables, empty children (so DROP TABLE's implicit DELETE under foreign_keys=ON has nothing to cascade), swap parent, restore children (ids preserved → FKs valid), drop baks. Any failure rolls back everything. Idempotent via sqlite_master + PRAGMA index_list/index_info detection of a unique (userId, symbol) index.
+- MIGRATION DRY-RUN PROVEN on a synthetic old-shape DB seeded with the user's real Sep-9 data (1 config, 2 closed positions, 3 trades, PnL −0.128): after rebuild — config intact (VOL mode preserved), positions 2, trades 3, pnl sum −0.128, new named unique index present, second bot insert OK, duplicate pair rejected. Test script: scripts/test-mbot-migration.ts.
+- API /api/bot: GET ?symbol= → multi-bot payload {bots[], quota, config(active detail), positions, trades, summary, stats} (no symbol → first bot by createdAt, zero-regression). PUT: path A update-by-id (symbol rename allowed when pair free), path B upsert by (userId,symbol) — keeps old clients valid, path C create with quota enforcement (409 quota_paper/quota_live). DELETE ?id= → owner-checked, blocked 409 open_position (stop ≠ sell: no orphaning managed positions).
+- Engine: UNTOUCHED — already iterates findMany(enabled) with per-config logic keyed by configId. Tick route untouched; ensureBotColumns() now also performs the multi-bot rebuild on first hit after deploy.
+- UI bot-section.tsx: bot switcher chips (symbol + PAPER/LIVE badge + enabled dot), "+ New bot" draft flow (defaults, symbol validated client-side), delete with AlertDialog confirm, quota line "Paper x/5 · Live y/2", tick result filtered to active symbol, auto-tick timer suspended in draft mode. Existing config/report/positions/trade-log UI unchanged.
+- Login gating (page.tsx): GatedSection wrapper on #portfolio + #bot — anonymous visitors get a lock card (Lock icon + CTA) while section headings/anchors stay; skeleton while auth resolves. Reuses auth-store.
+- i18n: new `dashboard` namespace (lockedTitle/lockedBody/lockedCta) + 14 new bot.* keys across id/en/es/pt/ja/zh via scripts/inject-i18n-multibot.mjs; i18n-check: 495/495 keys, ALL CLEAN.
+- Verification: ESLint 0 problems; dev-server restart needed to load regenerated Prisma client (stale `db.botConfig` undefined → fixed); Agent Browser E2E on local: anonymous lock cards ✓, register ✓, new-user defaults ✓, create BTCUSDT ✓, create LITUSDT ✓, chip switching ✓, delete-with-confirm ✓, zero page errors ✓, screenshot scripts/mbot-verify.png.
+- Deployed: commit a132fa8 pushed → Vercel auto-deploy; production probes after deploy (401 probe triggers migration via tick route's ensureBotColumns before auth check).
+
+Stage Summary:
+- v2 Phase 1 LIVE-path complete: multi-bot per symbol with approved quotas + login-gated personal dashboards, migration proven data-safe. LIT paper test continues undisturbed (engine untouched; per-config data keyed identically). Next: Phase 2 = candlestick chart + trigger lines (lightweight-charts), then TF per mode, then draggable entry line (AND-scored) + pending-entry state machine + stop&sell semantics.
