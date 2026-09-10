@@ -25,7 +25,7 @@ model User {
   alerts       PriceAlert[]
   exchanges    ExchangeConnection[]
   resetTokens  PasswordResetToken[]
-  botConfig    BotConfig?
+  botConfigs   BotConfig[]
   botTrades    BotTrade[]
   botPositions BotPosition[]
 }
@@ -44,12 +44,14 @@ model PasswordResetToken {
   @@index([userId])
 }
 
-// Trading-bot configuration — exactly one per user (v1). Spot long-only on
-// Bitget; paper mode simulates fills at the live ticker price and is the
-// DEFAULT so the strategy must prove itself before real money moves.
+// Trading-bot configuration — one per (user, symbol) as of v2 multi-bot
+// (quotas: max 5 paper + 2 live per user, enforced in the API). Spot
+// long-only on Bitget; paper mode simulates fills at the live ticker price
+// and is the DEFAULT so the strategy must prove itself before real money
+// moves.
 model BotConfig {
   id                String    @id @default(cuid())
-  userId            String    @unique
+  userId            String
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // "MODERATE" | "AGGRESSIVE" — selects entry/exit thresholds + TP/SL presets.
   mode              String    @default("MODERATE")
@@ -80,6 +82,9 @@ model BotConfig {
 
   trades    BotTrade[]
   positions BotPosition[]
+
+  // v2 multi-bot: a user runs one bot per symbol.
+  @@unique([userId, symbol])
 }
 
 // One bot position (v1: LONG only). Paper positions live here too so both

@@ -471,6 +471,12 @@ const zh: Messages = {
       "仅供参考，不构成投资建议 —— 模型可能出错，市场可能更离谱。请管理好自己的风险。",
   },
 
+  dashboard: {
+    lockedTitle: "会员专享",
+    lockedBody: "登录后才能打开你的投资组合与交易机器人面板 — 数据按账号私密保存。",
+    lockedCta: "登录 / 注册",
+  },
+
   bot: {
     index: "07",
     title: "交易机器人",
@@ -551,6 +557,20 @@ const zh: Messages = {
     exitStyleVolHint: "区间随资产 4H 波动率缩放：SL 0.8σ、TP 1.2σ + 移动止盈止损。",
     exitStyleVolNote: "σ = 最近 90 根 4H 收益率的标准差。高级设置中已填写的自定义 TP/SL 仍然优先。仅适用于保存后新开的仓位。",
     exit_trail_stop: "移动止损 ×{count}",
+    addBot: "新建机器人",
+    quotaLabel: "模拟 {paper}/{maxPaper} · 实盘 {live}/{maxLive}",
+    newBotHint: "新机器人 — 输入交易对（如 BTCUSDT），设置后保存。",
+    needSymbol: "交易对格式需为 COINUSDT，例如 BTCUSDT。",
+    deleteBot: "删除机器人",
+    deleteTitle: "删除机器人 {symbol}？",
+    deleteBody: "将永久删除该机器人的全部交易记录。仍有持仓的机器人无法删除。",
+    deleteAction: "删除",
+    cancel: "取消",
+    deleted: "机器人 {symbol} 已删除",
+    deleteBlocked: "仍有未平仓持仓 — 无法删除",
+    symbolExists: "该交易对已有自己的机器人",
+    quotaPaper: "模拟机器人配额已满（最多 {max}）",
+    quotaLive: "实盘机器人配额已满（最多 {max}）",
     disclaimer:
       "教育性质的自动化，不构成投资建议。加密货币波动剧烈——切勿动用你承受不起损失的资金。",
   },

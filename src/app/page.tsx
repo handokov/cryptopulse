@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { Lock } from "lucide-react";
 import { SiteHeader } from "@/components/crypto/site-header";
 import { SiteFooter } from "@/components/crypto/site-footer";
 import { MorphingHero } from "@/components/crypto/morphing-hero";
@@ -13,6 +14,8 @@ import { NewsFeed } from "@/components/crypto/news-feed";
 import { PortfolioSection } from "@/components/crypto/portfolio-section";
 import { BotSection } from "@/components/crypto/bot-section";
 import { Newspaper } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/store/auth-store";
 
 function SectionHeading({
   index,
@@ -30,6 +33,33 @@ function SectionHeading({
       <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>
     </div>
   );
+}
+
+/**
+ * v2 login gating: the personal dashboards (portfolio, trading bot) render
+ * only for signed-in users. Public visitors see a compact lock card with a
+ * sign-in CTA — section anchors keep working and the heading stays visible.
+ */
+function GatedSection({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("dashboard");
+  const user = useAuthStore((s) => s.user);
+  const status = useAuthStore((s) => s.status);
+  const setDialogOpen = useAuthStore((s) => s.setDialogOpen);
+
+  if (status === "loading") {
+    return <div className="h-40 animate-pulse rounded-xl border border-border bg-card/50" aria-hidden />;
+  }
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-8 text-center">
+        <Lock className="h-7 w-7 text-primary" aria-hidden />
+        <h3 className="text-lg font-semibold">{t("lockedTitle")}</h3>
+        <p className="max-w-md text-sm text-muted-foreground">{t("lockedBody")}</p>
+        <Button onClick={() => setDialogOpen(true)}>{t("lockedCta")}</Button>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 export default function Home() {
@@ -102,24 +132,28 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 06 — Portfolio dashboard */}
+        {/* 06 — Portfolio dashboard (signed-in only) */}
         <section id="portfolio" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tPortfolio("title")}>
           <SectionHeading
             index={tPortfolio("index")}
             title={tPortfolio("title")}
             subtitle={tPortfolio("subtitle")}
           />
-          <PortfolioSection />
+          <GatedSection>
+            <PortfolioSection />
+          </GatedSection>
         </section>
 
-        {/* 07 — Trading bot */}
+        {/* 07 — Trading bot (signed-in only) */}
         <section id="bot" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16" aria-label={tBot("title")}>
           <SectionHeading
             index={tBot("index")}
             title={tBot("title")}
             subtitle={tBot("subtitle")}
           />
-          <BotSection />
+          <GatedSection>
+            <BotSection />
+          </GatedSection>
         </section>
       </main>
 

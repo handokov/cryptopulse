@@ -1,9 +1,16 @@
 /**
- * GET  /api/bot — the signed-in user's bot: config (or defaults), open
- *                 positions, last 25 trades, today's summary.
- * PUT  /api/bot — upsert the single BotConfig. Validation is strict:
- *                 mode preset, symbol shape, size ≥ 1.5 USDT (user floor),
- *                 sane trade/loss caps. Going LIVE requires confirmLive:true.
+ * Multi-bot API (v2) — one bot per (user, symbol); quotas: 5 paper + 2 live.
+ *
+ * GET    /api/bot?symbol=LITUSDT — the user's bot LIST (`bots`) + quota usage,
+ *        plus the ACTIVE bot's detail (config, open positions, last 25 trades,
+ *        today's summary, all-time stats). `?symbol` picks the active bot;
+ *        omitted/unknown falls back to the first bot (ascending creation).
+ * PUT    /api/bot — create or update. With `id` → update that bot (symbol
+ *        rename allowed when the pair is free). Without `id` → upsert by
+ *        (userId, symbol): existing pair updates, new pair creates (quota
+ *        enforced). Validation identical to v1; LIVE enable needs confirmLive.
+ * DELETE /api/bot?id=… — remove a bot. Blocked while it has an OPEN position
+ *        (stop ≠ sell: the bot manages its exits, deleting would orphan them).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,12 +22,14 @@ import { ensureBotColumns } from "@/lib/bot/migrate";
 export const dynamic = "force-dynamic";
 
 const SYMBOL_RE = /^[A-Z0-9]{2,10}USDT$/;
+const MAX_PAPER_BOTS = 5;
+const MAX_LIVE_BOTS = 2;
 
-function defaults(userId: string) {
+function defaults(userId: string, symbol: string) {
   return {
     userId,
     mode: "MODERATE" as BotMode,
-    symbol: "BTCUSDT",
+    symbol,
     paper: true,
     enabled: false,
     orderSizeUsdt: 5,
@@ -30,12 +39,14 @@ function defaults(userId: string) {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   await ensureBotColumns();
 
-  const config = (await db.botConfig.findUnique({ where: { userId: user.id } })) ?? null;
+  const wantSymbol = (new URL(req.url).searchParams.get("symbol") ?? "").toUpperCase();
+  const configs = await db.botConfig.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
+  const config = configs.find((c) => c.symbol === wantSymbol) ?? configs[0] ?? null;
   const configId = config?.id ?? "";
   const [positions, trades] = await Promise.all([
     configId
@@ -113,7 +124,32 @@ export async function GET() {
     dailyPnl,
   };
 
-  return NextResponse.json({ config: config ?? { ...defaults(user.id), id: null }, positions, trades, summary, stats });
+  /* multi-bot payload: light list + quota usage */
+  const bots = configs.map((c) => ({
+    id: c.id,
+    symbol: c.symbol,
+    mode: c.mode as BotMode,
+    paper: c.paper,
+    enabled: c.enabled,
+    exitStyle: c.exitStyle ?? "FIXED",
+    orderSizeUsdt: c.orderSizeUsdt,
+  }));
+  const quota = {
+    paper: configs.filter((c) => c.paper).length,
+    live: configs.filter((c) => !c.paper).length,
+    maxPaper: MAX_PAPER_BOTS,
+    maxLive: MAX_LIVE_BOTS,
+  };
+
+  return NextResponse.json({
+    config: config ?? { ...defaults(user.id, wantSymbol || "BTCUSDT"), id: null },
+    bots,
+    quota,
+    positions,
+    trades,
+    summary,
+    stats,
+  });
 }
 
 export async function PUT(req: NextRequest) {
@@ -182,11 +218,65 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const config = await db.botConfig.upsert({
-    where: { userId: user.id },
-    update: { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle },
-    create: { userId: user.id, mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle },
-  });
+  const data = { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle };
 
+  /* Path A — explicit bot id: update that bot (owner-checked). */
+  const rawId = typeof body.id === "string" ? body.id.trim() : "";
+  if (rawId) {
+    const existing = await db.botConfig.findFirst({ where: { id: rawId, userId: user.id } });
+    if (!existing) {
+      return NextResponse.json({ error: "not_found", message: "bot not found" }, { status: 404 });
+    }
+    if (symbol !== existing.symbol) {
+      const clash = await db.botConfig.findUnique({ where: { userId_symbol: { userId: user.id, symbol } } });
+      if (clash) {
+        return NextResponse.json({ error: "symbol_exists", message: `another bot already runs ${symbol}` }, { status: 409 });
+      }
+    }
+    const config = await db.botConfig.update({ where: { id: existing.id }, data });
+    return NextResponse.json({ ok: true, config });
+  }
+
+  /* Path B — upsert by (userId, symbol): keeps old single-bot clients working
+     (they send no id) and is exactly "edit the bot of this symbol". */
+  const existing = await db.botConfig.findUnique({ where: { userId_symbol: { userId: user.id, symbol } } });
+  if (existing) {
+    const config = await db.botConfig.update({ where: { id: existing.id }, data });
+    return NextResponse.json({ ok: true, config });
+  }
+
+  /* Path C — create a NEW bot: enforce the approved quotas (5 paper / 2 live). */
+  const sameKind = await db.botConfig.count({ where: { userId: user.id, paper } });
+  if (paper && sameKind >= MAX_PAPER_BOTS) {
+    return NextResponse.json({ error: "quota_paper", message: `max ${MAX_PAPER_BOTS} paper bots` }, { status: 409 });
+  }
+  if (!paper && sameKind >= MAX_LIVE_BOTS) {
+    return NextResponse.json({ error: "quota_live", message: `max ${MAX_LIVE_BOTS} live bots` }, { status: 409 });
+  }
+  const config = await db.botConfig.create({ data: { userId: user.id, ...data } });
   return NextResponse.json({ ok: true, config });
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  await ensureBotColumns();
+
+  const id = new URL(req.url).searchParams.get("id") ?? "";
+  if (!id) {
+    return NextResponse.json({ error: "validation", message: "id is required" }, { status: 400 });
+  }
+  const cfg = await db.botConfig.findFirst({ where: { id, userId: user.id } });
+  if (!cfg) {
+    return NextResponse.json({ error: "not_found", message: "bot not found" }, { status: 404 });
+  }
+  const open = await db.botPosition.count({ where: { configId: id, status: "OPEN" } });
+  if (open > 0) {
+    return NextResponse.json(
+      { error: "open_position", message: "bot has an open position — close it first" },
+      { status: 409 }
+    );
+  }
+  await db.botConfig.delete({ where: { id } }); // cascades trades + closed positions
+  return NextResponse.json({ ok: true });
 }

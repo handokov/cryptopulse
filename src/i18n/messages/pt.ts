@@ -474,6 +474,12 @@ const pt: Messages = {
       "Apenas para fins informativos. Nada aqui é recomendação financeira — modelos podem errar e os mercados podem ser mais estranhos. Gerencie seu risco.",
   },
 
+  dashboard: {
+    lockedTitle: "Somente membros",
+    lockedBody: "Entre para abrir seu painel de portfólio e bot de negociação — seus dados ficam privados por conta.",
+    lockedCta: "Entrar / Criar conta",
+  },
+
   bot: {
     index: "07",
     title: "Bot de trading",
@@ -554,6 +560,20 @@ const pt: Messages = {
     exitStyleVolHint: "Faixas escaladas pela volatilidade 4H do ativo: SL 0,8σ, TP 1,2σ + stop móvel.",
     exitStyleVolNote: "σ = desvio padrão dos últimos 90 retornos de 4H. Um TP/SL personalizado em Avançado ainda vence quando preenchido. Vale para posições abertas após salvar.",
     exit_trail_stop: "stop móvel ×{count}",
+    addBot: "Novo bot",
+    quotaLabel: "Paper {paper}/{maxPaper} · Live {live}/{maxLive}",
+    newBotHint: "Novo bot — digite um símbolo (ex.: BTCUSDT), configure e salve.",
+    needSymbol: "O símbolo deve estar no formato COINUSDT, ex.: BTCUSDT.",
+    deleteBot: "Excluir bot",
+    deleteTitle: "Excluir o bot {symbol}?",
+    deleteBody: "Todo o histórico de negociações deste bot será excluído permanentemente. Bots com posição aberta não podem ser excluídos.",
+    deleteAction: "Excluir",
+    cancel: "Cancelar",
+    deleted: "Bot {symbol} excluído",
+    deleteBlocked: "Ainda há posição aberta — o bot não pode ser excluído",
+    symbolExists: "Esse símbolo já tem seu próprio bot",
+    quotaPaper: "Cota de bots paper cheia (máx. {max})",
+    quotaLive: "Cota de bots live cheia (máx. {max})",
     disclaimer:
       "Automação educativa, não aconselhamento financeiro. Cripto é volátil — nunca opere com dinheiro que você não pode perder.",
   },

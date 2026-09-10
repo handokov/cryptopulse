@@ -473,6 +473,12 @@ const ja: Messages = {
       "情報提供のみを目的としています。投資助言ではありません ― モデルは間違うことも、市場はもっと不条理なことも。リスク管理を。",
   },
 
+  dashboard: {
+    lockedTitle: "メンバー限定",
+    lockedBody: "ポートフォリオと取引ボットのダッシュボードはログイン後に利用できます。データはアカウントごとに非公開です。",
+    lockedCta: "ログイン / アカウント作成",
+  },
+
   bot: {
     index: "07",
     title: "トレードボット",
@@ -553,6 +559,20 @@ const ja: Messages = {
     exitStyleVolHint: "資産の4Hボラティリティに応じて帯域を調整：SL 0.8σ、TP 1.2σ + トレーリングストップ。",
     exitStyleVolNote: "σ = 直近90本の4Hリターンの標準偏差。高度な設定のカスタムTP/SL入力時はそちらが優先。保存後に開いたポジションに適用。",
     exit_trail_stop: "トレーリング ×{count}",
+    addBot: "新しいボット",
+    quotaLabel: "Paper {paper}/{maxPaper} · Live {live}/{maxLive}",
+    newBotHint: "新しいボット — シンボル（例：BTCUSDT）を入力して設定し、保存してください。",
+    needSymbol: "シンボルは COINUSDT 形式で入力してください（例：BTCUSDT）。",
+    deleteBot: "ボットを削除",
+    deleteTitle: "ボット {symbol} を削除しますか？",
+    deleteBody: "このボットの全取引履歴が完全に削除されます。ポジションが開いているボットは削除できません。",
+    deleteAction: "削除",
+    cancel: "キャンセル",
+    deleted: "ボット {symbol} を削除しました",
+    deleteBlocked: "ポジションが開いているため削除できません",
+    symbolExists: "そのシンボルのボットはすでに存在します",
+    quotaPaper: "ペーパーボットの上限に達しました（最大 {max}）",
+    quotaLive: "ライブボットの上限に達しました（最大 {max}）",
     disclaimer:
       "教育目的のオートメーションであり、投資助言ではありません。暗号資産は変動が激しいため、失っても構わない資金だけでお願いします。",
   },

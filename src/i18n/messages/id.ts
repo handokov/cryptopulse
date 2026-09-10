@@ -474,6 +474,12 @@ const id: Messages = {
       "Hanya untuk tujuan informasi. Bukan nasihat keuangan — model bisa salah, pasar bisa lebih aneh. Kelola risiko Anda.",
   },
 
+  dashboard: {
+    lockedTitle: "Khusus anggota",
+    lockedBody: "Masuk untuk membuka dasbor portofolio dan bot trading Anda — datanya privat per akun.",
+    lockedCta: "Masuk / Buat akun",
+  },
+
   bot: {
     index: "07",
     title: "Bot Trading",
@@ -555,6 +561,20 @@ const id: Messages = {
     exitStyleVolHint: "Band menyesuaikan volatilitas 4H aset: SL 0,8σ, TP 1,2σ + trailing stop.",
     exitStyleVolNote: "σ = simpangan baku 90 return 4H terakhir. TP/SL kustom di Advanced tetap menang bila diisi. Berlaku untuk posisi yang dibuka setelah menyimpan.",
     exit_trail_stop: "trail-stop ×{count}",
+    addBot: "Bot baru",
+    quotaLabel: "Paper {paper}/{maxPaper} · Live {live}/{maxLive}",
+    newBotHint: "Bot baru — isi simbol (contoh: BTCUSDT), atur, lalu Simpan.",
+    needSymbol: "Simbol harus berformat COINUSDT, contoh BTCUSDT.",
+    deleteBot: "Hapus bot",
+    deleteTitle: "Hapus bot {symbol}?",
+    deleteBody: "Seluruh riwayat transaksi bot ini ikut terhapus permanen. Bot yang masih punya posisi terbuka tidak bisa dihapus.",
+    deleteAction: "Hapus",
+    cancel: "Batal",
+    deleted: "Bot {symbol} dihapus",
+    deleteBlocked: "Masih ada posisi terbuka — bot tidak bisa dihapus",
+    symbolExists: "Simbol itu sudah punya bot sendiri",
+    quotaPaper: "Kuota bot paper penuh (maks {max})",
+    quotaLive: "Kuota bot live penuh (maks {max})",
     disclaimer:
       "Otomasi edukasi, bukan nasihat keuangan. Kripto sangat volatil — jangan pernah memakai uang yang tidak siap Anda kehilangan.",
   },

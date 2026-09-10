@@ -474,6 +474,12 @@ const en = {
       "For informational purposes only. Nothing here is financial advice — models can be wrong, markets can be weirder. Manage your risk.",
   },
 
+  dashboard: {
+    lockedTitle: "Members only",
+    lockedBody: "Sign in to open your portfolio and trading-bot dashboard — your data stays private per account.",
+    lockedCta: "Sign in / Create account",
+  },
+
   bot: {
     index: "07",
     title: "Trading Bot",
@@ -555,6 +561,20 @@ const en = {
     exitStyleVolHint: "Bands scale with the asset's own 4H volatility: SL 0.8σ, TP 1.2σ + trailing stop.",
     exitStyleVolNote: "σ = stdev of the last 90 4H returns. A custom TP/SL in Advanced still wins when filled. Applies to positions opened after saving.",
     exit_trail_stop: "trail-stop ×{count}",
+    addBot: "New bot",
+    quotaLabel: "Paper {paper}/{maxPaper} · Live {live}/{maxLive}",
+    newBotHint: "New bot — enter a symbol (e.g. BTCUSDT), configure, then Save.",
+    needSymbol: "Symbol must look like COINUSDT, e.g. BTCUSDT.",
+    deleteBot: "Delete bot",
+    deleteTitle: "Delete bot {symbol}?",
+    deleteBody: "This permanently removes the bot's entire trade history. Bots with an open position cannot be deleted.",
+    deleteAction: "Delete",
+    cancel: "Cancel",
+    deleted: "Bot {symbol} deleted",
+    deleteBlocked: "Still has an open position — the bot cannot be deleted",
+    symbolExists: "That symbol already has its own bot",
+    quotaPaper: "Paper bot quota full (max {max})",
+    quotaLive: "Live bot quota full (max {max})",
     disclaimer:
       "Educational automation, not financial advice. Crypto is volatile — never trade money you cannot afford to lose.",
   },

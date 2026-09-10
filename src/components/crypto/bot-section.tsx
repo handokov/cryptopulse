@@ -2,12 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Bot, Loader2, Play, Server, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Bot, Loader2, Play, Plus, Server, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuthStore } from "@/store/auth-store";
 
 /* ---------------- types (mirror the API contracts) ---------------- */
@@ -24,6 +34,23 @@ interface BotConfig {
   takeProfitPct: number | null;
   stopLossPct: number | null;
   exitStyle: "FIXED" | "VOL";
+}
+
+interface BotLight {
+  id: string;
+  symbol: string;
+  mode: "MODERATE" | "AGGRESSIVE";
+  paper: boolean;
+  enabled: boolean;
+  exitStyle: "FIXED" | "VOL";
+  orderSizeUsdt: number;
+}
+
+interface BotQuota {
+  paper: number;
+  live: number;
+  maxPaper: number;
+  maxLive: number;
 }
 
 interface BotPosition {
@@ -82,6 +109,22 @@ interface TickResult {
 
 const AUTO_TICK_MS = 5 * 60_000;
 
+function draftConfig(): BotConfig {
+  return {
+    id: null,
+    mode: "MODERATE",
+    symbol: "",
+    paper: true,
+    enabled: false,
+    orderSizeUsdt: 5,
+    maxTradesPerDay: 4,
+    dailyLossLimitUsdt: 20,
+    takeProfitPct: null,
+    stopLossPct: null,
+    exitStyle: "FIXED",
+  };
+}
+
 export function BotSection() {
   const t = useTranslations("bot");
   const user = useAuthStore((s) => s.user);
@@ -89,6 +132,10 @@ export function BotSection() {
   const setDialogOpen = useAuthStore((s) => s.setDialogOpen);
 
   const [cfg, setCfg] = useState<BotConfig | null>(null);
+  const [bots, setBots] = useState<BotLight[]>([]);
+  const [quota, setQuota] = useState<BotQuota | null>(null);
+  const [activeSymbol, setActiveSymbol] = useState<string | null>(null);
+  const [draft, setDraft] = useState(false);
   const [positions, setPositions] = useState<BotPosition[]>([]);
   const [trades, setTrades] = useState<BotTrade[]>([]);
   const [summary, setSummary] = useState<BotSummary | null>(null);
@@ -96,18 +143,23 @@ export function BotSection() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmLive, setConfirmLive] = useState(false);
   const [lastTick, setLastTick] = useState<TickResult | null>(null);
   const [preset, setPreset] = useState<{ MODERATE: { takeProfitPct: number; stopLossPct: number; maxTradesPerDay: number; cooldownMin: number }; AGGRESSIVE: { takeProfitPct: number; stopLossPct: number; maxTradesPerDay: number; cooldownMin: number } } | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (symbol?: string | null) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/bot", { cache: "no-store" });
+      const qs = symbol ? `?symbol=${encodeURIComponent(symbol)}` : "";
+      const res = await fetch(`/api/bot${qs}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setCfg(data.config);
+        setBots(data.bots ?? []);
+        setQuota(data.quota ?? null);
         setPositions(data.positions ?? []);
         setTrades(data.trades ?? []);
         setSummary(data.summary ?? null);
@@ -120,7 +172,7 @@ export function BotSection() {
   }, []);
 
   useEffect(() => {
-    if (status === "authenticated") void load();
+    if (status === "authenticated") void load(activeSymbol);
   }, [status, load]);
 
   const runTick = useCallback(
@@ -130,12 +182,13 @@ export function BotSection() {
         const res = await fetch("/api/bot/tick", { method: "POST" });
         if (res.ok) {
           const data = await res.json();
-          const first = (data.results?.[0] ?? null) as TickResult | null;
-          setLastTick(first);
-          if (!silent && first) {
-            toast.success(`${first.action} · ${first.reason}`);
+          const results = (data.results ?? []) as TickResult[];
+          const mine = results.find((r) => r.symbol === activeSymbol) ?? results[0] ?? null;
+          setLastTick(mine);
+          if (!silent && mine) {
+            toast.success(`${mine.action} · ${mine.reason}`);
           }
-          await load();
+          await load(activeSymbol);
         } else if (!silent) {
           toast.error(t("saveError"));
         }
@@ -143,19 +196,38 @@ export function BotSection() {
         setRunning(false);
       }
     },
-    [load, t]
+    [activeSymbol, load, t]
   );
 
   /* While the page is open and the bot is enabled, tick every 5 minutes. */
   useEffect(() => {
     if (tickTimer.current) clearInterval(tickTimer.current);
-    if (cfg?.enabled) {
+    if (cfg?.enabled && !draft) {
       tickTimer.current = setInterval(() => void runTick(true), AUTO_TICK_MS);
     }
     return () => {
       if (tickTimer.current) clearInterval(tickTimer.current);
     };
-  }, [cfg?.enabled, runTick]);
+  }, [cfg?.enabled, draft, runTick]);
+
+  const selectBot = (symbol: string) => {
+    setDraft(false);
+    setActiveSymbol(symbol);
+    setConfirmLive(false);
+    setLastTick(null);
+    void load(symbol);
+  };
+
+  const startDraft = () => {
+    setDraft(true);
+    setCfg(draftConfig());
+    setPositions([]);
+    setTrades([]);
+    setSummary(null);
+    setStats(null);
+    setLastTick(null);
+    setConfirmLive(false);
+  };
 
   const save = async () => {
     if (!cfg) return;
@@ -168,17 +240,50 @@ export function BotSection() {
       });
       const data = await res.json();
       if (res.ok) {
-        setCfg(data.config);
+        const savedSymbol: string = data.config?.symbol ?? cfg.symbol.toUpperCase();
         setConfirmLive(false);
         toast.success(t("saved"));
-        await load();
+        if (draft) {
+          setDraft(false);
+          setActiveSymbol(savedSymbol);
+          await load(savedSymbol);
+        } else {
+          await load(activeSymbol);
+        }
       } else if (data?.error === "confirm_live") {
         toast.error(data.message ?? t("liveWarn"));
+      } else if (data?.error === "symbol_exists") {
+        toast.error(t("symbolExists"));
+      } else if (data?.error === "quota_paper") {
+        toast.error(t("quotaPaper", { max: quota?.maxPaper ?? 5 }));
+      } else if (data?.error === "quota_live") {
+        toast.error(t("quotaLive", { max: quota?.maxLive ?? 2 }));
       } else {
         toast.error(data?.message ?? t("saveError"));
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteBot = async () => {
+    if (!cfg?.id) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/bot?id=${encodeURIComponent(cfg.id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(t("deleted", { symbol: cfg.symbol }));
+        setConfirmDelete(false);
+        setActiveSymbol(null);
+        await load(null);
+      } else if (data?.error === "open_position") {
+        toast.error(t("deleteBlocked"));
+      } else {
+        toast.error(data?.message ?? t("saveError"));
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -200,9 +305,61 @@ export function BotSection() {
   if (!cfg) return null;
 
   const modePreset = preset?.[cfg.mode] ?? null;
+  const symbolValid = /^[A-Z0-9]{2,10}USDT$/.test(cfg.symbol.toUpperCase());
 
   return (
     <div className="flex flex-col gap-5">
+      {/* bot switcher — one chip per bot, plus the "new bot" chip */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {bots.map((b) => {
+            const active = !draft && cfg.id === b.id;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => selectBot(b.symbol)}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-xs transition-colors ${
+                  active ? "border-primary/50 bg-primary/10" : "border-border hover:border-foreground/25"
+                }`}
+                aria-pressed={active}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${b.enabled ? "bg-primary" : b.paper ? "bg-accent/60" : "bg-amber-500"}`}
+                  aria-hidden
+                />
+                <span className={`font-semibold ${active ? "text-primary" : ""}`}>{b.symbol}</span>
+                <span className={`rounded px-1 py-0.5 text-[9px] font-bold ${b.paper ? "bg-accent/10 text-accent" : "bg-amber-500/10 text-amber-500"}`}>
+                  {b.paper ? t("paperBadge") : t("liveBadge")}
+                </span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={startDraft}
+            className={`flex items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-xs transition-colors ${
+              draft ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground"
+            }`}
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            {t("addBot")}
+          </button>
+        </div>
+        {quota && (
+          <p className="tnum mt-2 text-[10px] text-muted-foreground">
+            {t("quotaLabel", { paper: quota.paper, maxPaper: quota.maxPaper, live: quota.live, maxLive: quota.maxLive })}
+          </p>
+        )}
+      </div>
+
+      {/* new-bot banner */}
+      {draft && (
+        <p className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+          {t("newBotHint")}
+        </p>
+      )}
+
       {/* status strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border border-border bg-card px-3 py-2.5">
@@ -310,6 +467,9 @@ export function BotSection() {
               onChange={(e) => setCfg({ ...cfg, symbol: e.target.value.toUpperCase() })}
               placeholder="BTCUSDT"
             />
+            {draft && !symbolValid && cfg.symbol.length > 0 && (
+              <p className="mt-1 text-[10px] text-destructive">{t("needSymbol")}</p>
+            )}
           </div>
           <div>
             <Label htmlFor="bot-size" className="text-xs">{t("orderSize")}</Label>
@@ -422,14 +582,25 @@ export function BotSection() {
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={save} disabled={saving} className="gap-1.5">
+          <Button onClick={save} disabled={saving || (draft && !symbolValid)} className="gap-1.5">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             {t("save")}
           </Button>
-          <Button variant="outline" onClick={() => void runTick(false)} disabled={running} className="gap-1.5">
+          <Button variant="outline" onClick={() => void runTick(false)} disabled={running || draft} className="gap-1.5">
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {running ? t("running") : t("runNow")}
           </Button>
+          {!draft && cfg.id !== null && (
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {t("deleteBot")}
+            </Button>
+          )}
           {lastTick && (
             <span className="tnum text-[11px] text-muted-foreground">
               {lastTick.action} · {lastTick.reason}
@@ -439,6 +610,28 @@ export function BotSection() {
         <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/75">{t("autoNote")}</p>
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/75">{t("needKeyNote")}</p>
       </div>
+
+      {/* delete confirmation */}
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteTitle", { symbol: cfg.symbol })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("deleteBody")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void deleteBot();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : t("deleteAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* performance report */}
       {stats && stats.closedCount > 0 && (() => {
