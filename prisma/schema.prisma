@@ -76,6 +76,17 @@ model BotConfig {
   //           σ = stdev of the last 90 4H log returns of the traded symbol.
   //           Explicit user TP/SL overrides still win per-band when set.
   exitStyle         String    @default("FIXED")
+  // v2 phase 2 — signal timeframe the engine runs on ("15M"|"30M"|"1H"|"4H"|"1D").
+  // Options are gated by mode (MODERATE 1H/4H/1D, AGGRESSIVE 15M/30M/1H);
+  // the 4H default reproduces the pre-TF engine byte-for-byte.
+  timeframe         String    @default("4H")
+  // Manual entry-trigger price level (the draggable line on the chart).
+  // null = line gating OFF (exact pre-v2 behavior). When set, a BUY needs
+  // score ≥ threshold AND the live price touching/crossing this level.
+  entryLine         Float?
+  // Engine tick bookkeeping: last ticker price seen — lets the next tick
+  // detect a crossing of entryLine even when the price gapped past it.
+  lastPrice         Float?
   lastTickAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

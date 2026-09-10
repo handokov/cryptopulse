@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { MODE_PRESETS, type BotMode } from "@/lib/bot/strategy";
+import { MODE_PRESETS, TF_OPTIONS, TF_DEFAULT, cooldownMinFor, type BotMode, type BotTimeframe } from "@/lib/bot/strategy";
 import { ensureBotColumns } from "@/lib/bot/migrate";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,8 @@ function defaults(userId: string, symbol: string) {
     maxTradesPerDay: MODE_PRESETS.MODERATE.maxTradesPerDay,
     dailyLossLimitUsdt: 20,
     exitStyle: "FIXED" as const,
+    timeframe: "4H" as BotTimeframe,
+    entryLine: null as number | null,
   };
 }
 
@@ -69,7 +71,10 @@ export async function GET(req: NextRequest) {
     tradesToday: relevant.length,
     realizedTodayUsdt: relevant.reduce((acc, t) => acc + (t.pnlUsdt ?? 0), 0),
     maxTradesPerDay: config ? MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay : null,
+    cooldownMin: config ? cooldownMinFor((config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE", config.timeframe ?? "4H") : null,
+    timeframe: config?.timeframe ?? null,
     presets: MODE_PRESETS,
+    tfOptions: TF_OPTIONS,
   };
 
   /* ---- performance stats (all-time, for the current paper/live mode) ---- */
@@ -133,6 +138,8 @@ export async function GET(req: NextRequest) {
     enabled: c.enabled,
     exitStyle: c.exitStyle ?? "FIXED",
     orderSizeUsdt: c.orderSizeUsdt,
+    timeframe: c.timeframe ?? "4H",
+    entryLine: c.entryLine ?? null,
   }));
   const quota = {
     paper: configs.filter((c) => c.paper).length,
@@ -211,6 +218,24 @@ export async function PUT(req: NextRequest) {
      Anything but an explicit "VOL" resolves to FIXED — old clients stay valid. */
   const exitStyle = body.exitStyle === "VOL" ? "VOL" : "FIXED";
 
+  /* v2 phase 2 — signal timeframe, gated by mode (user-approved design:
+     MODERATE 1H/4H/1D, AGGRESSIVE 15M/30M/1H). Invalid/absent → mode default. */
+  const tfOpts = TF_OPTIONS[mode as BotMode] ?? TF_OPTIONS.MODERATE;
+  const rawTf = typeof body.timeframe === "string" ? body.timeframe.toUpperCase() : "";
+  const timeframe: BotTimeframe = tfOpts.includes(rawTf as BotTimeframe)
+    ? (rawTf as BotTimeframe)
+    : TF_DEFAULT[mode as BotMode] ?? "4H";
+
+  /* v2 phase 2 — entry line: null = gate OFF; otherwise a positive price. */
+  let entryLine: number | null = null;
+  if (body.entryLine !== null && body.entryLine !== undefined && body.entryLine !== "") {
+    const n = Number(body.entryLine);
+    if (!Number.isFinite(n) || n <= 0 || n > 1e12) {
+      return NextResponse.json({ error: "validation", message: "entry line must be a positive price" }, { status: 400 });
+    }
+    entryLine = n;
+  }
+
   if (!paper && enabled && !confirmLive) {
     return NextResponse.json(
       { error: "confirm_live", message: "enabling a LIVE bot requires explicit confirmation" },
@@ -218,7 +243,7 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const data = { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle };
+  const data = { mode, symbol, paper, enabled, orderSizeUsdt, maxTradesPerDay, dailyLossLimitUsdt, takeProfitPct, stopLossPct, exitStyle, timeframe, entryLine };
 
   /* Path A — explicit bot id: update that bot (owner-checked). */
   const rawId = typeof body.id === "string" ? body.id.trim() : "";

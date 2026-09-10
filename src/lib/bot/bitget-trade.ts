@@ -25,6 +25,25 @@ export const BAR_GRANULARITY = "4h";
 /** Bars per year for annualizing volatility on 4H bars (crypto trades 24/7). */
 export const BARS_PER_YEAR = 365 * 6;
 
+/* v2 phase 2 — timeframe-aware market data.
+   Bitget v2 candle granularity strings are LOWERCASE for hour bars and
+   "1day" for daily (verified against the live API — "4H"/"1H"/"1D" are
+   rejected with code 400171), one entry per supported BotTimeframe. */
+export const TF_GRANULARITY: Record<string, string> = {
+  "15M": "15min",
+  "30M": "30min",
+  "1H": "1h",
+  "4H": "4h",
+  "1D": "1day",
+};
+
+/** Crypto trades 24/7 — bars per year is purely a function of bar length. */
+export function barsPerYearFor(tf: string): number {
+  const minutes: Record<string, number> = { "15M": 15, "30M": 30, "1H": 60, "4H": 240, "1D": 1440 };
+  const m = minutes[tf];
+  return m ? Math.round((365 * 24 * 60) / m) : BARS_PER_YEAR;
+}
+
 export interface Klines {
   /** Oldest → newest close prices. */
   closes: number[];
@@ -36,8 +55,9 @@ interface RawCandleRow {
 }
 
 /** GET /api/v2/spot/market/candles — public. */
-export async function fetchCloses(symbol: string, limit = 160): Promise<Klines> {
-  const path = `/api/v2/spot/market/candles?symbol=${encodeURIComponent(symbol)}&granularity=${BAR_GRANULARITY}&limit=${limit}`;
+export async function fetchCloses(symbol: string, limit = 160, tf = "4H"): Promise<Klines> {
+  const granularity = TF_GRANULARITY[tf] ?? BAR_GRANULARITY;
+  const path = `/api/v2/spot/market/candles?symbol=${encodeURIComponent(symbol)}&granularity=${granularity}&limit=${limit}`;
   const res = await signedFetch(`${BASE}${path}`, { method: "GET" });
   if (!res.ok) throw new Error(`bitget candles HTTP ${res.status}`);
   const body = (await res.json()) as { code?: unknown; data?: RawCandleRow[] | null };
@@ -47,6 +67,45 @@ export async function fetchCloses(symbol: string, limit = 160): Promise<Klines> 
     .filter((v) => v > 0);
   if (closes.length < 30) throw new Error("bitget candles too short");
   return { closes, lastClose: closes[closes.length - 1] };
+}
+
+export interface Candle {
+  /** Unix seconds (lightweight-charts UTCTimestamp). */
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+interface RawOhlcRow {
+  0?: unknown; 1?: unknown; 2?: unknown; 3?: unknown; 4?: unknown;
+}
+
+/**
+ * GET /api/v2/spot/market/candles — full OHLC rows for the chart, ascending
+ * by time. The last row is the still-forming bar (same data the engine's
+ * fetchCloses sees), which keeps chart and engine perfectly in sync.
+ */
+export async function fetchCandles(symbol: string, tf = "4H", limit = 180): Promise<Candle[]> {
+  const granularity = TF_GRANULARITY[tf] ?? BAR_GRANULARITY;
+  const path = `/api/v2/spot/market/candles?symbol=${encodeURIComponent(symbol)}&granularity=${granularity}&limit=${limit}`;
+  const res = await signedFetch(`${BASE}${path}`, { method: "GET" });
+  if (!res.ok) throw new Error(`bitget candles HTTP ${res.status}`);
+  const body = (await res.json()) as { code?: unknown; data?: RawOhlcRow[] | null };
+  if (body.code !== "00000" || !Array.isArray(body.data)) throw new Error("bitget candles bad payload");
+  const rows = body.data
+    .map((r) => ({
+      time: Math.floor(toNum(r[0]) / 1000),
+      open: toNum(r[1]),
+      high: toNum(r[2]),
+      low: toNum(r[3]),
+      close: toNum(r[4]),
+    }))
+    .filter((c) => c.time > 0 && c.close > 0 && c.open > 0)
+    .sort((a, b) => a.time - b.time);
+  if (rows.length < 30) throw new Error("bitget candles too short");
+  return rows;
 }
 
 /** GET /api/v2/spot/market/tickers — public. Returns last trade price. */

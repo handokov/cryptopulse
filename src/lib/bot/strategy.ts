@@ -22,6 +22,17 @@ import { BARS_PER_YEAR } from "./bitget-trade";
 
 export type BotMode = "MODERATE" | "AGGRESSIVE";
 
+/* v2 phase 2 — timeframe tables live in ./timeframes (pure, client-safe);
+   re-exported here so server-side imports stay in one place. */
+export {
+  TF_OPTIONS,
+  TF_DEFAULT,
+  TF_COOLDOWN_MIN,
+  isBotTimeframe,
+  cooldownMinFor,
+  type BotTimeframe,
+} from "./timeframes";
+
 export interface ModePreset {
   entryScore: number;
   exitScore: number;
@@ -97,7 +108,7 @@ function rsi(series: number[], period = 14): number {
   return 100 - 100 / (1 + rs);
 }
 
-export function computeBotSignal(closes: number[]): BotSignal {
+export function computeBotSignal(closes: number[], barsPerYear: number = BARS_PER_YEAR): BotSignal {
   if (closes.length < 40) throw new Error("need ≥40 bars");
   const rets = logReturns(closes);
 
@@ -130,9 +141,10 @@ export function computeBotSignal(closes: number[]): BotSignal {
   const muEff = muRaw * (w.length / (w.length + 30));
   const drift = tanh(muEff * 1500);
 
-  /* Volatility: annualized from the last 90 bars; extreme regimes dampen. */
+  /* Volatility: annualized from the last 90 bars; extreme regimes dampen.
+     barsPerYear is timeframe-aware — a 15M bar annualizes 24× a 4H bar. */
   const sd = stdev(rets.slice(-90));
-  const volAnnPct = sd * Math.sqrt(BARS_PER_YEAR) * 100;
+  const volAnnPct = sd * Math.sqrt(barsPerYear) * 100;
 
   let score = 0.4 * trend + 0.3 * momentum + 0.15 * cycle + 0.15 * drift;
   if (volAnnPct > 400) score *= 0.5; // chaos filter — halve conviction

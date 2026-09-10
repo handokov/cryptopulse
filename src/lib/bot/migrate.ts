@@ -18,6 +18,10 @@
  *      restored inside the same interactive transaction, so the implicit
  *      DELETE that DROP TABLE performs under foreign_keys=ON can never
  *      cascade into the trade history. Any failure rolls back everything.
+ *   3. v2 phase 2 (Task 31) — additive columns, no rebuild:
+ *        BotConfig.timeframe TEXT NOT NULL DEFAULT '4H'
+ *        BotConfig.entryLine REAL (nullable)
+ *        BotConfig.lastPrice REAL (nullable)
  *
  * Failures are logged and swallowed — the tick surfaces a per-bot ERROR
  * instead of crashing the batch, and the memo reset retries on the next call.
@@ -144,6 +148,34 @@ async function run(): Promise<boolean> {
   } catch (err) {
     ok = false;
     console.error("[bot-migrate] BotPosition.highestPrice failed:", err instanceof Error ? err.message : err);
+  }
+  /* v2 phase 2 — timeframe + entry line + last price (plain additive columns). */
+  try {
+    if (!(await columnExists("BotConfig", "timeframe"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "timeframe" TEXT NOT NULL DEFAULT '4H'`);
+      console.log("[bot-migrate] BotConfig.timeframe added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.timeframe failed:", err instanceof Error ? err.message : err);
+  }
+  try {
+    if (!(await columnExists("BotConfig", "entryLine"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "entryLine" REAL`);
+      console.log("[bot-migrate] BotConfig.entryLine added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.entryLine failed:", err instanceof Error ? err.message : err);
+  }
+  try {
+    if (!(await columnExists("BotConfig", "lastPrice"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "lastPrice" REAL`);
+      console.log("[bot-migrate] BotConfig.lastPrice added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.lastPrice failed:", err instanceof Error ? err.message : err);
   }
   /* Multi-bot: swap UNIQUE(userId) for UNIQUE(userId, symbol). */
   try {

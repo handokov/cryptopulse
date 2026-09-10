@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Bot, Loader2, Play, Plus, Server, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
+import { Bot, Loader2, Play, Plus, Server, ShieldCheck, Trash2, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { BotChart } from "@/components/crypto/bot-chart";
+import { TF_OPTIONS, TF_DEFAULT } from "@/lib/bot/timeframes";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +36,8 @@ interface BotConfig {
   takeProfitPct: number | null;
   stopLossPct: number | null;
   exitStyle: "FIXED" | "VOL";
+  timeframe: string;
+  entryLine: number | null;
 }
 
 interface BotLight {
@@ -44,6 +48,8 @@ interface BotLight {
   enabled: boolean;
   exitStyle: "FIXED" | "VOL";
   orderSizeUsdt: number;
+  timeframe: string;
+  entryLine: number | null;
 }
 
 interface BotQuota {
@@ -122,6 +128,8 @@ function draftConfig(): BotConfig {
     takeProfitPct: null,
     stopLossPct: null,
     exitStyle: "FIXED",
+    timeframe: "4H",
+    entryLine: null,
   };
 }
 
@@ -146,6 +154,10 @@ export function BotSection() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmLive, setConfirmLive] = useState(false);
+  const [stopDialog, setStopDialog] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [chartRefresh, setChartRefresh] = useState(0);
   const [lastTick, setLastTick] = useState<TickResult | null>(null);
   const [preset, setPreset] = useState<{ MODERATE: { takeProfitPct: number; stopLossPct: number; maxTradesPerDay: number; cooldownMin: number }; AGGRESSIVE: { takeProfitPct: number; stopLossPct: number; maxTradesPerDay: number; cooldownMin: number } } | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -189,6 +201,7 @@ export function BotSection() {
             toast.success(`${mine.action} · ${mine.reason}`);
           }
           await load(activeSymbol);
+          setChartRefresh((k) => k + 1);
         } else if (!silent) {
           toast.error(t("saveError"));
         }
@@ -284,6 +297,95 @@ export function BotSection() {
       }
     } finally {
       setDeleting(false);
+    }
+  };
+
+  /* ---------------- v2 phase 2 — entry line drag-save ---------------- */
+  const saveLine = async (line: number | null) => {
+    if (!cfg?.id) return;
+    const prev = cfg.entryLine;
+    setCfg({ ...cfg, entryLine: line });
+    try {
+      const res = await fetch("/api/bot", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...cfg, entryLine: line, confirmLive }),
+      });
+      if (res.ok) {
+        toast.success(line != null ? t("lineSaved", { price: line.toPrecision(6) }) : t("lineCleared"));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.message ?? t("saveError"));
+        setCfg((c) => (c ? { ...c, entryLine: prev } : c));
+      }
+    } catch {
+      toast.error(t("saveError"));
+      setCfg((c) => (c ? { ...c, entryLine: prev } : c));
+    }
+  };
+
+  /* ---------------- v2 phase 2 — Stop saja / Stop & Jual ---------------- */
+  const doStop = async (andSell: boolean) => {
+    if (!cfg?.id) return;
+    setClosing(true);
+    try {
+      if (andSell) {
+        const res = await fetch("/api/bot/close", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ configId: cfg.id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast.success(t("closedOk", { count: data.closed ?? 1 }));
+        } else if (data?.error !== "no_position") {
+          toast.error(data?.message ?? t("closeFail"));
+          return;
+        }
+      }
+      const res2 = await fetch("/api/bot", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...cfg, enabled: false, confirmLive }),
+      });
+      if (res2.ok) {
+        setCfg((c) => (c ? { ...c, enabled: false } : c));
+        toast.success(andSell ? t("stopSellDone") : t("stopOnlyDone"));
+      } else {
+        toast.error(t("saveError"));
+      }
+      setStopDialog(false);
+      await load(activeSymbol);
+      setChartRefresh((k) => k + 1);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  /* ---------------- v2 phase 2 — manual close (keep bot running) -------- */
+  const doClosePosition = async () => {
+    if (!cfg?.id) return;
+    setClosing(true);
+    try {
+      const res = await fetch("/api/bot/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ configId: cfg.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(t("closedOk", { count: data.closed ?? 1 }));
+        setConfirmClose(false);
+        await load(activeSymbol);
+        setChartRefresh((k) => k + 1);
+      } else if (data?.error === "no_position") {
+        toast.info(t("noPositionShort"));
+        setConfirmClose(false);
+      } else {
+        toast.error(data?.message ?? t("closeFail"));
+      }
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -396,6 +498,26 @@ export function BotSection() {
         <span>{t("alwaysOn")}</span>
       </p>
 
+      {/* v2 phase 2 — candlestick chart + draggable trigger lines */}
+      {!draft && cfg.id && (
+        <BotChart
+          symbol={cfg.symbol}
+          timeframe={cfg.timeframe ?? "4H"}
+          entryLine={cfg.entryLine ?? null}
+          onEntryLineChange={(line) => void saveLine(line)}
+          position={
+            positions.length > 0
+              ? {
+                  entryPrice: positions[0].entryPrice,
+                  targetPrice: positions[0].targetPrice,
+                  stopPrice: positions[0].stopPrice,
+                }
+              : null
+          }
+          refreshKey={chartRefresh}
+        />
+      )}
+
       {/* configuration */}
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -406,7 +528,13 @@ export function BotSection() {
                 <button
                   key={m}
                   type="button"
-                  onClick={() => setCfg({ ...cfg, mode: m })}
+                  onClick={() => {
+                    /* timeframe options are mode-specific: keep the current TF
+                       when still allowed, otherwise fall back to the new default */
+                    const allowed = TF_OPTIONS[m] ?? TF_OPTIONS.MODERATE;
+                    const nextTf = allowed.includes(cfg.timeframe as never) ? cfg.timeframe : TF_DEFAULT[m];
+                    setCfg({ ...cfg, mode: m, timeframe: nextTf });
+                  }}
                   className={`rounded-lg border px-3 py-2 text-left transition-colors ${
                     cfg.mode === m
                       ? "border-primary/50 bg-primary/10"
@@ -427,6 +555,29 @@ export function BotSection() {
                 TP +{modePreset.takeProfitPct}% · SL −{modePreset.stopLossPct}% · max {modePreset.maxTradesPerDay}/day · cooldown {modePreset.cooldownMin}m
               </p>
             )}
+          </div>
+
+          {/* v2 phase 2 — signal timeframe, gated by mode (design 26/26-b) */}
+          <div className="sm:col-span-2">
+            <Label className="text-xs">{t("timeframe")}</Label>
+            <div className="mt-1.5 grid grid-cols-3 gap-2">
+              {(TF_OPTIONS[cfg.mode] ?? TF_OPTIONS.MODERATE).map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  onClick={() => setCfg({ ...cfg, timeframe: tf })}
+                  className={`tnum rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                    cfg.timeframe === tf
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border hover:border-foreground/25"
+                  }`}
+                  aria-pressed={cfg.timeframe === tf}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground/80">{t("tfHint")}</p>
           </div>
 
           {/* exit style — fixed percent bands vs volatility-scaled + trailing */}
@@ -516,7 +667,19 @@ export function BotSection() {
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <span className="text-xs font-medium">{t("enabled")}</span>
-            <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} aria-label={t("enable")} />
+            <Switch
+              checked={cfg.enabled}
+              onCheckedChange={(v) => {
+                /* v2 phase 2 — disabling while a position is open is a CHOICE:
+                   stop watching only, or stop AND market-close (design 26-d). */
+                if (!v && !draft && cfg.id && positions.length > 0) {
+                  setStopDialog(true);
+                  return;
+                }
+                setCfg({ ...cfg, enabled: v });
+              }}
+              aria-label={t("enable")}
+            />
           </div>
 
           {/* advanced exit-ladder overrides */}
@@ -633,6 +796,62 @@ export function BotSection() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* v2 phase 2 — stop choice when a position is open (design 26-d) */}
+      <AlertDialog open={stopDialog} onOpenChange={setStopDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("stopDialogTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("stopDialogBody")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closing}>{t("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => void doStop(false)}
+              disabled={closing}
+              className="gap-1.5 border-border"
+            >
+              {closing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {t("stopOnly")}
+            </Button>
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                void doStop(true);
+              }}
+              disabled={closing}
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {closing ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" aria-hidden />}
+              {t("stopAndSell")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* v2 phase 2 — manual close confirmation (bot keeps running) */}
+      <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("closeConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("closeConfirmBody")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closing}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void doClosePosition();
+              }}
+              disabled={closing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {closing ? <Loader2 className="h-4 w-4 animate-spin" /> : t("closePosition")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* performance report */}
       {stats && stats.closedCount > 0 && (() => {
         let acc = 0;
@@ -727,7 +946,8 @@ export function BotSection() {
                   <th className="py-1.5 pr-3">{t("target")}</th>
                   <th className="py-1.5 pr-3">{t("stop")}</th>
                   <th className="py-1.5 pr-3">{t("size")}</th>
-                  <th className="py-1.5">{t("status")}</th>
+                  <th className="py-1.5 pr-3">{t("status")}</th>
+                  <th className="py-1.5">{t("closePosition")}</th>
                 </tr>
               </thead>
               <tbody className="tnum">
@@ -738,7 +958,19 @@ export function BotSection() {
                     <td className="py-1.5 pr-3 text-primary">${p.targetPrice.toPrecision(6)}</td>
                     <td className="py-1.5 pr-3 text-destructive">${p.stopPrice.toPrecision(6)}</td>
                     <td className="py-1.5 pr-3">{p.sizeUsdt.toFixed(2)} $</td>
-                    <td className="py-1.5">{p.paper ? t("paperBadge") : t("liveBadge")}</td>
+                    <td className="py-1.5 pr-3">{p.paper ? t("paperBadge") : t("liveBadge")}</td>
+                    <td className="py-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 gap-1 border-destructive/30 px-2 text-[10px] text-destructive hover:bg-destructive/10"
+                        onClick={() => setConfirmClose(true)}
+                        disabled={closing}
+                      >
+                        {closing ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" aria-hidden />}
+                        {t("closePosition")}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
