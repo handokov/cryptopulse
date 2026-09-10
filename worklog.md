@@ -864,3 +864,15 @@ Bot v2 design additions recorded (user request context):
 
 Stage Summary:
 - Question answered honestly: current build does NOT auto-sell on stop — by design the engine only manages what it watches. v2 design now includes stop/close semantics; still ZERO code changes per standing constraint.
+
+---
+Task ID: 27
+Agent: Super Z (main agent)
+Task: User reports VOL bot "slow to trigger" (nothing today) vs yesterday's instant trigger, net −$0.13 — diagnose both observations.
+
+Work Log:
+- Monitor 09:30Z: LIT 4.536 (24h −13.39%, range 4.431–5.256), score 0.269 (momentum −0.21, cycle falling, drift negative). NO score≥0.55 window since 19:50Z yesterday → today's non-trigger is the entry gate working, NOT a VOL-mode effect (VOL changes exits only; entry logic identical across modes). Yesterday's instant trigger = enabled during a strong uptrend (score 0.81 at enable), i.e., timing luck, not mode superiority. Counterfactual: entering at yesterday evening's window (~4.97) would now be ≈ −9% — the gate is protecting.
+- −$0.13 vs theory: MODERATE SL −1.2% on $1.5 = −$0.018/trade → 2 SL round-trips ≈ −$0.04, not −$0.13. Gap ≈ tick-lag slippage hypothesis: price crossed the SL level but the next tick (GitHub cron gaps 1.5–4.5h yesterday) filled the paper SELL far below the band. Awaiting user's trades-list screenshot (price+time+reason per trade) to confirm exact fills. Fix = true 5-min ticks (cron-job.org); otherwise multi-day comparison stays biased against whichever mode trades into falling markets with sparse ticks.
+
+Stage Summary:
+- Two distinct effects disentangled for the user: (1) zero triggers today = correct score-gate behavior during a −13% correction; (2) loss size anomaly = infrastructure (tick cadence), not strategy. cron-job.org remains the blocking item for a fair multi-day FIXED-vs-VOL test.
