@@ -910,3 +910,17 @@ Work Log:
 
 Stage Summary:
 - $1.5 live order size verified valid (Bitget LITUSDT min 1 USDT). Risk rails validated by Sep 9–10 data (daily cap skipped a −9.6% window). Awaiting user green light for v2 Phase 1 (multi-bot schema + login gating); cron-job.org remains the critical user-side action.
+
+---
+Task ID: 29
+Agent: Super Z (main agent)
+Task: User green-lights cron-job.org as the first staged step ("langsung kita gas yang cron job") — deliver exact setup guide + verification plan.
+
+Work Log:
+- Re-read tick route: cron path = POST + `x-bot-secret` header (exact match vs Vercel env BOT_TICK_SECRET) → `{"ok":true,"mode":"cron",ranAt,results}`; only POST is handled; secret unset → 404, wrong secret → 401.
+- Confirmed sandbox .env points to local sqlite (db/custom.db) — no production Turso access from sandbox; post-setup verification relies on cron-job.org's own execution log (status + response body) plus my public-data monitor for cadence effects.
+- Delivered 3-step guide: (0) Vercel → Settings → Environment Variables → copy BOT_TICK_SECRET (fallback if value not revealable: overwrite with a new random value in Vercel AND cron-job.org, then redeploy); (1) cron-job.org free signup; (2) create job: URL `https://cryptopulse-iota-self.vercel.app/api/bot/tick`, method POST, schedule every 5 min, custom header `x-bot-secret`, enabled; (3) verify via "Run now" + Executions tab showing `"ok":true,"mode":"cron"`. Security note given: paste the secret straight into cron-job.org, never into chat. GitHub Actions workflow stays as fallback — the 4-minute tick guard makes overlap harmless.
+- Answered user's framing explicitly: my lane = calculations (score/σ/bands/expectancy) supporting THEIR buy/sell decisions; no profit guarantees from anyone, exchange-native bots included.
+
+Stage Summary:
+- cron-job.org setup is now the user's active task; once confirmed running, next milestone = "gas" for v2 Phase 1 (multi-bot + login gating) while paper data accumulates on a clean 5-minute cadence.
