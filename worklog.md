@@ -813,3 +813,22 @@ Open design questions to settle at implementation time:
 
 Stage Summary:
 - DESIGN ONLY, nothing implemented; web untouched per explicit user instruction. Recorded for a future build phase; entry gate/exit engine in production remain as-is (VOL live, scheduled ticks sparse-but-working, cron-job.org option handed to user).
+
+---
+Task ID: 26-b
+Agent: Super Z (main agent)
+Task: Continue design-only discussion (26) — user's answers on trigger-line semantics + timeframe-per-mode; record my design recommendations. NO implementation.
+
+User input (this turn):
+- Trigger line: user sees it as a VISUAL affordance ("lebih mudah melihat daripada angka dan rumus"); undecided whether it replaces or adds to the score gate.
+- Timeframe by mode: MODERATE → higher TF; AGGRESSIVE → 15M/30M/1H (user's own proposal).
+
+My design recommendations recorded (awaiting user approval at build time):
+1. Trigger line = ADD to score gate, not replace: BUY fires only when score ≥ entry threshold AND price touched/crossed the user's line. Default line position = current price at save → untouched line ≈ current bot behavior (zero-regression default). Rationale: line-only would reduce the bot to an emotional limit order and discard the site's analytical edge; score-only is invisible to users — the line makes the strategy tangible.
+2. Chart visual language: candlesticks + 3 lines (entry trigger = draggable dashed; TP/SL auto-anchored to it, live-updating while dragging) + score-zone badge so users SEE both conditions at once.
+3. Touch semantics TBD: dip-entry (line below price, price falls to line) vs breakout (line above, price rises to line) vs any-touch; suggest any-touch first version.
+4. TF options per mode (user proposal adopted): MODERATE {1H, 4H, 1D}, AGGRESSIVE {15M, 30M, 1H}. Presets become a (mode × TF) table; cooldown/max-trades scale with TF; BARS_PER_YEAR must be TF-aware. Synergy note: VOL exit style auto-adapts to any TF since σ is computed from that TF's own bars.
+5. Max bots per user (my suggestion, unconfirmed): 5 paper + 2 live initially.
+
+Stage Summary:
+- Design decisions converging; still ZERO code changes (explicit user constraint). Build order proposal stands: multi-bot → login gating → chart+lines → TF → draggable line.
