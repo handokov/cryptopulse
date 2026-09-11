@@ -65,6 +65,16 @@ const id: Messages = {
     empty: "Tidak ada aset yang cocok dengan “{query}”.",
     allTraceable: "Semua aset di papan dapat dilacak — klik baris mana pun untuk memfokuskan lab padanya.",
     loadingCoin: "Memuat deret harga…",
+    boardTab: "Top 100",
+    smallcapsTab: "Small-caps (Bitget)",
+    smallcapsHint: "Pair USDT Bitget di luar papan top-100 — saham ter-tokenisasi, stablecoin, dan token leveraged disaring. Volume 24 jam ≥ {vol}. Klik baris untuk membuka pair di Bitget.",
+    smallcapsSearch: "Cari aset atau pair…",
+    smallcapsRange: "Rentang 24j",
+    smallcapsListed: "Listing",
+    smallcapsFresh: "baru",
+    smallcapsAge: "{days} hr",
+    smallcapsEmpty: "Tidak ada pair di atas ambang volume ini.",
+    smallcapsTotal: "{count} pair lolos",
   },
 
   labs: {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, ChevronRight, Crosshair, Loader2, Pin, Search } from "lucide-react";
+import { BarChart3, ChevronLeft, ChevronRight, Crosshair, Loader2, Pin, Search, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -106,6 +106,176 @@ function MiniSpark({ data, up }: { data: number[]; up: boolean }) {
       />
       <circle cx={geo.lastX} cy={geo.lastY} r={2} fill={color} />
     </svg>
+  );
+}
+
+/* ---------------- small-caps screener (Bitget) ---------------- */
+
+interface SmallcapRowUi {
+  symbol: string;
+  base: string;
+  price: number;
+  change24h: number;
+  high24h: number;
+  low24h: number;
+  volumeUsdt: number;
+  openTime: number;
+}
+
+interface SmallcapsPayload {
+  updatedAt: number;
+  source: "bitget";
+  minVolUsdt: number;
+  total: number;
+  rows: SmallcapRowUi[];
+}
+
+const SMALL_THRESHOLDS = [
+  { label: "≥ $100K", value: 100_000 },
+  { label: "≥ $200K", value: 200_000 },
+  { label: "≥ $500K", value: 500_000 },
+  { label: "≥ $1M", value: 1_000_000 },
+] as const;
+
+/** Small-cap prices go far below $0.01 — keep 4 significant digits. */
+function fmtSmallPrice(x: number): string {
+  if (x >= 1) return fmtPrice(x);
+  if (x >= 0.01) return `$${x.toFixed(4)}`;
+  return `$${x.toPrecision(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
+function SmallcapTable({
+  rows,
+  loading = false,
+  nowMs,
+}: {
+  rows: SmallcapRowUi[];
+  loading?: boolean;
+  nowMs: number;
+}) {
+  const t = useTranslations("top100");
+  const openBitget = (symbol: string) =>
+    window.open(`https://www.bitget.com/spot/${symbol}`, "_blank", "noopener,noreferrer");
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px] border-collapse text-xs">
+        <thead>
+          <tr className="border-b border-border/60">
+            <th scope="col" className="py-2 pr-3 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              #
+            </th>
+            <th scope="col" className="py-2 pr-3 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("asset")}
+            </th>
+            <th scope="col" className="py-2 pr-3 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("price")}
+            </th>
+            <th scope="col" className="py-2 pr-3 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("h24")}
+            </th>
+            <th scope="col" className="hidden py-2 pr-3 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:table-cell">
+              {t("smallcapsRange")}
+            </th>
+            <th scope="col" className="hidden py-2 pr-3 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
+              {t("volume")}
+            </th>
+            <th scope="col" className="py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("smallcapsListed")}
+            </th>
+          </tr>
+        </thead>
+        <tbody
+          key={loading ? "sk" : `${rows.length}-${rows[0]?.symbol ?? ""}`}
+          className="animate-in fade-in slide-in-from-bottom-1 duration-300"
+        >
+          {loading
+            ? Array.from({ length: 6 }, (_, i) => (
+                <tr key={`sk-${i}`} className="border-b border-border/40 last:border-b-0">
+                  <td className="py-2.5 pr-3">
+                    <Skeleton className="h-4 w-6" />
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <span className="flex items-center gap-2">
+                      <Skeleton className="h-6 w-6 rounded-md" />
+                      <Skeleton className="h-4 w-24" />
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <Skeleton className="ml-auto h-4 w-16" />
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <Skeleton className="ml-auto h-4 w-12" />
+                  </td>
+                  <td className="hidden py-2.5 pr-3 sm:table-cell">
+                    <Skeleton className="ml-auto h-4 w-24" />
+                  </td>
+                  <td className="hidden py-2.5 pr-3 lg:table-cell">
+                    <Skeleton className="ml-auto h-4 w-14" />
+                  </td>
+                  <td className="py-2.5">
+                    <Skeleton className="ml-auto h-4 w-10" />
+                  </td>
+                </tr>
+              ))
+            : rows.map((r, i) => {
+                const up = r.change24h >= 0;
+                const ageDays =
+                  r.openTime > 0 && r.openTime <= nowMs
+                    ? Math.max(0, Math.floor((nowMs - r.openTime) / 86_400_000))
+                    : null;
+                const fresh = ageDays != null && ageDays < 30;
+                return (
+                  <tr
+                    key={r.symbol}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${r.symbol} · Bitget`}
+                    onClick={() => openBitget(r.symbol)}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openBitget(r.symbol);
+                      }
+                    }}
+                    className="cursor-pointer border-b border-border/40 transition-colors last:border-b-0 hover:bg-white/5"
+                  >
+                    <td className="tnum py-2.5 pr-3 font-mono text-muted-foreground">{i + 1}</td>
+                    <td className="py-2.5 pr-3">
+                      <span className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-400/10 text-[10px] font-bold text-amber-400">
+                          {r.base.slice(0, 3)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium leading-tight text-foreground">{r.base}</span>
+                          <span className="text-[11px] leading-tight text-muted-foreground">{r.symbol}</span>
+                        </span>
+                        {fresh && (
+                          <span className="rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-400">
+                            {t("smallcapsFresh")}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="tnum py-2.5 pr-3 text-right font-medium text-foreground">{fmtSmallPrice(r.price)}</td>
+                    <td className={`tnum py-2.5 pr-3 text-right font-semibold ${up ? "text-primary" : "text-destructive"}`}>
+                      {fmtPct(r.change24h * 100)}
+                    </td>
+                    <td className="tnum hidden py-2.5 pr-3 text-right text-muted-foreground sm:table-cell">
+                      {fmtSmallPrice(r.low24h)} – {fmtSmallPrice(r.high24h)}
+                    </td>
+                    <td className="tnum hidden py-2.5 pr-3 text-right text-muted-foreground lg:table-cell">
+                      {fmtCompactUsd(r.volumeUsdt)}
+                    </td>
+                    <td className="tnum py-2.5 text-right text-muted-foreground">
+                      {ageDays != null ? t("smallcapsAge", { days: ageDays }) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -371,6 +541,45 @@ export function Top100Groups() {
     void load(true);
   }, [load]);
 
+  /* -------- small-caps mode: Bitget screener, isolated from board state -------- */
+  const [mode, setMode] = useState<"board" | "small">("board");
+  const [minVol, setMinVol] = useState(200_000);
+  const [smallRows, setSmallRows] = useState<SmallcapRowUi[] | null>(null);
+  const [smallTotal, setSmallTotal] = useState(0);
+  const [smallUpdated, setSmallUpdated] = useState<number | null>(null);
+  const [smallLoading, setSmallLoading] = useState(false);
+  const [smallError, setSmallError] = useState(false);
+  const smallReqRef = useRef(0);
+
+  const loadSmall = useCallback(async (vol: number, spinner: boolean) => {
+    const reqId = ++smallReqRef.current;
+    if (spinner) setSmallLoading(true);
+    setSmallError(false);
+    try {
+      const res = await fetch(`/api/market/smallcaps?minVol=${vol}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`smallcaps fetch failed: ${res.status}`);
+      const p = (await res.json()) as SmallcapsPayload;
+      if (reqId !== smallReqRef.current) return; // stale response
+      setSmallRows(p.rows);
+      setSmallTotal(p.total);
+      setSmallUpdated(p.updatedAt);
+    } catch {
+      if (reqId === smallReqRef.current) {
+        setSmallError(true);
+        setSmallRows(null);
+      }
+    } finally {
+      if (reqId === smallReqRef.current) setSmallLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "small") return;
+    void loadSmall(minVol, true);
+    const iv = setInterval(() => void loadSmall(minVol, false), 60_000);
+    return () => clearInterval(iv);
+  }, [mode, minVol, loadSmall]);
+
   const searching = query.trim().length > 0;
   const q = query.trim().toLowerCase();
 
@@ -393,6 +602,15 @@ export function Top100Groups() {
     return groupCoins.reduce((sum, { coin }) => sum + coin.change24h, 0) / groupCoins.length;
   }, [groupCoins]);
 
+  const nowMs = Date.now();
+  const freshAt = mode === "board" ? updatedAt : smallUpdated;
+  const filteredSmall = useMemo(() => {
+    if (!searching || !smallRows) return [];
+    return smallRows.filter(
+      (r) => r.base.toLowerCase().includes(q) || r.symbol.toLowerCase().includes(q)
+    );
+  }, [smallRows, q, searching]);
+
   /* Custom pinned coins live in a trailing group past the ten numbered ones
      (they are appended after the top 100 in the payload, so the same slice
      logic serves them). */
@@ -402,26 +620,41 @@ export function Top100Groups() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* search + freshness strip */}
+      {/* view switch + freshness strip */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative w-full max-w-xs">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("searchPlaceholder")}
-            aria-label={t("searchPlaceholder")}
-            className="h-9 border-border bg-card/60 pl-9 text-sm"
-          />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-pressed={mode === "board"}
+            onClick={() => setMode("board")}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              mode === "board"
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("boardTab")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "small"}
+            onClick={() => setMode("small")}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              mode === "small"
+                ? "border-amber-400/40 bg-amber-400/10 text-amber-400"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("smallcapsTab")}
+          </button>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          {updatedAt != null && (
-            <span className="tnum">{t("updated", { time: new Date(updatedAt).toLocaleTimeString(locale) })}</span>
+          {freshAt != null && (
+            <span className="tnum">{t("updated", { time: new Date(freshAt).toLocaleTimeString(locale) })}</span>
           )}
-          {source === "cache" && (
+          {mode === "board" && source === "cache" && (
             <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-medium text-amber-400">
               {t("stale")}
             </span>
@@ -429,6 +662,23 @@ export function Top100Groups() {
         </div>
       </div>
 
+      {/* search (shared across modes) */}
+      <div className="relative w-full max-w-xs">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={mode === "board" ? t("searchPlaceholder") : t("smallcapsSearch")}
+          aria-label={mode === "board" ? t("searchPlaceholder") : t("smallcapsSearch")}
+          className="h-9 border-border bg-card/60 pl-9 text-sm"
+        />
+      </div>
+
+      {mode === "board" ? (
+        <>
       {/* traceability note */}
       <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <Crosshair className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
@@ -535,6 +785,67 @@ export function Top100Groups() {
         <div className="rounded-2xl border border-border bg-card/40 p-4 sm:p-6">
           <CoinTable entries={groupCoins} loading={loading} />
         </div>
+      )}
+        </>
+      ) : (
+        <>
+          {/* small-caps: hint + threshold chips + table */}
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            <Zap className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" aria-hidden="true" />
+            {t("smallcapsHint", { vol: fmtCompactUsd(minVol) })}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {SMALL_THRESHOLDS.map((th) => (
+              <button
+                key={th.value}
+                type="button"
+                aria-pressed={minVol === th.value}
+                onClick={() => setMinVol(th.value)}
+                className={`tnum rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  minVol === th.value
+                    ? "border-amber-400/40 bg-amber-400/10 text-amber-400"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {th.label}
+              </button>
+            ))}
+            {!searching && smallTotal > 0 && (
+              <span className="tnum rounded-full border border-border bg-card px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                {t("smallcapsTotal", { count: smallTotal })}
+              </span>
+            )}
+          </div>
+
+          {smallError && smallRows === null ? (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card/40 p-8 text-center">
+              <p className="text-sm text-muted-foreground">{t("error")}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void loadSmall(minVol, true)}
+                className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+              >
+                {t("retry")}
+              </Button>
+            </div>
+          ) : searching ? (
+            filteredSmall.length > 0 ? (
+              <div className="rounded-2xl border border-border bg-card/40 p-4 sm:p-6">
+                <SmallcapTable rows={filteredSmall} nowMs={nowMs} />
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center text-sm text-muted-foreground">
+                {t("smallcapsEmpty")}
+              </div>
+            )
+          ) : (
+            <div className="rounded-2xl border border-border bg-card/40 p-4 sm:p-6">
+              <SmallcapTable rows={smallRows ?? []} loading={smallLoading} nowMs={nowMs} />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

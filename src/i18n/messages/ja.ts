@@ -65,6 +65,16 @@ const ja: Messages = {
     empty: "「{query}」に一致するアセットはありません。",
     allTraceable: "ボード上のすべての資産が追跡可能です。任意の行をクリックするとラボがその資産にフォーカスします。",
     loadingCoin: "価格シリーズを読み込み中…",
+    boardTab: "Top 100",
+    smallcapsTab: "小型銘柄 (Bitget)",
+    smallcapsHint: "BitgetのUSDTペア（トップ100以外）。トークン化株式・ステーブルコイン・レバレッジトークンは除外。24時間出来高 ≥ {vol}。行をクリックするとBitgetでペアを開きます。",
+    smallcapsSearch: "資産またはペアを検索…",
+    smallcapsRange: "24hレンジ",
+    smallcapsListed: "上場",
+    smallcapsFresh: "新規",
+    smallcapsAge: "{days}日",
+    smallcapsEmpty: "この出来高しきい値を超えるペアはありません。",
+    smallcapsTotal: "{count}銘柄が該当",
   },
 
   labs: {

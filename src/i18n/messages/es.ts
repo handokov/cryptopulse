@@ -65,6 +65,16 @@ const es: Messages = {
     empty: "Ningún activo coincide con “{query}”.",
     allTraceable: "Todos los activos del tablero se pueden rastrear: haz clic en cualquier fila para enfocar los laboratorios en él.",
     loadingCoin: "Cargando la serie de precios…",
+    boardTab: "Top 100",
+    smallcapsTab: "Small-caps (Bitget)",
+    smallcapsHint: "Pares USDT de Bitget fuera del top-100 — se filtran acciones tokenizadas, stablecoins y tokens apalancados. Volumen 24 h ≥ {vol}. Haz clic en una fila para abrir el par en Bitget.",
+    smallcapsSearch: "Buscar activo o par…",
+    smallcapsRange: "Rango 24 h",
+    smallcapsListed: "Listado",
+    smallcapsFresh: "nuevo",
+    smallcapsAge: "{days} d",
+    smallcapsEmpty: "Ningún par supera este umbral de volumen.",
+    smallcapsTotal: "{count} pares coinciden",
   },
 
   labs: {
