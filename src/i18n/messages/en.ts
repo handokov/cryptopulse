@@ -66,6 +66,16 @@ const en = {
     empty: "No assets match “{query}”.",
     allTraceable: "Every asset on the board is traceable — click any row to focus the labs on it.",
     loadingCoin: "Loading price series…",
+    boardTab: "Top 100",
+    smallcapsTab: "Small-caps (Bitget)",
+    smallcapsHint: "Bitget USDT pairs outside the top-100 board — tokenized stocks, stablecoins and leveraged tokens are filtered out. 24h volume ≥ {vol}. Click a row to open the pair on Bitget.",
+    smallcapsSearch: "Search asset or pair…",
+    smallcapsRange: "24h range",
+    smallcapsListed: "Listed",
+    smallcapsFresh: "new",
+    smallcapsAge: "{days} d",
+    smallcapsEmpty: "No pairs above this volume threshold.",
+    smallcapsTotal: "{count} pairs match",
   },
 
   labs: {

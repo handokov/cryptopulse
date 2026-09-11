@@ -65,6 +65,16 @@ const zh: Messages = {
     empty: "没有资产与“{query}”匹配。",
     allTraceable: "榜单上所有资产均可追踪——点击任意行即可让实验室聚焦该资产。",
     loadingCoin: "正在加载价格序列……",
+    boardTab: "Top 100",
+    smallcapsTab: "小市值 (Bitget)",
+    smallcapsHint: "Bitget 的 USDT 交易对（前100以外）——已过滤代币化股票、稳定币与杠杆代币。24小时成交量 ≥ {vol}。点击行可在 Bitget 打开该交易对。",
+    smallcapsSearch: "搜索资产或交易对…",
+    smallcapsRange: "24小时区间",
+    smallcapsListed: "上线",
+    smallcapsFresh: "新",
+    smallcapsAge: "{days} 天",
+    smallcapsEmpty: "没有超过该成交量门槛的交易对。",
+    smallcapsTotal: "共 {count} 个交易对",
   },
 
   labs: {

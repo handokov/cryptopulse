@@ -982,3 +982,20 @@ Work Log:
 
 Stage Summary:
 - Asset report now tracks off-top-100 Bitget holdings: AIO imports on the user's next Sync (cost basis auto-set to sync-time price, editable for true PnL), and any future small-cap purchase auto-resolves with a price cross-check instead of silently vanishing. Deployed via push → Vercel.
+
+---
+Task ID: 33
+Agent: Super Z (main agent)
+Task: User shares manual-trading workflow (buy <$2, >100% targets need the 1D view, so their universe = small-caps OUTSIDE the top-100 with 24h volume ≥ ~$200K) — build a Bitget small-cap screener into the market board so their workflow is first-class.
+
+Work Log:
+- Confirmed data path: Bitget public /spot/public/symbols (1,761 pairs; areaSymbol="yes" marks tokenized equities like rSPY which would otherwise dominate volume sort) + /spot/market/tickers (usdtVolume field). Online USDT crypto bases: 512; ≥$200K outside board: 91.
+- New lib src/lib/market/smallcaps.ts: joins both endpoints (module caches 10 min / 60 s), filters quote=USDT + online + areaSymbol!=="yes" + base not in board symbols (top-100 + pins) + stable/fiat denylist + leveraged shapes (3L/3S/5L/5S always; UP/DOWN only when stripped base exists — JUP/SYRUP safe), volume-desc, cap 60, returns {symbol, base, price, change24h, high24h, low24h, volumeUsdt, openTime} (openTime powers a <30d "new" listing badge).
+- New route GET /api/market/smallcaps?minVol= (default 200000, invalid → default; board upstream failure → 502, same policy as sync universe).
+- UI top100-groups.tsx: view toggle (Top 100 | Small-caps (Bitget)) above the board, fully isolated state (board behavior untouched, default mode = board = zero regression). Small-caps view: hint line, threshold chips (≥$100K/200K/500K/1M), shared search filters base/pair, dedicated table (# · pair · price · 24h · 24h range · volume · listed-days) with small-price formatter (4 significant digits below $0.01), fresh-listing badge, 60 s auto-refresh, row click opens https://www.bitget.com/spot/<PAIR> in a new tab (the actual manual-trading action).
+- i18n: 10 new top100.* keys × 6 languages via scripts/inject-i18n-smallcaps.py; i18n-check 533/533 ALL CLEAN (placeholders {vol}/{count}/{days} verified per locale).
+- Verification: scripts/verify-smallcaps.mjs 15/15 PASS on dev server (board exclusion, stables, tokenized equities via real areaSymbol set — first test draft's naive R-prefix check wrongly flagged legit RAY/RIVER/RLS, fixed to the true invariant; leveraged, threshold, sort order, 1M-stricter, invalid-param fallback). ESLint 0 problems; tsc clean for changed files. Agent Browser E2E: toggle renders, chips switch and refetch, search filters (KII hit, AIO→empty state text), fresh badge, 0 console errors. Note: synthetic localStorage locale injection shows a pre-existing hydration quirk — real users use the language switcher (same proven path as bot.*/dashboard.* namespaces).
+- Bot note for the reply: engine already supports ANY Bitget pair (candles are pair-agnostic) and 1D is a valid MODERATE timeframe — but needs ≥30 daily bars (fresh listings fail with "candles too short"), and the current TP ladder (FIXED 1.8%/VOL ~3.5%) can't express a >100% target; those moves stay in the user's manual lane, now with screener + auto-imported holdings.
+
+Stage Summary:
+- The user's small-cap manual workflow is now first-class on the site: discovery (screener with volume/range/listing-age), execution (one click to the Bitget pair), and tracking (sync auto-imports off-board holdings via Task 32's resolver). Paper bot LIT test untouched. Deployed via push → Vercel; production probe of the new route after deploy.

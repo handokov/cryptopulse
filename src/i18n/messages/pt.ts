@@ -65,6 +65,16 @@ const pt: Messages = {
     empty: "Nenhum ativo corresponde a “{query}”.",
     allTraceable: "Todos os ativos do quadro podem ser rastreados — clique em qualquer linha para focar os laboratórios nele.",
     loadingCoin: "Carregando a série de preços…",
+    boardTab: "Top 100",
+    smallcapsTab: "Small-caps (Bitget)",
+    smallcapsHint: "Pares USDT da Bitget fora do top-100 — ações tokenizadas, stablecoins e tokens alavancados são filtrados. Volume 24 h ≥ {vol}. Clique numa linha para abrir o par na Bitget.",
+    smallcapsSearch: "Pesquisar ativo ou par…",
+    smallcapsRange: "Faixa 24 h",
+    smallcapsListed: "Listado",
+    smallcapsFresh: "novo",
+    smallcapsAge: "{days} d",
+    smallcapsEmpty: "Nenhum par acima deste limite de volume.",
+    smallcapsTotal: "{count} pares correspondem",
   },
 
   labs: {
