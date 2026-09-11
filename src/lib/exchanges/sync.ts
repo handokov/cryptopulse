@@ -5,20 +5,29 @@
  * touched.
  *
  * Matching rule: exchange asset symbol (uppercased) → first coin in the
- * market-cap-descending top-100 board with the same symbol (first hit = the
- * highest-cap asset using that ticker). Matched assets are priced through the
- * shared CoinGecko simple/price fetcher with the board snapshot as fallback.
+ * market-cap-descending top-100 board (plus pinned coins) with the same
+ * symbol (first hit = the highest-cap asset using that ticker). Assets the
+ * board doesn't know get ONE conservative fallback — exact-symbol CoinGecko
+ * search, price sanity-checked against the exchange's own ticker on Bitget
+ * — so recent small-cap listings still import; everything else is reported
+ * as unmatched. Matched assets are priced through the shared CoinGecko
+ * simple/price fetcher with the board snapshot as fallback.
  */
 
 import { db } from "@/lib/db";
 import { fetchSimplePrices } from "@/lib/coin-prices";
-import { getMatchUniverse, type MatchCandidate } from "@/lib/top100";
+import {
+  getMatchUniverse,
+  searchCoinBySymbol,
+  type MatchCandidate,
+} from "@/lib/top100";
 import { decryptSecret } from "@/lib/secure";
 import {
   ExchangeError,
   ExchangeId,
   fetchExchangeBalances,
 } from "./index";
+import { fetchBitgetTickerPrice } from "./bitget";
 
 export interface MatchedAsset {
   coinId: string;
@@ -108,6 +117,40 @@ async function runSync(
   for (const coin of universe) {
     const sym = coin.symbol.toUpperCase();
     if (!bySymbol.has(sym)) bySymbol.set(sym, coin); // board order = mcap-desc → first hit wins
+  }
+
+  /* 2b. Assets the board doesn't know (recent small-cap / launchpad
+        listings) get one conservative fallback: resolve the SYMBOL via
+        CoinGecko search (exact-symbol hits only, best market-cap rank),
+        then — on Bitget — sanity-check the candidate's live price against
+        the exchange's own ticker (±50% band) so a same-ticker imposter
+        coin can't sneak in. Anything still unresolved stays in the
+        unmatched list that the sync result surfaces. */
+  const boardMisses = balances.filter((b) => !bySymbol.has(b.asset.toUpperCase()));
+  if (boardMisses.length > 0) {
+    const lookup = boardMisses.slice(0, 8); // bound per-sync latency
+    const candidates = new Map<string, MatchCandidate>();
+    await Promise.all(
+      lookup.map(async (b) => {
+        const c = await searchCoinBySymbol(b.asset);
+        if (c) candidates.set(b.asset.toUpperCase(), c);
+      })
+    );
+    if (candidates.size > 0) {
+      const candidateIds = [...new Set([...candidates.values()].map((c) => c.id))];
+      const { map: resolvePrices } = await fetchSimplePrices(candidateIds);
+      for (const [sym, cand] of candidates) {
+        cand.price = resolvePrices[cand.id]?.usd ?? null;
+        let ok = true;
+        if (exchange === "bitget") {
+          const exPrice = await fetchBitgetTickerPrice(`${sym}USDT`);
+          if (exPrice != null && cand.price != null) {
+            ok = Math.abs(cand.price - exPrice) / exPrice <= 0.5;
+          }
+        }
+        if (ok && !bySymbol.has(sym)) bySymbol.set(sym, cand);
+      }
+    }
   }
 
   const matchedRows: { balance: (typeof balances)[number]; coin: MatchCandidate }[] = [];

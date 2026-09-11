@@ -965,3 +965,20 @@ Work Log:
 
 Stage Summary:
 - v2 Phase 2 shipped: the bot's trigger levels are now VISIBLE and CONTROLLABLE — candles on the bot's own timeframe, draggable entry line AND-scored with the score gate, TP/SL auto-follow, pending-entry state surfaced, and stop/close semantics that match reality. LIT paper test untouched (4H default, null line, engine exit ladder unchanged). Open for next phase: live-pilot checklist (Bitget API key spot-only + withdrawals disabled) after the ≥20-trade expectancy verdict, or further v2 polish on request.
+
+---
+Task ID: 32
+Agent: Super Z (main agent)
+Task: User reports newly bought AIO (OlaXBT, Bitget) missing from the asset report while 9 other positions show and sold GAIB correctly disappeared — diagnose and fix.
+
+Work Log:
+- Root cause CONFIRMED, user's own guess exactly right: portfolio sync matches balances against the top-100 board + CUSTOM_COIN_IDS pins only (src/lib/exchanges/sync.ts + src/lib/top100.ts). GAIB worked because "gaib" was pinned earlier; AIO (CoinGecko id "olaxbt", symbol AIO, rank ~1252) is in neither → fell into the unmatched list → never imported as a holding. GAIB's removal after the sell = mirror semantics working correctly.
+- Identity + price verified: CoinGecko search "AIO" → single exact-symbol hit olaxbt (OlaXBT); CG $0.04073 vs Bitget AIOUSDT lastPr $0.04070 → 0.04% relative diff, same asset beyond doubt. AIOUSDT online on Bitget, minTradeUSDT 1. (Note: correct public ticker path is /api/v2/spot/market/tickers — the account-assets-style /api/v2/spot/tickers 404s.)
+- Fix 1 (immediate): pinned "olaxbt" in CUSTOM_COIN_IDS → board now 105 coins, AIO shows in the Pinned group and matches during sync. Same proven pattern as gaib.
+- Fix 2 (structural, so future off-board listings self-resolve): new conservative resolver searchCoinBySymbol() in top100.ts — CoinGecko /search, exact-symbol hits only, best finite market-cap rank wins, unranked hits rejected; positive AND negative results module-cached 6 h (transient failures not cached). Wired into runSync step 2b: only board-miss assets go through it, max 8 lookups/sync, then prices the candidate via fetchSimplePrices and — on Bitget connections — cross-checks against the exchange's own ticker (reject if relative diff > 50%) so a same-ticker imposter can't be matched. Still-unresolved assets keep landing in the unmatched chips the sync result already shows.
+- New public helper fetchBitgetTickerPrice(symbol) in exchanges/bitget.ts (unsigned /api/v2/spot/market/tickers, null on any failure).
+- Verification: scripts/test-aio-resolve.ts 6/6 PASS (AIO→olaxbt; cross-check 0.04%; GAIB→gaib; gibberish→null; cache hit; BTC→bitcoin). Board pin merge proven through real getTop100(). ESLint 0 problems on all changed files; tsc clean for changed files (pre-existing errors confined to unrelated legacy scripts/examples). Bot engine, tick route, and sync upsert/removal flow untouched — zero regression for the running paper test.
+- Not committed by accident: 32 pre-existing "modified" files in the worktree are all file-mode (644→755) artifacts with zero content diffs — left alone.
+
+Stage Summary:
+- Asset report now tracks off-top-100 Bitget holdings: AIO imports on the user's next Sync (cost basis auto-set to sync-time price, editable for true PnL), and any future small-cap purchase auto-resolves with a price cross-check instead of silently vanishing. Deployed via push → Vercel.

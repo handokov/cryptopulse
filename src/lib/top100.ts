@@ -21,6 +21,7 @@ export const CUSTOM_COIN_IDS: readonly string[] = [
   "irys", // Irys (IRYS)
   "sei-network", // Sei (SEI)
   "gaib", // GAIB
+  "olaxbt", // OlaXBT (AIO) — Bitget listing, rank ~1250, user holds it
 ];
 
 export interface TopCoin {
@@ -256,4 +257,92 @@ export async function getMatchUniverse(): Promise<MatchCandidate[] | null> {
   } catch {
     return await getCoinsListFallback();
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Conservative symbol resolver for assets OUTSIDE the tracked board   */
+/* (recent small-cap listings, e.g. Bitget launchpad tokens). Exact-   */
+/* symbol matches only; ties broken by market-cap rank.                */
+
+interface CGSearchCoin {
+  id?: unknown;
+  symbol?: unknown;
+  name?: unknown;
+  market_cap_rank?: unknown;
+  thumb?: unknown;
+  large?: unknown;
+}
+
+const g3 = globalThis as unknown as {
+  __cpSymResolve?: { at: number; rows: Map<string, MatchCandidate | null> } | null;
+};
+
+const SYM_RESOLVE_TTL = 6 * 3600_000;
+
+/**
+ * Best-effort resolution of one exchange asset symbol to a CoinGecko coin
+ * that is not on the tracked board. Only coins whose SYMBOL matches exactly
+ * are considered; when several coins share the ticker, the lowest finite
+ * market-cap rank wins (no rank at all → not confident → null). Results,
+ * including "no confident match" (null), are module-cached for 6 h so
+ * repeated syncs never hammer the search endpoint; transient search
+ * failures are NOT cached so the next sync retries.
+ */
+export async function searchCoinBySymbol(symbol: string): Promise<MatchCandidate | null> {
+  const sym = symbol.toUpperCase().trim();
+  if (!sym) return null;
+  const cache = (g3.__cpSymResolve ??= { at: Date.now(), rows: new Map() });
+  if (Date.now() - cache.at > SYM_RESOLVE_TTL) {
+    cache.rows.clear();
+    cache.at = Date.now();
+  }
+  if (cache.rows.has(sym)) return cache.rows.get(sym) ?? null;
+
+  let resolved: MatchCandidate | null = null;
+  let searchOk = false;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(sym)}`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3500), cache: "no-store" }
+    );
+    if (res.ok) searchOk = true;
+    if (res.ok) {
+      const data = (await res.json()) as { coins?: CGSearchCoin[] | null };
+      const hits = (Array.isArray(data?.coins) ? data.coins : []).filter(
+        (c) =>
+          typeof c?.id === "string" &&
+          typeof c?.symbol === "string" &&
+          c.symbol.toUpperCase() === sym
+      );
+      let best: CGSearchCoin | null = null;
+      let bestRank = Infinity;
+      for (const c of hits) {
+        const rank = Number(c.market_cap_rank);
+        if (Number.isFinite(rank) && rank > 0 && rank < bestRank) {
+          best = c;
+          bestRank = rank;
+        }
+      }
+      if (best) {
+        const image =
+          typeof best.large === "string" && best.large
+            ? best.large
+            : typeof best.thumb === "string" && best.thumb
+              ? best.thumb
+              : null;
+        resolved = {
+          id: best.id as string,
+          symbol: sym,
+          name: typeof best.name === "string" && best.name ? best.name : (best.id as string),
+          image,
+          price: null, // caller prices the candidate via fetchSimplePrices
+        };
+      }
+    }
+  } catch {
+    /* transient failure → fall through with searchOk=false → not cached */
+  }
+
+  if (searchOk) cache.rows.set(sym, resolved);
+  return resolved;
 }

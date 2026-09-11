@@ -19,6 +19,28 @@ import {
 const BASE = "https://api.bitget.com";
 const PATH = "/api/v2/spot/account/assets";
 
+/**
+ * Public (unsigned) last-trade price for one spot pair, e.g. "AIOUSDT".
+ * Used by the portfolio sync to sanity-check symbol resolutions against the
+ * exchange's own price so a same-ticker imposter coin can't be matched.
+ * Returns null on any failure (never throws).
+ */
+export async function fetchBitgetTickerPrice(symbol: string): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `https://api.bitget.com/api/v2/spot/market/tickers?symbol=${encodeURIComponent(symbol)}`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3500), cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as { code?: unknown; data?: { lastPr?: unknown }[] | null };
+    if (body.code !== "00000" || !Array.isArray(body.data) || body.data.length === 0) return null;
+    const last = toNum(body.data[0]?.lastPr);
+    return last > 0 ? last : null;
+  } catch {
+    return null;
+  }
+}
+
 interface BitgetResp {
   code?: unknown;
   msg?: unknown;
