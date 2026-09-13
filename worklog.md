@@ -999,3 +999,17 @@ Work Log:
 
 Stage Summary:
 - The user's small-cap manual workflow is now first-class on the site: discovery (screener with volume/range/listing-age), execution (one click to the Bitget pair), and tracking (sync auto-imports off-board holdings via Task 32's resolver). Paper bot LIT test untouched. Deployed via push → Vercel; production probe of the new route after deploy.
+
+---
+Task ID: 8 (Q&A session, read-only)
+Agent: main
+Task: Jawab user — "jika tidak pasang garis entry, di harga berapa bot BTC akan terpicu?" (READ-ONLY, no web changes)
+
+Work Log:
+- Read src/lib/bot/strategy.ts + src/lib/indicators.ts + src/lib/bot/bitget-trade.ts → replika persis computeBotSignal (EMA20/60, RSI14, cycleFit, drift, vol filter)
+- Created scripts/btc-trigger-price-sim.ts (read-only): fetch BTCUSDT 15M candles publik Bitget, verifikasi skor live, scan 5 bentuk rebound (spike1/spike2/climb4/climb8/dipThenV) untuk cari level X minimum dengan score>=0.40
+- Result (BTC ~$76,858): climb 2 jam → pemicu ~$77,934 (+1.4%); climb 1 jam → ~$78,510 (+2.2%); rebound 30 mnt → ~$79,202 (+3.1%); spike 1 bar → ~$79,932 (+4.0%); dip dulu lalu V → ~$79,317 (+3.2%)
+
+Stage Summary:
+- Insight kunci: tanpa garis = BUY market seketika saat skor >=0.40 di harga live saat itu; makin lambat & stabil rebound, makin rendah level pemicu (trend ikut memanas); spike mendadak butuh level lebih tinggi (hanya momentum yang panas)
+- Web TIDAK disentuh; semua bacaan via API publik Bitget
