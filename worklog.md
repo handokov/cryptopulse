@@ -1013,3 +1013,17 @@ Work Log:
 Stage Summary:
 - Insight kunci: tanpa garis = BUY market seketika saat skor >=0.40 di harga live saat itu; makin lambat & stabil rebound, makin rendah level pemicu (trend ikut memanas); spike mendadak butuh level lebih tinggi (hanya momentum yang panas)
 - Web TIDAK disentuh; semua bacaan via API publik Bitget
+
+---
+Task ID: 9 (Q&A session, read-only)
+Agent: main
+Task: Jawab user — "apakah skor 0.40 terlalu tinggi? token naik 5% tapi skor belum 0.40" (READ-ONLY)
+
+Work Log:
+- Created scripts/score-anatomy-demo.ts: replika computeBotSignal + 8 skenario sintetis (konteks downtrend vs sideways × bentuk kenaikan +5%)
+- Result: DOWNTREND +5% (semua bentuk) → skor tetap negatif (−0.13..−0.01, EMA gap −0.7..−2.7%, RSI 72-82); SIDEWAYS +5% → skor 0.59..0.81 (ENTRY mudah)
+- Ingredient table: threshold 0.40 butuh trend & momentum positif BERSAMAAN (mis. EMA gap +0.55% + RSI 56, atau kombinasi lebih seimbang); satu komponen panas sendirian tak pernah cukup
+
+Stage Summary:
+- Jawaban: 0.40 bukan soal % kenaikan — skor mengukur apakah REGIME berbalik naik; pantulan 5% dari tren turun ditolak (anti bull-trap), breakout 5% dari dasar datar langsung entry
+- Web TIDAK disentuh
