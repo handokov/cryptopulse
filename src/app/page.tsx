@@ -163,8 +163,8 @@ export default function Home() {
 
       <SiteFooter />
 
-      {/* spacer so the fixed mobile bottom nav never covers the footer */}
-      <div aria-hidden className="h-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden" />
+      {/* spacer so the fixed mobile bottom nav never covers the footer — also the scroll-snap end target */}
+      <div aria-hidden className="snap-end h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" />
 
       <BottomNav />
     </div>

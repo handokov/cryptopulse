@@ -70,11 +70,11 @@ export function BottomNav() {
               key={tb.id}
               href={`#${tb.id}`}
               aria-current={on ? "page" : undefined}
-              className={`flex flex-col items-center gap-0.5 py-2 text-[9px] font-medium leading-none transition-colors ${
+              className={`flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium leading-none transition-colors ${
                 on ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Icon className="h-5 w-5" strokeWidth={on ? 2.4 : 1.8} aria-hidden />
+              <Icon className="h-6 w-6" strokeWidth={on ? 2.4 : 1.8} aria-hidden />
               {t(tb.id)}
             </a>
           );

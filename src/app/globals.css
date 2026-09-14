@@ -238,3 +238,19 @@
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
+
+/* ------------------------------------------------------------------ */
+/* Mobile paging (CMC/CoinGecko-style) — below lg only.                */
+/* Sections settle at their boundaries instead of stopping mid-way.    */
+/* Sections taller than the viewport still scroll freely inside        */
+/* (CSS snap spec: areas larger than the snapport stay scrollable).    */
+/* ------------------------------------------------------------------ */
+@media (max-width: 1023px) {
+  html {
+    scroll-snap-type: y mandatory;
+  }
+  section[id] {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+}
