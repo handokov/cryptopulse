@@ -1063,3 +1063,19 @@ Stage Summary:
 - Status: FITUR SELESAI + ter-commit lokal, tapi BELUM di GitHub → Vercel belum deploy movers
 - Jalur sync terbukti: mekanisme publish platform (pembuat commit "(N)" di GitHub) — user perlu trigger publish dari UI
 - Push manual dari sandbox diblokir sampai kredensial tersedia lagi
+
+---
+Task ID: 10-c (push via user PAT)
+Agent: main
+Task: Push fitur Movers 24h ke GitHub menggunakan PAT yang diberikan user di chat
+
+Work Log:
+- Token divalidasi via ls-remote (read OK), dipakai one-shot di URL push — TIDAK disimpan di .git/config/env file
+- Inspeksi diff remote: sisi remote hanya versi LAMA smallcaps.ts (pra-export) + dev.pid → konten lokal lebih baru & terverifikasi
+- git merge -s ours origin/main @ 271f4cd: konten lokal dipertahankan utuh, riwayat pipeline (33) tetap jadi parent — push fast-forward
+- PUSH SUKSES: 7f8926f..271f4cd main → main (termasuk commit UUID 263c13d = auto-commit worklog 10-b)
+- Production probe setelah ~100s: GET /api/market/movers → 200, payload 290 pasangan Bitget live (BTC $77,793.72, KII +2.5%)
+
+Stage Summary:
+- Fitur Movers 24h LIVE di production (Vercel auto-deploy selesai)
+- CATATAN KEAMANAN: token PAT user lewat di chat — disarankan revoke/rotate
