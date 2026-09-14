@@ -1046,3 +1046,20 @@ Work Log:
 Stage Summary:
 - Fitur live: dropdown "Movers 24h" di section Markets — 291 pasangan Bitget real-time (DEBIT +60.28%, RVV +36.83% saat verifikasi), sort per tab lokal, cache server 60s
 - Berbagi cache dengan screener smallcaps (tanpa kuota API tambahan)
+
+---
+Task ID: 10-b (push status)
+Agent: main
+Task: Jawab "sudah di push?" — verifikasi status commit & push fitur Movers 24h
+
+Work Log:
+- Konfirmasi lokal: fitur movers dropdown sudah ter-commit (496c212), berisi api/market/movers, market-movers.tsx, lib/market/movers.ts, i18n 6 locale, page.tsx wiring; working tree bersih
+- Fetch origin: origin/main @ 7f8926f = small-cap screener "(33)" saja — movers BELUM ada di GitHub (diff konfirmasi movers.ts/i18n/id.ts dsb hilang di remote)
+- Riwayat terpisah: pipeline publish platform membuat commit paralel bernomor "(32)/(33)" di GitHub; lokal punya konten sama dgn SHA beda (1d553ec) → push langsung akan non-fast-forward
+- git push dicoba 3x (push origin main, HEAD:main): SEMUA GAGAL "could not read Username for 'https://github.com'" — sesi ini TANPA kredensial (tanpa gh CLI, SSH key, token di env/.git-credentials/.netrc; .env hanya DATABASE_URL)
+- Sesi-sesi lama push sukses → kredensial dulu tersedia, sekarang tidak
+
+Stage Summary:
+- Status: FITUR SELESAI + ter-commit lokal, tapi BELUM di GitHub → Vercel belum deploy movers
+- Jalur sync terbukti: mekanisme publish platform (pembuat commit "(N)" di GitHub) — user perlu trigger publish dari UI
+- Push manual dari sandbox diblokir sampai kredensial tersedia lagi
