@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { Lock } from "lucide-react";
 import { SiteHeader } from "@/components/crypto/site-header";
 import { SiteFooter } from "@/components/crypto/site-footer";
+import { BottomNav } from "@/components/crypto/bottom-nav";
 import { MorphingHero } from "@/components/crypto/morphing-hero";
 import { MarketDataLoader } from "@/components/crypto/market-data-loader";
 import { MarketGrid } from "@/components/crypto/market-grid";
@@ -161,6 +162,11 @@ export default function Home() {
       </main>
 
       <SiteFooter />
+
+      {/* spacer so the fixed mobile bottom nav never covers the footer */}
+      <div aria-hidden className="h-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden" />
+
+      <BottomNav />
     </div>
   );
 }

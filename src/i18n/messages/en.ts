@@ -15,6 +15,15 @@ const en = {
     bot: "Trading Bot",
   },
 
+  navtab: {
+    markets: "Markets",
+    top100: "Top 100",
+    labs: "Labs",
+    news: "News",
+    portfolio: "Portfolio",
+    bot: "Bot",
+  },
+
   hero: {
     badge: "Markets never sleep — neither do we",
     tagline: "market intelligence, visualized",

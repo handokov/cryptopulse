@@ -14,6 +14,15 @@ const pt: Messages = {
     bot: "Bot de trading",
   },
 
+  navtab: {
+    markets: "Mercado",
+    top100: "Top 100",
+    labs: "Labs",
+    news: "Notícias",
+    portfolio: "Carteira",
+    bot: "Bot",
+  },
+
   hero: {
     badge: "Os mercados nunca dormem — nós também não",
     tagline: "inteligência de mercado, visualizada",

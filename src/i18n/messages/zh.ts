@@ -14,6 +14,15 @@ const zh: Messages = {
     bot: "交易机器人",
   },
 
+  navtab: {
+    markets: "行情",
+    top100: "百强榜",
+    labs: "实验室",
+    news: "新闻",
+    portfolio: "组合",
+    bot: "机器人",
+  },
+
   hero: {
     badge: "市场永不休眠 —— 我们也是",
     tagline: "市场情报，可视化呈现",

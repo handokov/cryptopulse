@@ -14,6 +14,15 @@ const id: Messages = {
     bot: "Bot Trading",
   },
 
+  navtab: {
+    markets: "Pasar",
+    top100: "Top 100",
+    labs: "Lab",
+    news: "Berita",
+    portfolio: "Portofolio",
+    bot: "Bot",
+  },
+
   hero: {
     badge: "Pasar tak pernah tidur — kami juga",
     tagline: "intelijen pasar, tervisualisasi",

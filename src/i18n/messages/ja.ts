@@ -14,6 +14,15 @@ const ja: Messages = {
     bot: "トレードボット",
   },
 
+  navtab: {
+    markets: "市場",
+    top100: "トップ100",
+    labs: "ラボ",
+    news: "ニュース",
+    portfolio: "資産",
+    bot: "ボット",
+  },
+
   hero: {
     badge: "市場は眠らない ― 私たちも",
     tagline: "マーケット・インテリジェンスを可視化",
