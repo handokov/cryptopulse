@@ -106,6 +106,23 @@ interface BotStats {
   dailyPnl: { day: string; pnl: number }[];
 }
 
+interface PortfolioPerBot {
+  symbol: string;
+  totalUsdt: number;
+  todayUsdt: number;
+  closed: number;
+}
+
+interface Portfolio {
+  bots: number;
+  botsActive: number;
+  totalUsdt: number;
+  todayUsdt: number;
+  closedCount: number;
+  todayCount: number;
+  perBot: PortfolioPerBot[];
+}
+
 interface TickResult {
   action: string;
   reason: string;
@@ -148,6 +165,7 @@ export function BotSection() {
   const [trades, setTrades] = useState<BotTrade[]>([]);
   const [summary, setSummary] = useState<BotSummary | null>(null);
   const [stats, setStats] = useState<BotStats | null>(null);
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -176,6 +194,7 @@ export function BotSection() {
         setTrades(data.trades ?? []);
         setSummary(data.summary ?? null);
         setStats(data.stats ?? null);
+        setPortfolio(data.portfolio ?? null);
         if (data.summary?.presets) setPreset(data.summary.presets);
       }
     } finally {
@@ -411,6 +430,57 @@ export function BotSection() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* portfolio aggregate — combined P/L across ALL bots */}
+      {portfolio && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfTotal")}</p>
+            <p className="tnum text-[10px] text-muted-foreground">
+              {t("pfBotsActive", { active: portfolio.botsActive, total: portfolio.bots })}
+            </p>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfToday")}</p>
+              <p className={`tnum mt-0.5 text-xl font-bold ${portfolio.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                {portfolio.todayUsdt >= 0 ? "+" : ""}{portfolio.todayUsdt.toFixed(2)} $
+              </p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("pfTodayCount", { count: portfolio.todayCount })}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfAllTime")}</p>
+              <p className={`tnum mt-0.5 text-xl font-bold ${portfolio.totalUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                {portfolio.totalUsdt >= 0 ? "+" : ""}{portfolio.totalUsdt.toFixed(2)} $
+              </p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("pfClosedCount", { count: portfolio.closedCount })}</p>
+            </div>
+          </div>
+          {portfolio.perBot.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1 border-t border-border pt-2">
+              {portfolio.perBot.map((r) => (
+                <button
+                  key={r.symbol}
+                  type="button"
+                  onClick={() => selectBot(r.symbol)}
+                  className="flex items-center justify-between rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-foreground/5"
+                  title={t("pfJumpTo")}
+                >
+                  <span className="font-mono font-semibold">{r.symbol}</span>
+                  <span className="flex items-center gap-3">
+                    <span className={`tnum w-20 text-right ${r.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                      {r.todayUsdt >= 0 ? "+" : ""}{r.todayUsdt.toFixed(2)}
+                    </span>
+                    <span className={`tnum w-20 text-right font-semibold ${r.totalUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                      {r.totalUsdt >= 0 ? "+" : ""}{r.totalUsdt.toFixed(2)} $
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* bot switcher — one chip per bot, plus the "new bot" chip */}
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">

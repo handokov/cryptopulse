@@ -148,6 +148,51 @@ export async function GET(req: NextRequest) {
     maxLive: MAX_LIVE_BOTS,
   };
 
+  /* ---- portfolio aggregate across ALL bots of this user ---- */
+  const allIds = configs.map((c) => c.id);
+  const [allClosed, allTodaySells] = await Promise.all([
+    allIds.length
+      ? db.botPosition.findMany({
+          where: { configId: { in: allIds }, status: "CLOSED" },
+          select: { configId: true, realizedPnlUsdt: true },
+        })
+      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null }[]),
+    allIds.length
+      ? db.botTrade.findMany({
+          where: { configId: { in: allIds }, createdAt: { gte: dayStart }, action: "SELL", status: { in: ["PAPER", "SUBMITTED"] } },
+          select: { configId: true, pnlUsdt: true },
+        })
+      : Promise.resolve([] as { configId: string; pnlUsdt: number | null }[]),
+  ]);
+  const perBotMap = new Map<string, { symbol: string; totalUsdt: number; todayUsdt: number; closed: number }>();
+  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, totalUsdt: 0, todayUsdt: 0, closed: 0 });
+  let pfTotal = 0;
+  let pfToday = 0;
+  for (const p of allClosed) {
+    const amt = p.realizedPnlUsdt ?? 0;
+    pfTotal += amt;
+    const row = perBotMap.get(p.configId);
+    if (row) {
+      row.totalUsdt += amt;
+      row.closed += 1;
+    }
+  }
+  for (const tr of allTodaySells) {
+    const amt = tr.pnlUsdt ?? 0;
+    pfToday += amt;
+    const row = perBotMap.get(tr.configId);
+    if (row) row.todayUsdt += amt;
+  }
+  const portfolio = {
+    bots: configs.length,
+    botsActive: configs.filter((c) => c.enabled).length,
+    totalUsdt: pfTotal,
+    todayUsdt: pfToday,
+    closedCount: allClosed.length,
+    todayCount: allTodaySells.length,
+    perBot: [...perBotMap.values()].sort((a, b) => b.totalUsdt - a.totalUsdt),
+  };
+
   return NextResponse.json({
     config: config ?? { ...defaults(user.id, wantSymbol || "BTCUSDT"), id: null },
     bots,
@@ -156,6 +201,7 @@ export async function GET(req: NextRequest) {
     trades,
     summary,
     stats,
+    portfolio,
   });
 }
 
