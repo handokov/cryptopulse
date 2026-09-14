@@ -1129,3 +1129,21 @@ Work Log:
 Stage Summary:
 - Navigasi mobile kini first-class: 6 tab bawah + scroll-spy, matikan scroll jauh antar section
 - Desktop tak berubah
+
+---
+Task ID: 12-b (nav bigger + snap paging)
+Agent: main
+Task: User minta ikon nav bawah digedekan + "stop antar navigasi, jangan tetap bisa scroll kebawah" (snap antar section)
+
+Work Log:
+- bottom-nav.tsx: ikon h-5→h-6 (24px), label 9px→10px, py-2→py-2.5, gap 0.5→1
+- Scroll-snap CMC-style, mobile-only via globals.css @media (max-width:1023px): html scroll-snap-type y mandatory; section[id] align start + snap-stop always (1 gesture = 1 section, tidak terlewat); spacer footer diberi Tailwind snap-end sebagai target akhir
+- Desain aman: section lebih tinggi dari viewport tetap scroll bebas di dalamnya (spec CSS snap: area > snapport = valid range), hanya BERPINDAH antar section yang nyantol
+- page.tsx spacer 4rem→4.75rem (bar lebih tinggi)
+- Debug: dev server menyajikan CSS STALE setelah edit globals.css (touch tak membantu) → restart dev.sh → aturan tersaji
+- Verifikasi browser 390px: computed html = "y mandatory", mendarat 40px sebelum batas Top 100 → terkoreksi PERSIS ke batas (DELTA=0), scroll dalam section tetap bebas (posisi dipertahankan), desktop 1440px = "none"; ikon tampil lebih besar
+- Commit d60bcd3 "(37)" → push sukses → probe produksi: bundle CSS 73044aa0 memuat scroll-snap-type ✓
+
+Stage Summary:
+- Mobile kini berpaging antar section (stop di batas) + ikon lebih besar; desktop tidak berubah
+- Catatan: dev server kadang menyajikan CSS stale → restart dev.sh bila edit globals.css tak muncul
