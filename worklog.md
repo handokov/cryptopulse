@@ -1027,3 +1027,22 @@ Work Log:
 Stage Summary:
 - Jawaban: 0.40 bukan soal % kenaikan — skor mengukur apakah REGIME berbalik naik; pantulan 5% dari tren turun ditolak (anti bull-trap), breakout 5% dari dasar datar langsung entry
 - Web TIDAK disentuh
+
+---
+Task ID: 10 (feature build)
+Agent: main
+Task: Dropdown market gaya Bitget di section Markets — lihat pasangan naik/turun 24 jam (permintaan eksplisit user + screenshot board Bitget)
+
+Work Log:
+- Export kecil dari src/lib/market/smallcaps.ts (getSymbolRows/getTickerRows/num/STABLE_BASES + tipe BG*) agar cache Bitget 60s/10menit dipakai bersama, tanpa duplikasi
+- New src/lib/market/movers.ts: getBitgetMovers(minVol, limit) — semua pasangan USDT online (termasuk top-100), stables + leveraged shapes + areaSymbol dibuang, satu payload di-sort klien per tab
+- New API route GET /api/market/movers?minVol=50000&limit=300 (force-dynamic, upstream cache dipakai ulang)
+- New src/components/crypto/market-movers.tsx: Popover dropdown (trigger pill "Movers 24h"), tab Naik/Turun/Volume, search, max-h-80 scroll, kolom Pasangan/Harga/24j gaya board Bitget, strip label menampilkan top gainer, baris = link ke bitget.com/spot/{PAIR}, footer updatedAt UTC + jumlah pasangan, auto-poll 60s + stale-request guard
+- page.tsx: <MarketMovers /> di section markets antara heading dan MarketGrid
+- i18n: blok markets.movers baru di 6 locale (en/id/zh/es/pt/ja)
+- Bug ditemukan+fix saat verifikasi browser: Bitget change24h = PECAHAN (0.6028=60.28%) sedangkan fmtPct mengharapkan persen → tambah fmtChange (×100); harga mikro $0.0000 → fmtMoverPrice (toFixed 6/8 utk <$0.01/<$0.0001)
+- Lint bersih; agent-browser: panel buka/tutup, tab gainers/losers/volume, search "hype", klik baris, mobile 390px (panel w-[min(92vw,26rem)]) — semua OK; dev.log 200 semua, tanpa error
+
+Stage Summary:
+- Fitur live: dropdown "Movers 24h" di section Markets — 291 pasangan Bitget real-time (DEBIT +60.28%, RVV +36.83% saat verifikasi), sort per tab lokal, cache server 60s
+- Berbagi cache dengan screener smallcaps (tanpa kuota API tambahan)

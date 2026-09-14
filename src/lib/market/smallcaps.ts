@@ -42,7 +42,7 @@ export interface SmallcapsResult {
   rows: SmallcapRow[];
 }
 
-interface BGSymbolRow {
+export interface BGSymbolRow {
   symbol?: unknown;
   baseCoin?: unknown;
   quoteCoin?: unknown;
@@ -51,7 +51,7 @@ interface BGSymbolRow {
   openTime?: unknown;
 }
 
-interface BGTickerRow {
+export interface BGTickerRow {
   symbol?: unknown;
   lastPr?: unknown;
   change24h?: unknown;
@@ -65,7 +65,7 @@ const SYMBOLS_TTL = 600_000;
 const TICKERS_TTL = 60_000;
 
 /** Fiat-backed / stable pairs that would otherwise clutter a coin screener. */
-const STABLE_BASES = new Set([
+export const STABLE_BASES = new Set([
   "USDC", "DAI", "TUSD", "FDUSD", "USDP", "PYUSD", "USDE", "USD1",
   "EUR", "EURI", "AEUR", "EURA", "XUSD", "UST", "USDS", "USDT",
 ]);
@@ -91,7 +91,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
   }
 }
 
-async function getSymbolRows(): Promise<BGSymbolRow[] | null> {
+export async function getSymbolRows(): Promise<BGSymbolRow[] | null> {
   const cached = g.__cpBGSymbols;
   if (cached && Date.now() - cached.at < SYMBOLS_TTL) return cached.rows;
   const rows = await fetchJson<BGSymbolRow[]>(`${BASE_URL}/api/v2/spot/public/symbols`);
@@ -100,7 +100,7 @@ async function getSymbolRows(): Promise<BGSymbolRow[] | null> {
   return rows;
 }
 
-async function getTickerRows(): Promise<BGTickerRow[] | null> {
+export async function getTickerRows(): Promise<BGTickerRow[] | null> {
   const cached = g.__cpBGTickers;
   if (cached && Date.now() - cached.at < TICKERS_TTL) return cached.rows;
   const rows = await fetchJson<BGTickerRow[]>(`${BASE_URL}/api/v2/spot/market/tickers`);
@@ -109,7 +109,7 @@ async function getTickerRows(): Promise<BGTickerRow[] | null> {
   return rows;
 }
 
-function num(v: unknown): number {
+export function num(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }

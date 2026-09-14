@@ -7,6 +7,7 @@ import { SiteFooter } from "@/components/crypto/site-footer";
 import { MorphingHero } from "@/components/crypto/morphing-hero";
 import { MarketDataLoader } from "@/components/crypto/market-data-loader";
 import { MarketGrid } from "@/components/crypto/market-grid";
+import { MarketMovers } from "@/components/crypto/market-movers";
 import { Top100Groups } from "@/components/crypto/top100-groups";
 import { LabPanels } from "@/components/crypto/lab-panels";
 import { AnalysisEngine } from "@/components/crypto/analysis-engine";
@@ -84,6 +85,7 @@ export default function Home() {
             title={tMarkets("title")}
             subtitle={tMarkets("subtitle")}
           />
+          <MarketMovers />
           <MarketGrid />
         </section>
 
