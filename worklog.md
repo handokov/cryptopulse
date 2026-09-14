@@ -1079,3 +1079,19 @@ Work Log:
 Stage Summary:
 - Fitur Movers 24h LIVE di production (Vercel auto-deploy selesai)
 - CATATAN KEAMANAN: token PAT user lewat di chat — disarankan revoke/rotate
+
+---
+Task ID: 10-d (movers di Top 100)
+Agent: main
+Task: User bingung "dimana? kok disini tidak ada?" + screenshot section Top 100 → dropdown tidak ada di situ
+
+Work Log:
+- Root cause: MarketMovers hanya dipasang di section #markets (atas grid 8 aset); screenshot user = section #top100 (papan peringkat 31-40)
+- Fix 1 baris: <MarketMovers /> juga di section #top100 antara SectionHeading dan Top100Groups (komponen aman di-instantiate 2x — state lokal, tanpa global side effect)
+- Lint 0 masalah; browser lokal: 2 tombol "Open Bitget market movers" (e25/e35), instance top100 terbuka normal (Gainers/Losers/Volume, search, DEBIT +52.2% live)
+- Commit 263cd5e "…(34)" → push sukses 271f4cd..263cd5e (token user masih aktif) → Vercel deploy selesai
+- Probe production HTML: 2 kemunculan "Open Bitget market movers" ✓
+
+Stage Summary:
+- Dropdown Movers 24h kini di DUA section: Markets & Top 100 — live di production
+- Token PAT user BELUM di-revoke (push masih sukses) — peringatan rotate diulang
