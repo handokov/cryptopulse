@@ -96,6 +96,7 @@ export default function Home() {
             title={tTop100("title")}
             subtitle={tTop100("subtitle")}
           />
+          <MarketMovers />
           <Top100Groups />
         </section>
 
