@@ -1112,3 +1112,20 @@ Work Log:
 Ringkasan Tahapan:
 - Kartu total gabungan LIVE: P/L hari ini (UTC) + sepanjang waktu + rincian per-bot, satu klik lompat ke bot terkait
 - Catatan teknis: SQLite+Prisma DateTime = INTEGER epoch — insert raw harus pakai epoch ms
+
+---
+Task ID: 12 (mobile bottom nav)
+Agent: main
+Task: User tanya apakah bisa nav bawah gaya CMC/CoinGecko di mobile ("coba buatkan") — sebelumnya nav mobile TIDAK ADA sama sekali (link header hidden < lg, tanpa hamburger)
+
+Work Log:
+- Komponen baru src/components/crypto/bottom-nav.tsx: fixed bottom bar, lg:hidden (parity breakpoint dgn nav header), 6 tab (Markets/Top 100/Labs/News/Portfolio/Bot; Labs mencakup #labs+#analysis), scroll-spy via probe line 40% viewport + bottom-of-page → Bot, ikon lucide (TrendingUp/ListOrdered/Radar/Newspaper/Wallet/Bot), safe-area-inset-bottom via style
+- page.tsx: <BottomNav /> akhir halaman + spacer h-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden sebelum nav supaya footer tak tertutup
+- i18n: namespace navtab baru (label ringkas) di 6 locale — en/id/zh/es/pt/ja
+- Fix TS: includes tuple → cast readonly string[]
+- Lint 0; browser 390px: bar tampil, Markets nyala saat load, tap Bot (ref e20) → lompat ke section 07 + tab Bot nyala, footer terbaca di atas bar; desktop 1440px: bar hilang, nav header normal; 0 console error
+- Commit 98a1451 "(36)" → push sukses → probe produksi: aria-label="Mobile" ada di HTML
+
+Stage Summary:
+- Navigasi mobile kini first-class: 6 tab bawah + scroll-spy, matikan scroll jauh antar section
+- Desktop tak berubah
