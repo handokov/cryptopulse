@@ -1095,3 +1095,20 @@ Work Log:
 Stage Summary:
 - Dropdown Movers 24h kini di DUA section: Markets & Top 100 — live di production
 - Token PAT user BELUM di-revoke (push masih sukses) — peringatan rotate diulang
+
+---
+Task ID: 11 (portfolio aggregate)
+Agent: main
+Task: User minta rangkuman total profit/loss gabungan semua bot (saat ini hanya per-token) + P/L hari ini
+
+Work Log:
+- Backend GET /api/bot: tambah objek `portfolio` — totalUsdt (semua BotPosition CLOSED lintas config), todayUsdt (SELL hari ini UTC, pnlUsdt), closedCount/todayCount, bots/botsActive, perBot[] (symbol/total/today/closed, sort desc by total)
+- Frontend bot-section: kartu "ALL BOTS — COMBINED PNL" di atas switcher (grid TODAY | ALL-TIME + caption jumlah trade + baris per-bot clickable → selectBot), types Portfolio/PortfolioPerBot, state + wiring di load()
+- i18n: 7 key pf* baru di 6 locale (en/id/zh/es/pt/ja)
+- E2E scripts/verify-portfolio-aggregate.ts: register→3 bot→seed sintetis→assert; TEMUAN PENTING: seed raw dengan tanggal ISO TEXT membuat `gte dayStart` salah (Prisma/SQLite menyimpan DateTime sbg INTEGER epoch; number-vs-text memicu type-ordering) → seed diperbaiki ke epoch ms → 12/12 PASS (total +2.45, today +0.43, kemarin terkecualikan, per-bot benar, sort benar); cleanup user test otomatis
+- UI smoke via browser: login user probe → kartu tampil (TODAY +0.00 / ALL-TIME +0.00, 0/0 bots active); user probe dihapus
+- Lint 0; commit 530ba80 "(35)" → push sukses → probe produksi /api/bot = 401 (live + auth-gated)
+
+Ringkasan Tahapan:
+- Kartu total gabungan LIVE: P/L hari ini (UTC) + sepanjang waktu + rincian per-bot, satu klik lompat ke bot terkait
+- Catatan teknis: SQLite+Prisma DateTime = INTEGER epoch — insert raw harus pakai epoch ms
