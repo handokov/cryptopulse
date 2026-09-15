@@ -1273,3 +1273,21 @@ Stage Summary:
 - (41) "Bitget trade-connection status + permission probe" TERDEPLOY: badge SPOT TRADE OK / READ-ONLY di kartu koneksi, pill status 4-state di LIVE WALLET, probe izin trade otomatis (order-invalid mustahil terisi), i18n ×6
 - Pengingat PAT: token baru ini juga sudah tercatat di riwayat chat — disarankan revoke/rotate setelah deploy terkonfirmasi
 - Probe produksi PASS: "Spot trade OK" + "Bitget spot trade connected" @ chunk a8c61ec12bc018de.js, "tradePermission" @ 66f2601eca97aaa5.js — (41) terkonfirmasi live
+
+---
+Task ID: 18 (probe bugfix — badge TRADE? mentok di key asli)
+Agent: main
+Task: User konfirmasi koneksi Bitget terhubung + setting izin sudah "Baca tulis/Spot" (screenshot), tapi badge koneksi masih "TRADE?" (unverified) — probe izin trade tidak pernah konklusif
+
+Work Log:
+- Recon live scripts/recon-bitget-error-bodies.ts: Bitget menjawab SEMUA rejection (auth & bisnis) sbg HTTP 400/4xx + body JSON — key palsu → 40037 "Apikey does not exist", tanpa key → 40006 "Invalid ACCESS_KEY"
+- ROOT CAUSE: probeTradePermission lama bail di !res.ok → return "HTTP 400" inconclusive TANPA baca body → key asli tidak pernah terklasifikasi (badge mentok "TRADE?"); E2E lama malah mengunci perilaku bug (assert /HTTP 40/)
+- Fix bitget.ts: (1) !res.ok kini parse body JSON → classifyTradeProbe(code,msg) + note "msg (HTTP 400)"; (2) classifier dpt AUTH-GUARD sebelum cek granted (40006/40037/api.?key/access.?key/signature/passphrase/secret/forbidden → inconclusive) — "Invalid ACCESS_KEY" mengandung "invalid" bisa false-granted tanpa guard ini; (3) granted regex diperluas: quantity/too small/at least/less than/param
+- E2E: unit 9→15 kasus (body live-observed + varian minimum-order + denial by code); verify-trade-permission 24/24 ALL PASS; regresi verify-limit-entry 19/19 + verify-live-limit-oco 29/29; tsc src/ tetap 4 pre-existing; lint bersih
+- Probe langsung pasca-fix: {"state":"inconclusive","code":"40037","message":"Apikey does not exist (HTTP 400)"} — body terbaca, auth guard bekerja
+- Commit 2c10448 "(42)" → push 605d0dc..2c10448 sukses
+
+Stage Summary:
+- Dengan key asli berizin trade: probe kini menerima rejection bisnis (symbol/size error) → verdict GRANTED → badge hijau "SPOT TRADE OK" setelah user menekan Sinkronkan
+- Key read-only → verdict DENIED (amber); key salah/passphrase → inconclusive dengan note jelas di tooltip
+- Catatan: deploy butuh beberapa menit; user tinggal tekan Sinkronkan di kartu koneksi
