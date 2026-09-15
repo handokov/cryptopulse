@@ -1170,3 +1170,17 @@ Stage Summary:
 - Bot paper kini punya DOMPET: modal awal (default $20, bisa diubah per bot), saldo live = modal + realized + unrealized (mark harga Bitget), P/L $ dan % dari modal
 - Entry dibatasi saldo bebas — simulasi realistis, tak bisa beli tanpa dana
 - Catatan: pfEquity harus diinisialisasi SETELAH loop pfCapital; dev server lama penyebab 500 siluman
+
+---
+Task ID: 14 (design note — funding & entry pricing fase Bitget-real)
+Agent: main
+Task: User kirim CATATAN upgrade masa depan (bukan build sekarang): saat bot terhubung Bitget, (1) modal bot diambil dari saldo spot Bitget, (2) harga BUY saat "jalankan tick sekarang" harus sedikit DI BAWAH harga market — ala garis ungu limit order di order book Bitget (screenshot PUFFER/USDT: market 0,02365 vs level ungu 0,02342 ≈ −0.97%) — supaya tidak terjebak beli di harga market; minta opini desain terbaik
+
+Work Log:
+- Probe produksi (38): string "Paper wallet" ditemukan di chunk ef2ed0ea760699f8.js → deploy f2d022b LIVE (menutup probe yang tertunda dari Task 13)
+- Tidak ada perubahan kode (murni catatan desain, per kata user "hanya catatan untuk upgrade kedepan")
+- Desain fase-live yang direkomendasikan (maker entry): limit buy = ticker × (1 − entryOffsetPct), offset default 0.2–0.5% konfigurabel per bot; post-only agar dijamin maker fee & tak pernah isi di market; TTL 2–3 candle lalu cancel+re-price bila sinyal masih valid, cancel+batal bila sinyal gugur (filter anti buy-the-top gratis); opsi marketable-limit utk sinyal sangat kuat (default off); funding live = saldo USDT spot aktual − locked (order+posisi semua bot) − buffer fee, per-bot tetap dibatasi paperCapital/orderSize; SL/TP dipasang segera pasca-fill (OCO)
+
+Stage Summary:
+- (38) terkonfirmasi live di produksi
+- Catatan integrasi Bitget-real terekam: funding dari saldo spot + entry limit bawah market (maker); siap diimplement begitu user green-light fase live; opsi jembatan: simulasi paper fill-hanya-jika-candle-sentuh-level-limit
