@@ -32,7 +32,15 @@ const PLACE_ORDER_PATH = "/api/v2/spot/trade/place-order";
 /*   • permission-flavoured error  → key is READ-ONLY (denied)         */
 /*   • symbol/parameter error      → the call passed the permission    */
 /*                                   gate → trade scope present        */
+/*   • auth-layer error            → inconclusive (keep previous)      */
 /*   • anything else               → inconclusive (keep previous)      */
+/*                                                                     */
+/* IMPORTANT (verified live 2026-09): Bitget answers ALL of these with  */
+/* HTTP 4xx + a JSON body — auth failures (40006 "Invalid ACCESS_KEY", */
+/* 40037 "Apikey does not exist") AND business rejections alike. The    */
+/* body code/msg is the only real signal, so it must be read even when  */
+/* res.ok is false (the original probe only looked at the status and    */
+/* every real key classified as inconclusive "HTTP 400" forever).       */
 /* ------------------------------------------------------------------ */
 
 export type TradeProbeState = "granted" | "denied" | "inconclusive";
@@ -46,13 +54,24 @@ export interface TradeProbeResult {
 /** Pure classifier — unit-testable without network. */
 export function classifyTradeProbe(code: string | undefined, msg: string): TradeProbeState {
   const m = (msg || "").toLowerCase();
-  // Bitget 40014 family = "no permission for this apikey"; message mentions
-  // permission/privilege/authorization on current deployments.
-  if (code === "40014" || /permission|privilege|authoriz|no right|not allow/.test(m)) {
+  const c = (code || "").toLowerCase();
+  // 1) Permission-flavoured error → key is READ-ONLY. Bitget code 40014 =
+  //    "no permission for this apikey"; messages mention
+  //    permission/privilege/authorization on current deployments.
+  if (c === "40014" || /permission|privilege|authoriz|no right|not allow/.test(m)) {
     return "denied";
   }
-  // A symbol/parameter rejection means the request reached the business layer.
-  if (/symbol|parameter|size|amount|invalid|exist|minimum|min\b/.test(m)) {
+  // 2) Auth-layer rejections — verified live: 40006 "Invalid ACCESS_KEY",
+  //    40037 "Apikey does not exist" — plus environment blocks (IP
+  //    whitelist "forbidden"). They say NOTHING about the trade scope:
+  //    must not fall through to the granted keyword match below ("Invalid
+  //    ACCESS_KEY" would otherwise hit "/invalid/" → false granted).
+  if (c === "40006" || c === "40037" || /api.?key|access.?key|signature|passphrase|secret|forbidden/.test(m)) {
+    return "inconclusive";
+  }
+  // 3) A symbol/size/order rejection means the request cleared the auth
+  //    AND permission gates and reached the order validator → key can trade.
+  if (/symbol|param|size|amount|quantity|invalid|exist|minimum|min\b|too small|at least|less than/.test(m)) {
     return "granted";
   }
   return "inconclusive";
@@ -92,6 +111,23 @@ export async function probeTradePermission(creds: ExchangeCredentials): Promise<
       body,
     });
     if (!res.ok) {
+      // Auth AND business rejections arrive as HTTP 4xx + JSON body —
+      // read the body and classify it; keep the status in the note so
+      // tooltips stay diagnosable. Only a non-JSON body is a true bail-out.
+      try {
+        const errBody = (await res.json()) as { code?: unknown; msg?: unknown };
+        const eCode = typeof errBody?.code === "string" ? errBody.code : undefined;
+        const eMsg = typeof errBody?.msg === "string" ? errBody.msg : "";
+        if (eCode !== undefined || eMsg) {
+          return {
+            state: classifyTradeProbe(eCode, eMsg),
+            code: eCode,
+            message: eMsg ? `${eMsg} (HTTP ${res.status})` : `HTTP ${res.status}`,
+          };
+        }
+      } catch {
+        /* body not JSON — fall through to the status-only bail-out */
+      }
       return { state: "inconclusive", message: `HTTP ${res.status}` };
     }
     const data = (await res.json()) as { code?: unknown; msg?: unknown };

@@ -154,6 +154,15 @@ const cases = [
   [[undefined, "symbol not exist"], "granted"],
   [["50001", "system busy, try later"], "inconclusive"],
   [[undefined, "totally unforeseen failure text"], "inconclusive"],
+  /* auth-layer rejections observed live (HTTP 400 bodies) — must NOT read
+     as granted even though "Invalid ACCESS_KEY" contains "invalid" */
+  [["40037", "Apikey does not exist"], "inconclusive"],
+  [["40006", "Invalid ACCESS_KEY"], "inconclusive"],
+  [[undefined, "env forbidden by ip whitelist"], "inconclusive"],
+  /* real minimum-order wordings + code-driven denial */
+  [["40701", "order value should be at least 5 usdt"], "granted"],
+  [[undefined, "the order quantity is too small"], "granted"],
+  [["40014", "invalid request"], "denied"],
 ];
 let unitOk = 0;
 for (const [[code, msg], want] of cases) {
