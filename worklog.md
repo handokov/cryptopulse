@@ -1233,3 +1233,28 @@ Stage Summary:
 - Modal live dari saldo spot Bitget aktual (available), bukan dompet paper; kuota 2 bot live; semua kegagalan bursa ter-audit di BotTrade
 - Yang TIDAK bisa diuji di sandbox: order sungguhan terisi (butuh API key Bitget aktif di menu koneksi exchange) — jalur terisi diuji via unit + race-check + rekonsiliasi; sarankan pilot ≤$1.5/order dulu
 - Risiko diketahui: trigger OCO dieksekusi bursa (≤1 tick deteksi engine utk rekonsiliasi PnL); trailing stop tetap engine-side 5-menit (SL bursa tetap terpasang)
+---
+Task ID: 17 (Bitget trade-connection status + permission probe)
+Agent: main
+Task: User tanya "cara menghubungkan ke bitget gimana? apakah sama seperti sinkronkan saldo bitget" — sudah buat API key spot di Bitget, tapi di CryptoPulse hanya ada centang risiko, TIDAK ada indikator "Bitget spot trade terhubung" atau laporan
+
+Work Log:
+- Jawaban arsitektur (sudah benar sejak Task 16): loadCreds(engine) memakai row ExchangeConnection bitget AKTIF yang SAMA dengan sinkron saldo — koneksi di kartu "Exchange connections" (Portfolio) menggerakkan sinkron saldo DAN trading live bot; risiko yang user maksud adalah checkbox liveConfirm di section Bot
+- CELAH YANG DITEMUKAN: tidak ada verifikasi/indikator izin TRADE — key read-only lolos penuh (sinkron saldo OK) tapi semua order live pasti ditolak tanpa penjelasan di UI
+- Probe aman (bitget.ts): probeTradePermission kirim place-order SENGAJA INVALID (symbol CRYPTOPULSEPROBEUSDT tak terdaftar + market buy 0.000001 USDT di bawah minimum semua pair) → mustahil terisi; klasifikasi rejection: code 40014 / msg "permission|privilege|authoriz|no right|not allow" → denied; msg "symbol|parameter|size|amount|invalid|exist|minimum" → granted (lolos gate izin = scope trade ADA); lainnya inconclusive; classifyTradeProbe dipisah pure utk unit test
+- trade-permission.ts: probeAndStoreTradePermission(id) — load row, decrypt, probe, update; inconclusive TIDAK menimpa verdict lama (granted/denied dipertahankan), hanya note+timestamp yang di-refresh; skip utk non-bitget / status != active
+- Schema: ExchangeConnection.tradePermission TEXT DEFAULT 'unverified' + tradeProbedAt + tradeProbeNote; db push lokal + langkah runtime migrate.ts (ADD COLUMN idempoten × 3)
+- Wiring: POST /api/exchange-connections (probe setelah create, gagal probe tak pernah gagalkan connect), POST [id]/sync (re-probe SETELAH sync sukses — sinkron gagal auth tetap gate pertama), GET expose 3 field; /api/bot GET: spot { coin, available, connected, tradePermission } — conn query di-hoist keluar cache branch
+- Fakta Bitget: tidak ada endpoint "deskripsikan key saya" → satu-satunya cara cek scope trade adalah mencoba order (maka probe invalid-order); bad key kini dijawab HTTP 400 (bukan 401) → adapter map ke "network", probe → inconclusive "HTTP 400"
+- UI exchange-connections: TradePermBadge di row bitget (granted=emerald "SPOT TRADE OK", denied=amber "READ-ONLY", else muted "TRADE?"; tooltip = raw note); dialog Bitget dapat blok amber tradeHintBitget; securityBody + howToBitget DIREVISI di 6 locale (klaim lama "never trades" sudah tidak akurat sejak bot live ada; plus larang IP whitelist — Vercel egress IP dinamis, key tanpa IP binding berlaku max 90 hari)
+- UI bot-section: LIVE WALLET kini punya LAPORAN koneksi — pill 4 state (granted "Bitget spot trade connected" emerald / denied "Key is read-only — orders blocked" amber / unverified "Connected — trade permission unverified" muted / none "Bitget not connected" red) + hint tindakan: denied → "enable Trade (spot) di Bitget lalu Sync di sini"; none → panduan lengkap Portfolio → Exchange connections → Connect (koneksi SAMA untuk sinkron + trading); available null saat connected → "balance call failed — press Sync"
+- i18n: 11 kunci baru + 2 revisi (securityBody, howToBitget) di 6 locale via scripts/insert-trade-perm-i18n.py
+- E2E scripts/verify-trade-permission.ts 24/24 PASS: POST fake creds → 422 tanpa store; row seed → unverified; probe direct fake → inconclusive HTTP 400 tanpa crash; probeAndStore → note tersimpan, verdict unverified dipertahankan; inconclusive TIDAK menimpa granted; sync fake → 422 (status row jadi "error" by design lalu diaktifkan ulang); verdict granted/denied tampil di GET; live bot spot.connected + tradePermission; paper bot tanpa spot; classifyTradeProbe 9/9; cleanup
+- Regression: verify-limit-entry.ts 19/19 + verify-live-limit-oco.ts 29/29 PASS; lint 0; tsc hanya 4 error pre-existing; restart dev server sebelum E2E (Prisma client lama tanpa kolom baru — jebakan berulang)
+- Browser 390×844 (user probe + koneksi seed + live bot): badge SPOT TRADE OK di kartu exchange, dialog Bitget menampilkan blok amber, LIVE WALLET granted pill emerald → flip denied = pill amber + hint → hapus koneksi = pill merah + panduan; desktop 1440 ok; console bersih; probe user dihapus
+- Commit 6172cef "(41)" LOKAL — PUSH GAGAL: PAT lama kini INVALID ("Invalid username or token") = PAT memang sudah revoke/expired (reminder lama terpenuhi); perlu PAT baru dari user utk push; produksi (40) terkonfirmasi live via chunk 5d19b2b0fcf3bd17.js
+
+Stage Summary:
+- Pertanyaan user terjawab + dilengkapi fitur: koneksi Bitget = SATU koneksi di kartu Exchange connections (Portfolio), kini dengan VERIFIKASI izin trade otomatis (probe order-invalid yang mustahil terisi) dan laporan status eksplisit di kartu koneksi + kartu LIVE WALLET
+- Alur user dari sini: buat API key di Bitget dgn Read-Only + Trade (tanpa withdraw, tanpa IP whitelist, max 90 hari) → Connect di Portfolio → cek badge SPOT TRADE OK → aktifkan bot live (paper off + centang risiko) → LIVE WALLET menampilkan saldo USDT nyata
+- Pending: push (41) butuh PAT baru dari user; setelah push+deploy, badge/verifikasi berjalan di produksi
