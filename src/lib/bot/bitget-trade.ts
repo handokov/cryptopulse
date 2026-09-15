@@ -87,7 +87,7 @@ interface RawOhlcRow {
  * by time. The last row is the still-forming bar (same data the engine's
  * fetchCloses sees), which keeps chart and engine perfectly in sync.
  */
-export async function fetchCandles(symbol: string, tf = "4H", limit = 180): Promise<Candle[]> {
+export async function fetchCandles(symbol: string, tf = "4H", limit = 180, minBars = 30): Promise<Candle[]> {
   const granularity = TF_GRANULARITY[tf] ?? BAR_GRANULARITY;
   const path = `/api/v2/spot/market/candles?symbol=${encodeURIComponent(symbol)}&granularity=${granularity}&limit=${limit}`;
   const res = await signedFetch(`${BASE}${path}`, { method: "GET" });
@@ -104,7 +104,7 @@ export async function fetchCandles(symbol: string, tf = "4H", limit = 180): Prom
     }))
     .filter((c) => c.time > 0 && c.close > 0 && c.open > 0)
     .sort((a, b) => a.time - b.time);
-  if (rows.length < 30) throw new Error("bitget candles too short");
+  if (rows.length < minBars) throw new Error("bitget candles too short");
   return rows;
 }
 

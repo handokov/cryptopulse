@@ -35,6 +35,20 @@ export function isBotTimeframe(tf: unknown): tf is BotTimeframe {
   return tf === "15M" || tf === "30M" || tf === "1H" || tf === "4H" || tf === "1D";
 }
 
+/** Bar length in ms, per signal timeframe (drives limit-entry TTL clocks). */
+export const TF_MS: Record<BotTimeframe, number> = {
+  "15M": 15 * 60_000,
+  "30M": 30 * 60_000,
+  "1H": 60 * 60_000,
+  "4H": 4 * 60 * 60_000,
+  "1D": 24 * 60 * 60_000,
+};
+
+/** Bar length in ms for a (possibly invalid) tf string; invalid → 4H. */
+export function tfMsFor(tf: string): number {
+  return isBotTimeframe(tf) ? TF_MS[tf] : TF_MS["4H"];
+}
+
 /** Effective cooldown for a (mode, tf) pair; invalid tf → legacy 45 min. */
 export function cooldownMinFor(_mode: string, tf: string): number {
   return isBotTimeframe(tf) ? TF_COOLDOWN_MIN[tf] : 45;

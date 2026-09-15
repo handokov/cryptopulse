@@ -32,6 +32,7 @@ interface BotConfig {
   enabled: boolean;
   orderSizeUsdt: number;
   paperCapitalUsdt: number;
+  entryOffsetPct: number;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
   takeProfitPct: number | null;
@@ -142,6 +143,14 @@ interface BotWallet {
   free: number;
 }
 
+/* armed paper limit entry (maker-style) of the ACTIVE bot */
+interface PendingEntry {
+  price: number;
+  sizeUsdt: number | null;
+  placedAt: string | null;
+  expiresAt: string | null;
+}
+
 interface TickResult {
   action: string;
   reason: string;
@@ -160,6 +169,7 @@ function draftConfig(): BotConfig {
     enabled: false,
     orderSizeUsdt: 5,
     paperCapitalUsdt: 20,
+    entryOffsetPct: 0.3,
     maxTradesPerDay: 4,
     dailyLossLimitUsdt: 20,
     takeProfitPct: null,
@@ -187,6 +197,7 @@ export function BotSection() {
   const [stats, setStats] = useState<BotStats | null>(null);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [wallet, setWallet] = useState<BotWallet | null>(null);
+  const [pendingInfo, setPendingInfo] = useState<PendingEntry | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -217,6 +228,7 @@ export function BotSection() {
         setStats(data.stats ?? null);
         setPortfolio(data.portfolio ?? null);
         setWallet(data.wallet ?? null);
+        setPendingInfo(data.pending ?? null);
         if (data.summary?.presets) setPreset(data.summary.presets);
       }
     } finally {
@@ -280,6 +292,7 @@ export function BotSection() {
     setSummary(null);
     setStats(null);
     setWallet(null);
+    setPendingInfo(null);
     setLastTick(null);
     setConfirmLive(false);
   };
@@ -629,6 +642,19 @@ export function BotSection() {
             <span className="tnum">{t("walletFree", { v: `${wallet.free >= 0 ? "+" : ""}${wallet.free.toFixed(2)}` })}</span>
             <span className="tnum">{t("walletRealized", { v: `${wallet.realized >= 0 ? "+" : ""}${wallet.realized.toFixed(2)}` })}</span>
           </div>
+          {pendingInfo && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[11px] text-accent">
+              <span className="tnum">
+                {t("walletPending", {
+                  price: pendingInfo.price.toPrecision(6),
+                  mins: pendingInfo.expiresAt ? Math.max(0, Math.round((new Date(pendingInfo.expiresAt).getTime() - Date.now()) / 60000)) : 0,
+                })}
+              </span>
+              {pendingInfo.sizeUsdt != null && (
+                <span className="tnum text-muted-foreground">≈ {pendingInfo.sizeUsdt.toFixed(2)} $</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -812,6 +838,20 @@ export function BotSection() {
               onChange={(e) => setCfg({ ...cfg, paperCapitalUsdt: Number(e.target.value) })}
             />
             <p className="mt-1 text-[10px] text-muted-foreground">{t("modalHint")}</p>
+          </div>
+          <div>
+            <Label htmlFor="bot-offset" className="text-xs">{t("offsetField")}</Label>
+            <Input
+              id="bot-offset"
+              type="number"
+              min={0}
+              max={5}
+              step={0.1}
+              className="tnum mt-1.5"
+              value={cfg.entryOffsetPct ?? 0.3}
+              onChange={(e) => setCfg({ ...cfg, entryOffsetPct: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">{t("offsetHint")}</p>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">

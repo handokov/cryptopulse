@@ -68,6 +68,17 @@ model BotConfig {
   // capital + realized PnL − open position size; when the free balance is
   // below the order size the entry is clamped/skipped. Live bots ignore it.
   paperCapitalUsdt  Float     @default(20)
+  // Paper maker-style entry (design Task 15): when > 0, a signal no longer
+  // buys at the market price — it arms a pending LIMIT at
+  // ticker × (1 − offset/100) and fills only when a candle actually trades
+  // down through that level (TTL 3 bars → re-arm while the signal holds,
+  // cancel when it dies). 0 = legacy market entry. Live bots ignore it.
+  entryOffsetPct    Float     @default(0.3)
+  // Pending limit-entry state (paper only). pendingEntryPrice null = no
+  // armed order; pendingEntryAt drives the TTL clock (3 bars of the TF).
+  pendingEntryPrice Float?
+  pendingEntrySize  Float?
+  pendingEntryAt    DateTime?
   maxTradesPerDay   Int       @default(4)
   // Stop trading for the UTC day once realized PnL ≤ −limit.
   dailyLossLimitUsdt Float    @default(20)

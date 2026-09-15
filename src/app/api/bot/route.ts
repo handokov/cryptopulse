@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { MODE_PRESETS, TF_OPTIONS, TF_DEFAULT, cooldownMinFor, type BotMode, type BotTimeframe } from "@/lib/bot/strategy";
+import { tfMsFor } from "@/lib/bot/timeframes";
 import { ensureBotColumns } from "@/lib/bot/migrate";
 import { getTickerRows, num } from "@/lib/market/smallcaps";
 
@@ -142,6 +143,7 @@ export async function GET(req: NextRequest) {
     orderSizeUsdt: c.orderSizeUsdt,
     timeframe: c.timeframe ?? "4H",
     entryLine: c.entryLine ?? null,
+    entryOffsetPct: c.entryOffsetPct ?? 0.3,
   }));
   const quota = {
     paper: configs.filter((c) => c.paper).length,
@@ -271,6 +273,19 @@ export async function GET(req: NextRequest) {
     return { ...p, markPrice: mark, unrealizedUsdt: mark != null ? ((mark - p.entryPrice) / p.entryPrice) * p.sizeUsdt : null };
   });
 
+  /* active-bot pending limit entry (paper maker-style) — UI countdown fuel */
+  const pending =
+    config?.pendingEntryPrice != null
+      ? {
+          price: config.pendingEntryPrice,
+          sizeUsdt: config.pendingEntrySize ?? null,
+          placedAt: config.pendingEntryAt?.toISOString() ?? null,
+          expiresAt: config.pendingEntryAt
+            ? new Date(config.pendingEntryAt.getTime() + 3 * tfMsFor(config.timeframe ?? "4H")).toISOString()
+            : null,
+        }
+      : null;
+
   return NextResponse.json({
     config: config ?? { ...defaults(user.id, wantSymbol || "BTCUSDT"), id: null },
     bots,
@@ -281,6 +296,7 @@ export async function GET(req: NextRequest) {
     stats,
     portfolio: { ...portfolio, wallet: portfolioWallet },
     wallet,
+    pending,
   });
 }
 
@@ -316,6 +332,16 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "validation", message: "paper capital must be 1..100000 USDT" }, { status: 400 });
     }
     paperCapitalUsdt = n;
+  }
+  /* Paper maker-entry offset — optional on update (absent = keep current).
+     0 disables it (legacy market entry); max 5% below market. */
+  let entryOffsetPct: number | undefined;
+  if (body.entryOffsetPct !== undefined && body.entryOffsetPct !== null && body.entryOffsetPct !== "") {
+    const n = Number(body.entryOffsetPct);
+    if (!Number.isFinite(n) || n < 0 || n > 5) {
+      return NextResponse.json({ error: "validation", message: "entry offset must be 0..5 (%)" }, { status: 400 });
+    }
+    entryOffsetPct = n;
   }
   const maxTradesPerDay = Number(body.maxTradesPerDay);
   if (!Number.isInteger(maxTradesPerDay) || maxTradesPerDay < 1 || maxTradesPerDay > 20) {
@@ -394,7 +420,7 @@ export async function PUT(req: NextRequest) {
     }
     const config = await db.botConfig.update({
       where: { id: existing.id },
-      data: { ...data, paperCapitalUsdt: paperCapitalUsdt ?? existing.paperCapitalUsdt ?? 20 },
+      data: { ...data, paperCapitalUsdt: paperCapitalUsdt ?? existing.paperCapitalUsdt ?? 20, entryOffsetPct: entryOffsetPct ?? existing.entryOffsetPct ?? 0.3 },
     });
     return NextResponse.json({ ok: true, config });
   }
@@ -405,7 +431,7 @@ export async function PUT(req: NextRequest) {
   if (existing) {
     const config = await db.botConfig.update({
       where: { id: existing.id },
-      data: { ...data, paperCapitalUsdt: paperCapitalUsdt ?? existing.paperCapitalUsdt ?? 20 },
+      data: { ...data, paperCapitalUsdt: paperCapitalUsdt ?? existing.paperCapitalUsdt ?? 20, entryOffsetPct: entryOffsetPct ?? existing.entryOffsetPct ?? 0.3 },
     });
     return NextResponse.json({ ok: true, config });
   }
@@ -419,7 +445,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "quota_live", message: `max ${MAX_LIVE_BOTS} live bots` }, { status: 409 });
   }
   const config = await db.botConfig.create({
-    data: { userId: user.id, ...data, paperCapitalUsdt: paperCapitalUsdt ?? 20 },
+    data: { userId: user.id, ...data, paperCapitalUsdt: paperCapitalUsdt ?? 20, entryOffsetPct: entryOffsetPct ?? 0.3 },
   });
   return NextResponse.json({ ok: true, config });
 }

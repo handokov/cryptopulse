@@ -19,6 +19,7 @@ import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { decryptSecret } from "@/lib/secure";
 import {
+  fetchCandles,
   fetchCloses,
   fetchTickerPrice,
   fetchSpotProduct,
@@ -26,6 +27,7 @@ import {
   fetchOrderFill,
   barsPerYearFor,
 } from "./bitget-trade";
+import { tfMsFor } from "./timeframes";
 import {
   computeBotSignal,
   MODE_PRESETS,
@@ -41,6 +43,10 @@ import {
 const MIN_TICK_GAP_MS = 4 * 60_000;
 /** Fallback minimum when the exchange rules cannot be fetched. */
 const FALLBACK_MIN_USDT = 5;
+/** Paper maker-entry TTL: cancel/re-arm after this many bars of the TF. */
+const ENTRY_TTL_BARS = 3;
+/** A just-armed limit cannot fill off the SAME bar's earlier low. */
+const ENTRY_MIN_AGE_MS = 60_000;
 
 export interface TickOutcome {
   userId: string;
@@ -62,6 +68,11 @@ interface BotConfigRow {
   orderSizeUsdt: number;
   /* Paper-wallet starting capital (USDT) — funds simulated entries. */
   paperCapitalUsdt: number | null;
+  /* Paper maker-style entry: offset% below market + armed pending state. */
+  entryOffsetPct: number | null;
+  pendingEntryPrice: number | null;
+  pendingEntrySize: number | null;
+  pendingEntryAt: Date | null;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
   takeProfitPct: number | null;
@@ -108,6 +119,165 @@ export function entryLineTouched(line: number, prevPrice: number | null, price: 
     if (prevPrice > line && price <= line) return true; // downward crossing
   }
   return false;
+}
+
+/**
+ * Paper maker-entry helpers (design Task 15 — "jangan beli di harga market").
+ *
+ * A paper signal with entryOffsetPct > 0 no longer buys at the ticker. It
+ * arms a pending LIMIT at `armLimitLevel()` — by construction BELOW the
+ * market (post-only semantics) — and the level fills only when a candle
+ * actually trades down through it (`limitFillPrice`), mirroring what a real
+ * Bitget limit order on the bid side would experience. Pending state lives
+ * on the BotConfig row (one armed order max, same as one position max).
+ */
+
+/** Paper maker-entry level: offset% BELOW the given price. */
+export function armLimitLevel(price: number, offsetPct: number): number {
+  return price * (1 - offsetPct / 100);
+}
+
+/**
+ * Simulated fill for an armed limit: a gap THROUGH the level fills at the
+ * open (better price), a plain touch fills exactly at the level. Caller has
+ * already verified `low <= level`.
+ */
+export function limitFillPrice(open: number, low: number, level: number): number {
+  return open <= level ? open : level;
+}
+
+/** Free paper wallet = capital + realized (closed) − open position size. */
+async function paperWalletFree(cfg: { id: string; paperCapitalUsdt: number | null }): Promise<{ capital: number; free: number }> {
+  const capital = cfg.paperCapitalUsdt && cfg.paperCapitalUsdt > 0 ? cfg.paperCapitalUsdt : 20;
+  const [realizedAgg, openAgg] = await Promise.all([
+    db.botPosition.aggregate({ where: { configId: cfg.id, status: "CLOSED", paper: true }, _sum: { realizedPnlUsdt: true } }),
+    db.botPosition.aggregate({ where: { configId: cfg.id, status: "OPEN", paper: true }, _sum: { sizeUsdt: true } }),
+  ]);
+  return { capital, free: capital + (realizedAgg._sum.realizedPnlUsdt ?? 0) - (openAgg._sum.sizeUsdt ?? 0) };
+}
+
+/**
+ * Lifecycle of an armed paper limit, evaluated once per tick (reached only
+ * when NO position is open — the exit ladder returns earlier):
+ *   1. bar low touched the level (order ≥60s old) → FILL at limitFillPrice,
+ *      re-checking wallet + trade cap (they may have changed since arming);
+ *   2. TTL (ENTRY_TTL_BARS × tf) elapsed → re-arm below the CURRENT price
+ *      while the signal still holds, else cancel (free anti-buy-the-top
+ *      filter: a level the market never revisits with a dead signal was not
+ *      a good entry);
+ *   3. otherwise keep waiting.
+ */
+async function limitEntryTick(
+  cfg: BotConfigRow,
+  signal: ReturnType<typeof computeBotSignal>,
+  price: number,
+  effSlPct: number,
+  effTpPct: number,
+  tf: string,
+  entryOffset: number,
+  minUsdt: number,
+  maxTradesPerDay: number
+): Promise<TickOutcome> {
+  const base = { userId: cfg.userId, symbol: cfg.symbol, paper: true, score: signal.score };
+  const level = cfg.pendingEntryPrice as number;
+  const placedAt = cfg.pendingEntryAt?.getTime() ?? 0;
+  const ttlMs = ENTRY_TTL_BARS * tfMsFor(tf);
+  const clear = { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null };
+  const mode = (cfg.mode as BotMode) in MODE_PRESETS ? (cfg.mode as BotMode) : "MODERATE";
+
+  /* Last bar OHLC — the fill probe. Unavailable → wait, never guess. */
+  let bar: { open: number; low: number } | null = null;
+  try {
+    const bars = await fetchCandles(cfg.symbol, tf, 2, 1); // 2 bars is enough; minBars=1
+    const last = bars[bars.length - 1];
+    if (last && last.low > 0) bar = { open: last.open, low: last.low };
+  } catch {
+    /* probe unavailable this tick */
+  }
+
+  /* 1. Fill — the bar traded down through the armed level. */
+  if (bar && placedAt > 0 && Date.now() - placedAt >= ENTRY_MIN_AGE_MS && bar.low <= level) {
+    const fillPrice = limitFillPrice(bar.open, bar.low, level);
+    const size = cfg.pendingEntrySize ?? 0;
+    const { free } = await paperWalletFree(cfg);
+    const minBuy = minUsdt > 0 ? minUsdt : FALLBACK_MIN_USDT;
+    const todayCount = await db.botTrade.count({
+      where: {
+        configId: cfg.id,
+        createdAt: { gte: utcDayStart() },
+        action: { in: ["BUY", "SELL"] },
+        status: { in: ["PAPER", "SUBMITTED"] },
+        paper: true,
+      },
+    });
+    if (size < minBuy || free < size || todayCount >= maxTradesPerDay) {
+      await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+      return {
+        ...base,
+        action: "HOLD",
+        reason: `limit cancelled @ ${level.toPrecision(6)} (wallet or trade-cap changed since arming)`,
+      };
+    }
+    const qty = size / fillPrice;
+    await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+    await db.botPosition.create({
+      data: {
+        userId: cfg.userId,
+        configId: cfg.id,
+        symbol: cfg.symbol,
+        side: "LONG",
+        entryPrice: fillPrice,
+        qty,
+        sizeUsdt: size,
+        paper: true,
+        stopPrice: fillPrice * (1 - effSlPct / 100),
+        targetPrice: fillPrice * (1 + effTpPct / 100),
+        highestPrice: fillPrice,
+        status: "OPEN",
+      },
+    });
+    const reason = `limit fill @ ${fillPrice.toPrecision(6)} (armed level ${level.toPrecision(6)})`;
+    await logTrade(cfg, {
+      action: "BUY",
+      status: "PAPER",
+      sizeUsdt: size,
+      qty,
+      price: fillPrice,
+      reason,
+      detail: detailJson(signal, { limitEntry: true, armedLevel: level }),
+    });
+    return { ...base, action: "BUY", reason };
+  }
+
+  /* 2. TTL — re-arm while the signal lives, cancel when it dies. */
+  if (placedAt > 0 && Date.now() - placedAt >= ttlMs) {
+    if (entryOffset > 0 && shouldEnter(signal, mode)) {
+      const newLevel = armLimitLevel(price, entryOffset);
+      await db.botConfig.update({
+        where: { id: cfg.id },
+        data: { pendingEntryPrice: newLevel, pendingEntryAt: new Date() },
+      });
+      return {
+        ...base,
+        action: "HOLD",
+        reason: `limit re-armed @ ${newLevel.toPrecision(6)} (TTL ${ENTRY_TTL_BARS}×${tf} hit, score ${signal.score.toFixed(2)} still ≥ entry)`,
+      };
+    }
+    await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `limit expired after ${ENTRY_TTL_BARS}×${tf} — signal gone (score ${signal.score.toFixed(2)})`,
+    };
+  }
+
+  /* 3. Still waiting. */
+  const minsLeft = Math.max(0, Math.ceil((placedAt + ttlMs - Date.now()) / 60_000));
+  return {
+    ...base,
+    action: "HOLD",
+    reason: `waiting limit ${level.toPrecision(6)} (~${minsLeft}m to TTL, market ${price.toPrecision(6)})`,
+  };
 }
 
 /** In-memory product-rules cache (exchange minimums rarely change). */
@@ -193,6 +363,11 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   /* Exit ladder: user overrides win when set (>0), otherwise the mode preset. */
   const tpPct = cfg.takeProfitPct && cfg.takeProfitPct > 0 ? cfg.takeProfitPct : preset.takeProfitPct;
   const slPct = cfg.stopLossPct && cfg.stopLossPct > 0 ? cfg.stopLossPct : preset.stopLossPct;
+  /* Paper maker-entry offset: >0 = arm limits BELOW market; 0 = legacy market BUY. */
+  const entryOffset =
+    cfg.paper && cfg.entryOffsetPct != null && Number.isFinite(cfg.entryOffsetPct) && cfg.entryOffsetPct > 0
+      ? Math.min(cfg.entryOffsetPct, 5)
+      : 0;
   const creds = cfg.paper ? null : await loadCreds(cfg.userId);
   if (!cfg.paper && !creds) {
     await logTrade(cfg, {
@@ -307,6 +482,30 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     }
   }
 
+  /* ---- 1b. Paper limit-entry lifecycle (fill / TTL re-arm / waiting).
+     Only reached with NO open position — the exit ladder returned earlier. ---- */
+  if (cfg.paper && cfg.pendingEntryPrice != null && cfg.pendingEntryPrice > 0) {
+    if (entryOffset <= 0) {
+      /* user turned the offset off → cancel the armed limit, never fill it */
+      await db.botConfig.update({
+        where: { id: cfg.id },
+        data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null },
+      });
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: true,
+        action: "HOLD",
+        reason: "limit cancelled (entry offset set to 0)",
+        score: signal.score,
+      };
+    }
+    const out = await limitEntryTick(cfg, signal, price, effSlPct, effTpPct, tf, entryOffset, minUsdt, preset.maxTradesPerDay);
+    await touchConfig(cfg.id, price);
+    return out;
+  }
+
   /* ---- 2. Risk gates for a new entry ---- */
   const dayStart = utcDayStart();
   const todayTrades = await db.botTrade.findMany({
@@ -363,12 +562,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     /* Paper wallet: entries are funded from capital + realized PnL − open
        size. Free below the order size → clamp down to the free balance when
        it still clears the exchange minimum, otherwise skip this tick. */
-    const capital = cfg.paperCapitalUsdt && cfg.paperCapitalUsdt > 0 ? cfg.paperCapitalUsdt : 20;
-    const [realizedAgg, openAgg] = await Promise.all([
-      db.botPosition.aggregate({ where: { configId: cfg.id, status: "CLOSED", paper: true }, _sum: { realizedPnlUsdt: true } }),
-      db.botPosition.aggregate({ where: { configId: cfg.id, status: "OPEN", paper: true }, _sum: { sizeUsdt: true } }),
-    ]);
-    const free = capital + (realizedAgg._sum.realizedPnlUsdt ?? 0) - (openAgg._sum.sizeUsdt ?? 0);
+    const { capital, free } = await paperWalletFree(cfg);
     let paperSize = sizeUsdt;
     let walletNote = "";
     const minBuy = minUsdt > 0 ? minUsdt : FALLBACK_MIN_USDT;
@@ -388,6 +582,37 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         };
       }
     }
+
+    /* ---- maker-style entry (offset > 0): arm a limit BELOW the market and
+       WAIT — the fill happens on a later tick when a bar trades down through
+       the level. Level < ticker by construction, so this can never buy at
+       the market price (post-only semantics). ---- */
+    if (entryOffset > 0) {
+      const level = armLimitLevel(price, entryOffset);
+      await db.botConfig.update({
+        where: { id: cfg.id },
+        data: { pendingEntryPrice: level, pendingEntrySize: paperSize, pendingEntryAt: new Date() },
+      });
+      const reason = `limit armed @ ${level.toPrecision(6)} (−${entryOffset}% vs market ${price.toPrecision(6)}), TTL ${ENTRY_TTL_BARS}×${tf}${walletNote}`;
+      await logTrade(cfg, {
+        action: "HOLD",
+        status: "PAPER",
+        sizeUsdt: paperSize,
+        reason,
+        detail: detailJson(signal, { limitEntry: true, level }),
+      });
+      await touchConfig(cfg.id, price);
+      return { userId: cfg.userId, symbol: cfg.symbol, paper: true, action: "HOLD", reason, score: signal.score };
+    }
+
+    /* offset 0 → legacy market BUY; drop any stale pending limit first */
+    if (cfg.pendingEntryPrice != null || cfg.pendingEntrySize != null || cfg.pendingEntryAt) {
+      await db.botConfig.update({
+        where: { id: cfg.id },
+        data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null },
+      });
+    }
+
     const qty = paperSize / price;
     await db.botPosition.create({
       data: {

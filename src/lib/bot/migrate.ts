@@ -189,6 +189,28 @@ async function run(): Promise<boolean> {
     ok = false;
     console.error("[bot-migrate] BotConfig.paperCapitalUsdt failed:", err instanceof Error ? err.message : err);
   }
+  /* Paper maker-style limit entry (Task 15) — offset + pending-entry state.
+     Plain additive columns; pendingEntry* stay nullable. */
+  try {
+    if (!(await columnExists("BotConfig", "entryOffsetPct"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "entryOffsetPct" REAL NOT NULL DEFAULT 0.3`);
+      console.log("[bot-migrate] BotConfig.entryOffsetPct added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.entryOffsetPct failed:", err instanceof Error ? err.message : err);
+  }
+  try {
+    if (!(await columnExists("BotConfig", "pendingEntryPrice"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "pendingEntryPrice" REAL`);
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "pendingEntrySize" REAL`);
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "pendingEntryAt" DATETIME`);
+      console.log("[bot-migrate] BotConfig.pendingEntry* added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.pendingEntry* failed:", err instanceof Error ? err.message : err);
+  }
   /* Multi-bot: swap UNIQUE(userId) for UNIQUE(userId, symbol). */
   try {
     if (!(await multiBotIndexReady())) {
