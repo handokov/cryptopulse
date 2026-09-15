@@ -1258,3 +1258,18 @@ Stage Summary:
 - Pertanyaan user terjawab + dilengkapi fitur: koneksi Bitget = SATU koneksi di kartu Exchange connections (Portfolio), kini dengan VERIFIKASI izin trade otomatis (probe order-invalid yang mustahil terisi) dan laporan status eksplisit di kartu koneksi + kartu LIVE WALLET
 - Alur user dari sini: buat API key di Bitget dgn Read-Only + Trade (tanpa withdraw, tanpa IP whitelist, max 90 hari) → Connect di Portfolio → cek badge SPOT TRADE OK → aktifkan bot live (paper off + centang risiko) → LIVE WALLET menampilkan saldo USDT nyata
 - Pending: push (41) butuh PAT baru dari user; setelah push+deploy, badge/verifikasi berjalan di produksi
+
+---
+Task ID: 17 (lanjutan — push (41) dengan PAT baru)
+Agent: main
+Task: User kirim PAT GitHub baru setelah PAT lama di-revoke; push commit (41) yang sebelumnya gagal
+
+Work Log:
+- PAT baru diterima dari user (ghp_dHRg...WX35); git log origin/main..main = 2 commit pending: 6172cef "(41)" + 7d60fb6 (rekonsiliasi paralel)
+- Push sukses c2559e3..7d60fb6 main -> main — commit (41) masuk GitHub, Vercel auto-deploy
+- Probe produksi menunggu ~115s sebelum verifikasi chunk JS
+
+Stage Summary:
+- (41) "Bitget trade-connection status + permission probe" TERDEPLOY: badge SPOT TRADE OK / READ-ONLY di kartu koneksi, pill status 4-state di LIVE WALLET, probe izin trade otomatis (order-invalid mustahil terisi), i18n ×6
+- Pengingat PAT: token baru ini juga sudah tercatat di riwayat chat — disarankan revoke/rotate setelah deploy terkonfirmasi
+- Probe produksi PASS: "Spot trade OK" + "Bitget spot trade connected" @ chunk a8c61ec12bc018de.js, "tradePermission" @ 66f2601eca97aaa5.js — (41) terkonfirmasi live
