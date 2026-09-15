@@ -1291,3 +1291,16 @@ Stage Summary:
 - Dengan key asli berizin trade: probe kini menerima rejection bisnis (symbol/size error) → verdict GRANTED → badge hijau "SPOT TRADE OK" setelah user menekan Sinkronkan
 - Key read-only → verdict DENIED (amber); key salah/passphrase → inconclusive dengan note jelas di tooltip
 - Catatan: deploy butuh beberapa menit; user tinggal tekan Sinkronkan di kartu koneksi
+
+---
+Task ID: 18 (penutup — verifikasi produksi oleh user)
+Agent: main
+Task: Konfirmasi user setelah deploy (42)
+
+Work Log:
+- User: badge "SPOT TRADE OK" tampil di produksi setelah tekan Sinkronkan — fix probe HTTP-400-body terverifikasi end-to-end dgn API key ASLI
+- Saldo USDT user masih kosong; rencana deposit $20 utk pilot live
+
+Stage Summary:
+- Task 17+18 SELESAI penuh: koneksi Bitget → sinkron saldo → probe izin trade → badge verdict, semua berfungsi di produksi
+- Catatan pilot: min order spot Bitget ≈ 5 USDT (planLimitBuySize auto-bump); $20 cukup utk 2 bot live × $5/order + buffer; kuota live 2 bot
