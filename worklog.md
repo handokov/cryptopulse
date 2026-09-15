@@ -1304,3 +1304,21 @@ Work Log:
 Stage Summary:
 - Task 17+18 SELESAI penuh: koneksi Bitget → sinkron saldo → probe izin trade → badge verdict, semua berfungsi di produksi
 - Catatan pilot: min order spot Bitget ≈ 5 USDT (planLimitBuySize auto-bump); $20 cukup utk 2 bot live × $5/order + buffer; kuota live 2 bot
+
+---
+Task ID: 19 (Riwayat Trade — durasi per posisi)
+Agent: main
+Task: User minta tabel Riwayat Trade dengan durasi per posisi di UI (utk mengukur "seberapa lama profit/loss dihasilkan"); koreksi user: min order pair tertentu hanya ~1 USDT (screenshot AIO/USDT)
+
+Work Log:
+- Koreksi min-order: sizing bot SUDAH adaptif per-pair sejak (40) — fetchSpotProduct parse minTradeUSDT dr /api/v2/spot/public/symbols (cache 6h, fallback 5 hanya jika endpoint gagal); validasi orderSizeUsdt API min 1.5 — jadi order $1.5+ sah utk pair min-1-USDT; tidak ada perubahan kode di area ini
+- API GET /api/bot: stats += avgDurationMin/avgWinDurationMin/avgLossDurationMin (dr closedAt−openedAt, split by outcome); field baru `history` = 50 posisi CLOSED terakhir (active bot, mode terkini) desc — NOL query tambahan (reuse array `closed` yg sudah dimuat utk stats)
+- UI bot-section: kartu "Trade history" (setelah Open position): chips avg durasi win (hijau) vs loss (merah); tabel Ditutup | Symbol(+badge PAPER/LIVE/OCO) | Entry→Exit | Hasil ($ + %) | Durasi | Alasan keluar (badge warna: tp/trail hijau, sl merah, lainnya abu, title = reason mentah); max-h-96 scroll + sticky head; helper fmtDuration (durH/durM per-locale) + exitReasonKey (prefix take-profit/trail-stop/stop-loss/signal/manual)
+- i18n: 17 kunci × 6 locale via scripts/insert-history-i18n.py (anchor ocoHint)
+- E2E baru scripts/verify-trade-history.ts 18/18 (seed 2 posisi closed 135m/105m → urutan desc, durasi, pnl, price, stats avg 135/105/120); regresi: verify-limit-entry 19/19, verify-live-limit-oco 29/29, verify-trade-permission 24/24; tsc src tetap 4 pre-existing; lint bersih
+- Browser 390×844 + 1440 (seed 3 posisi: 2j40m TP, 3j20m trail, 15m SL): kartu tampil, chips benar (3h 0m / 15m), tabel swipe di mobile, full di desktop, console bersih; probe user dihapus
+- Commit 7a75d79 "(43)" → push 2c10448..7a75d79 → produksi menunggu probe chunk (string "Trade history")
+
+Stage Summary:
+- User kini bisa melihat per trade: kapan ditutup, entry→exit, hasil $/%, BERAPA LAMA posisi hidup, dan alasan keluar — plus agregat rata-rata durasi profit vs loss di header kartu
+- Panduan pilot user disesuaikan: orderSizeUsdt boleh 1.5–2 utk pair min-1-USDT; utk pair utama (BTC/ETH dkk) tetap ≥5
