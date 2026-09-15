@@ -31,6 +31,7 @@ interface BotConfig {
   paper: boolean;
   enabled: boolean;
   orderSizeUsdt: number;
+  paperCapitalUsdt: number;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
   takeProfitPct: number | null;
@@ -69,6 +70,8 @@ interface BotPosition {
   stopPrice: number;
   targetPrice: number;
   openedAt: string;
+  markPrice?: number | null;
+  unrealizedUsdt?: number | null;
 }
 
 interface BotTrade {
@@ -121,6 +124,22 @@ interface Portfolio {
   closedCount: number;
   todayCount: number;
   perBot: PortfolioPerBot[];
+  wallet?: { capitalUsdt: number; equityUsdt: number; pnlUsdt: number; hasMark: boolean } | null;
+}
+
+/* paper wallet of the ACTIVE bot — capital → current equity */
+interface BotWallet {
+  paper: boolean;
+  capital: number;
+  realized: number;
+  unrealized: number;
+  hasMark: boolean;
+  equity: number;
+  pnlUsdt: number;
+  pnlPct: number;
+  openCount: number;
+  openSize: number;
+  free: number;
 }
 
 interface TickResult {
@@ -140,6 +159,7 @@ function draftConfig(): BotConfig {
     paper: true,
     enabled: false,
     orderSizeUsdt: 5,
+    paperCapitalUsdt: 20,
     maxTradesPerDay: 4,
     dailyLossLimitUsdt: 20,
     takeProfitPct: null,
@@ -166,6 +186,7 @@ export function BotSection() {
   const [summary, setSummary] = useState<BotSummary | null>(null);
   const [stats, setStats] = useState<BotStats | null>(null);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [wallet, setWallet] = useState<BotWallet | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -195,6 +216,7 @@ export function BotSection() {
         setSummary(data.summary ?? null);
         setStats(data.stats ?? null);
         setPortfolio(data.portfolio ?? null);
+        setWallet(data.wallet ?? null);
         if (data.summary?.presets) setPreset(data.summary.presets);
       }
     } finally {
@@ -257,6 +279,7 @@ export function BotSection() {
     setTrades([]);
     setSummary(null);
     setStats(null);
+    setWallet(null);
     setLastTick(null);
     setConfirmLive(false);
   };
@@ -478,6 +501,18 @@ export function BotSection() {
               ))}
             </div>
           )}
+          {portfolio.wallet && portfolio.wallet.capitalUsdt > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs">
+              <span className="text-muted-foreground">{t("pfWallet")}</span>
+              <span className="tnum">
+                {portfolio.wallet.capitalUsdt.toFixed(2)} → <span className="font-semibold">{portfolio.wallet.equityUsdt.toFixed(2)} $</span>{" "}
+                <span className={portfolio.wallet.pnlUsdt >= 0 ? "text-primary" : "text-destructive"}>
+                  ({portfolio.wallet.pnlUsdt >= 0 ? "+" : ""}{portfolio.wallet.pnlUsdt.toFixed(2)})
+                </span>
+                {!portfolio.wallet.hasMark && <span className="ml-1 text-[10px] text-muted-foreground">*</span>}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -561,6 +596,41 @@ export function BotSection() {
           </p>
         </div>
       </div>
+
+      {/* paper wallet — capital vs current equity for the ACTIVE bot */}
+      {cfg.paper && wallet && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("walletTitle")}</p>
+            {!wallet.hasMark && <p className="text-[10px] text-muted-foreground">{t("walletNoMark")}</p>}
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("walletCapital")}</p>
+              <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">{wallet.capital.toFixed(2)} $</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("walletEquity")}</p>
+              <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">{wallet.equity.toFixed(2)} $</p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("walletFloat", { v: `${wallet.unrealized >= 0 ? "+" : ""}${wallet.unrealized.toFixed(2)}` })}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("walletPnl")}</p>
+              <p className={`tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl ${wallet.pnlUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                {wallet.pnlUsdt >= 0 ? "+" : ""}{wallet.pnlUsdt.toFixed(2)} $
+              </p>
+              <p className={`tnum mt-0.5 text-[10px] ${wallet.pnlUsdt >= 0 ? "text-primary/80" : "text-destructive/80"}`}>
+                {wallet.pnlUsdt >= 0 ? "+" : ""}{wallet.pnlPct.toFixed(2)}%
+              </p>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-2 text-[10px] text-muted-foreground">
+            <span className="tnum">{t("walletUsed", { v: wallet.openSize.toFixed(2) })}</span>
+            <span className="tnum">{t("walletFree", { v: `${wallet.free >= 0 ? "+" : ""}${wallet.free.toFixed(2)}` })}</span>
+            <span className="tnum">{t("walletRealized", { v: `${wallet.realized >= 0 ? "+" : ""}${wallet.realized.toFixed(2)}` })}</span>
+          </div>
+        </div>
+      )}
 
       {/* server-side execution note — answers "does it stop when I close the tab?" */}
       <p className="flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -729,6 +799,19 @@ export function BotSection() {
               value={cfg.dailyLossLimitUsdt}
               onChange={(e) => setCfg({ ...cfg, dailyLossLimitUsdt: Number(e.target.value) })}
             />
+          </div>
+          <div>
+            <Label htmlFor="bot-capital" className="text-xs">{t("modalField")}</Label>
+            <Input
+              id="bot-capital"
+              type="number"
+              min={1}
+              step={1}
+              className="tnum mt-1.5"
+              value={cfg.paperCapitalUsdt}
+              onChange={(e) => setCfg({ ...cfg, paperCapitalUsdt: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">{t("modalHint")}</p>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
@@ -1016,6 +1099,7 @@ export function BotSection() {
                   <th className="py-1.5 pr-3">{t("target")}</th>
                   <th className="py-1.5 pr-3">{t("stop")}</th>
                   <th className="py-1.5 pr-3">{t("size")}</th>
+                  <th className="py-1.5 pr-3">{t("upnl")}</th>
                   <th className="py-1.5 pr-3">{t("status")}</th>
                   <th className="py-1.5">{t("closePosition")}</th>
                 </tr>
@@ -1028,6 +1112,9 @@ export function BotSection() {
                     <td className="py-1.5 pr-3 text-primary">${p.targetPrice.toPrecision(6)}</td>
                     <td className="py-1.5 pr-3 text-destructive">${p.stopPrice.toPrecision(6)}</td>
                     <td className="py-1.5 pr-3">{p.sizeUsdt.toFixed(2)} $</td>
+                    <td className={`py-1.5 pr-3 ${(p.unrealizedUsdt ?? 0) > 0 ? "text-primary" : (p.unrealizedUsdt ?? 0) < 0 ? "text-destructive" : ""}`}>
+                      {p.unrealizedUsdt != null ? `${p.unrealizedUsdt >= 0 ? "+" : ""}${p.unrealizedUsdt.toFixed(2)} $` : "—"}
+                    </td>
                     <td className="py-1.5 pr-3">{p.paper ? t("paperBadge") : t("liveBadge")}</td>
                     <td className="py-1.5">
                       <Button

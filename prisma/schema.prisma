@@ -64,6 +64,10 @@ model BotConfig {
   // Per-order budget in USDT; execution clamps UP to the exchange's live
   // minimum (minTradeUSDT) and logs a note when it does.
   orderSizeUsdt     Float     @default(5)
+  // Paper-wallet starting capital (USDT). Paper BUYs are funded from
+  // capital + realized PnL − open position size; when the free balance is
+  // below the order size the entry is clamped/skipped. Live bots ignore it.
+  paperCapitalUsdt  Float     @default(20)
   maxTradesPerDay   Int       @default(4)
   // Stop trading for the UTC day once realized PnL ≤ −limit.
   dailyLossLimitUsdt Float    @default(20)

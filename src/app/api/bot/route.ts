@@ -18,6 +18,7 @@ import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { MODE_PRESETS, TF_OPTIONS, TF_DEFAULT, cooldownMinFor, type BotMode, type BotTimeframe } from "@/lib/bot/strategy";
 import { ensureBotColumns } from "@/lib/bot/migrate";
+import { getTickerRows, num } from "@/lib/market/smallcaps";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ function defaults(userId: string, symbol: string) {
     paper: true,
     enabled: false,
     orderSizeUsdt: 5,
+    paperCapitalUsdt: 20,
     maxTradesPerDay: MODE_PRESETS.MODERATE.maxTradesPerDay,
     dailyLossLimitUsdt: 20,
     exitStyle: "FIXED" as const,
@@ -193,15 +195,92 @@ export async function GET(req: NextRequest) {
     perBot: [...perBotMap.values()].sort((a, b) => b.totalUsdt - a.totalUsdt),
   };
 
+  /* ---- paper wallet — mark every open position to the live Bitget ticker ----
+     One cached all-tickers call (60s) covers every symbol. Without a live
+     mark, unrealized stays 0 and `hasMark=false` so the UI can say so
+     instead of silently faking equity. */
+  const allIdsOpen = allIds.length
+    ? await db.botPosition.findMany({
+        where: { configId: { in: allIds }, status: "OPEN" },
+        select: { configId: true, symbol: true, entryPrice: true, sizeUsdt: true, paper: true },
+      })
+    : [];
+  const markBySymbol = new Map<string, number>();
+  try {
+    for (const r of (await getTickerRows()) ?? []) {
+      const s = String(r.symbol ?? "");
+      const p = num(r.lastPr);
+      if (s && p > 0) markBySymbol.set(s, p);
+    }
+  } catch {
+    /* upstream hiccup — marks stay unavailable, wallet degrades gracefully */
+  }
+  const unrealizedOf = (symbol: string, entryPrice: number, sizeUsdt: number): number | null => {
+    const mark = markBySymbol.get(symbol);
+    return mark != null ? ((mark - entryPrice) / entryPrice) * sizeUsdt : null;
+  };
+
+  /* active bot wallet: capital + realized (closed, mode-matched) + unrealized */
+  const openActive = allIdsOpen.filter((p) => p.configId === configId && p.paper === paperFlag);
+  const unrealizedActive = openActive.reduce<number | null>((acc, p) => {
+    const u = unrealizedOf(p.symbol, p.entryPrice, p.sizeUsdt);
+    if (u === null) return acc; // missing mark on one row — skip it
+    return (acc ?? 0) + u;
+  }, null);
+  const capitalActive = config?.paperCapitalUsdt ?? 20;
+  const realizedActive = stats.totalPnlUsdt;
+  const openSizeActive = openActive.reduce((acc, p) => acc + p.sizeUsdt, 0);
+  const wallet = {
+    paper: paperFlag,
+    capital: capitalActive,
+    realized: realizedActive,
+    unrealized: unrealizedActive ?? 0,
+    hasMark: unrealizedActive !== null || openActive.length === 0,
+    equity: capitalActive + realizedActive + (unrealizedActive ?? 0),
+    pnlUsdt: realizedActive + (unrealizedActive ?? 0),
+    pnlPct: capitalActive > 0 ? ((realizedActive + (unrealizedActive ?? 0)) / capitalActive) * 100 : 0,
+    openCount: openActive.length,
+    openSize: openSizeActive,
+    free: capitalActive + realizedActive - openSizeActive,
+  };
+
+  /* portfolio wallet: aggregate over PAPER bots only (live money is real) */
+  const paperIds = new Set(configs.filter((c) => c.paper).map((c) => c.id));
+  let pfCapital = 0;
+  for (const c of configs) {
+    if (!paperIds.has(c.id)) continue;
+    pfCapital += c.paperCapitalUsdt ?? 20;
+  }
+  /* equity starts FROM the capital sum — must run after the loop above */
+  let pfEquity = pfCapital;
+  let pfHasMark = true;
+  for (const p of allClosed) {
+    if (paperIds.has(p.configId)) pfEquity += p.realizedPnlUsdt ?? 0;
+  }
+  for (const p of allIdsOpen) {
+    if (!paperIds.has(p.configId)) continue;
+    const u = unrealizedOf(p.symbol, p.entryPrice, p.sizeUsdt);
+    if (u === null) pfHasMark = false;
+    else pfEquity += u;
+  }
+  const portfolioWallet = { capitalUsdt: pfCapital, equityUsdt: pfEquity, pnlUsdt: pfEquity - pfCapital, hasMark: pfHasMark };
+
+  /* positions table rows carry their own mark + unrealized for display */
+  const positionsOut = positions.map((p) => {
+    const mark = markBySymbol.get(p.symbol) ?? null;
+    return { ...p, markPrice: mark, unrealizedUsdt: mark != null ? ((mark - p.entryPrice) / p.entryPrice) * p.sizeUsdt : null };
+  });
+
   return NextResponse.json({
     config: config ?? { ...defaults(user.id, wantSymbol || "BTCUSDT"), id: null },
     bots,
     quota,
-    positions,
+    positions: positionsOut,
     trades,
     summary,
     stats,
-    portfolio,
+    portfolio: { ...portfolio, wallet: portfolioWallet },
+    wallet,
   });
 }
 
@@ -228,6 +307,15 @@ export async function PUT(req: NextRequest) {
   const orderSizeUsdt = Number(body.orderSizeUsdt);
   if (!Number.isFinite(orderSizeUsdt) || orderSizeUsdt < 1.5 || orderSizeUsdt > 1000) {
     return NextResponse.json({ error: "validation", message: "order size must be between 1.5 and 1000 USDT" }, { status: 400 });
+  }
+  /* Paper-wallet capital — optional on update (absent = keep current). */
+  let paperCapitalUsdt: number | undefined;
+  if (body.paperCapitalUsdt !== undefined && body.paperCapitalUsdt !== null && body.paperCapitalUsdt !== "") {
+    const n = Number(body.paperCapitalUsdt);
+    if (!Number.isFinite(n) || n < 1 || n > 100000) {
+      return NextResponse.json({ error: "validation", message: "paper capital must be 1..100000 USDT" }, { status: 400 });
+    }
+    paperCapitalUsdt = n;
   }
   const maxTradesPerDay = Number(body.maxTradesPerDay);
   if (!Number.isInteger(maxTradesPerDay) || maxTradesPerDay < 1 || maxTradesPerDay > 20) {
@@ -304,7 +392,10 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "symbol_exists", message: `another bot already runs ${symbol}` }, { status: 409 });
       }
     }
-    const config = await db.botConfig.update({ where: { id: existing.id }, data });
+    const config = await db.botConfig.update({
+      where: { id: existing.id },
+      data: { ...data, paperCapitalUsdt: paperCapitalUsdt ?? existing.paperCapitalUsdt ?? 20 },
+    });
     return NextResponse.json({ ok: true, config });
   }
 
@@ -312,7 +403,10 @@ export async function PUT(req: NextRequest) {
      (they send no id) and is exactly "edit the bot of this symbol". */
   const existing = await db.botConfig.findUnique({ where: { userId_symbol: { userId: user.id, symbol } } });
   if (existing) {
-    const config = await db.botConfig.update({ where: { id: existing.id }, data });
+    const config = await db.botConfig.update({
+      where: { id: existing.id },
+      data: { ...data, paperCapitalUsdt: paperCapitalUsdt ?? existing.paperCapitalUsdt ?? 20 },
+    });
     return NextResponse.json({ ok: true, config });
   }
 
@@ -324,7 +418,9 @@ export async function PUT(req: NextRequest) {
   if (!paper && sameKind >= MAX_LIVE_BOTS) {
     return NextResponse.json({ error: "quota_live", message: `max ${MAX_LIVE_BOTS} live bots` }, { status: 409 });
   }
-  const config = await db.botConfig.create({ data: { userId: user.id, ...data } });
+  const config = await db.botConfig.create({
+    data: { userId: user.id, ...data, paperCapitalUsdt: paperCapitalUsdt ?? 20 },
+  });
   return NextResponse.json({ ok: true, config });
 }
 

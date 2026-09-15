@@ -60,6 +60,8 @@ interface BotConfigRow {
   paper: boolean;
   enabled: boolean;
   orderSizeUsdt: number;
+  /* Paper-wallet starting capital (USDT) — funds simulated entries. */
+  paperCapitalUsdt: number | null;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
   takeProfitPct: number | null;
@@ -358,7 +360,35 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   const entryReason = `score ${signal.score.toFixed(2)} ≥ entry ${preset.entryScore.toFixed(2)}${clampNote}${volNote}${lineNote}`;
 
   if (cfg.paper) {
-    const qty = sizeUsdt / price;
+    /* Paper wallet: entries are funded from capital + realized PnL − open
+       size. Free below the order size → clamp down to the free balance when
+       it still clears the exchange minimum, otherwise skip this tick. */
+    const capital = cfg.paperCapitalUsdt && cfg.paperCapitalUsdt > 0 ? cfg.paperCapitalUsdt : 20;
+    const [realizedAgg, openAgg] = await Promise.all([
+      db.botPosition.aggregate({ where: { configId: cfg.id, status: "CLOSED", paper: true }, _sum: { realizedPnlUsdt: true } }),
+      db.botPosition.aggregate({ where: { configId: cfg.id, status: "OPEN", paper: true }, _sum: { sizeUsdt: true } }),
+    ]);
+    const free = capital + (realizedAgg._sum.realizedPnlUsdt ?? 0) - (openAgg._sum.sizeUsdt ?? 0);
+    let paperSize = sizeUsdt;
+    let walletNote = "";
+    const minBuy = minUsdt > 0 ? minUsdt : FALLBACK_MIN_USDT;
+    if (free < paperSize) {
+      if (free >= minBuy) {
+        paperSize = Math.floor(free * 100) / 100; // round down to whole cents
+        walletNote = ` (clamped to free wallet ${free.toFixed(2)})`;
+      } else {
+        await touchConfig(cfg.id, price);
+        return {
+          userId: cfg.userId,
+          symbol: cfg.symbol,
+          paper: true,
+          action: "HOLD",
+          reason: `paper wallet full — free ${free.toFixed(2)} of ${capital.toFixed(2)} USDT`,
+          score: signal.score,
+        };
+      }
+    }
+    const qty = paperSize / price;
     await db.botPosition.create({
       data: {
         userId: cfg.userId,
@@ -367,7 +397,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         side: "LONG",
         entryPrice: price,
         qty,
-        sizeUsdt,
+        sizeUsdt: paperSize,
         paper: true,
         stopPrice: price * (1 - effSlPct / 100),
         targetPrice: price * (1 + effTpPct / 100),
@@ -378,14 +408,14 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     await logTrade(cfg, {
       action: "BUY",
       status: "PAPER",
-      sizeUsdt,
+      sizeUsdt: paperSize,
       qty,
       price,
-      reason: entryReason,
+      reason: `${entryReason}${walletNote}`,
       detail: detailJson(signal),
     });
     await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: true, action: "BUY", reason: entryReason, score: signal.score };
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: true, action: "BUY", reason: `${entryReason}${walletNote}`, score: signal.score };
   }
 
   /* live BUY: quote amount (USDT), 2dp */

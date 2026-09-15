@@ -22,6 +22,8 @@
  *        BotConfig.timeframe TEXT NOT NULL DEFAULT '4H'
  *        BotConfig.entryLine REAL (nullable)
  *        BotConfig.lastPrice REAL (nullable)
+ *   4. Paper wallet (Task 13) — additive column:
+ *        BotConfig.paperCapitalUsdt REAL NOT NULL DEFAULT 20
  *
  * Failures are logged and swallowed — the tick surfaces a per-bot ERROR
  * instead of crashing the batch, and the memo reset retries on the next call.
@@ -176,6 +178,16 @@ async function run(): Promise<boolean> {
   } catch (err) {
     ok = false;
     console.error("[bot-migrate] BotConfig.lastPrice failed:", err instanceof Error ? err.message : err);
+  }
+  /* Paper wallet — starting capital for simulated trading (default 20 USDT). */
+  try {
+    if (!(await columnExists("BotConfig", "paperCapitalUsdt"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "paperCapitalUsdt" REAL NOT NULL DEFAULT 20`);
+      console.log("[bot-migrate] BotConfig.paperCapitalUsdt added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.paperCapitalUsdt failed:", err instanceof Error ? err.message : err);
   }
   /* Multi-bot: swap UNIQUE(userId) for UNIQUE(userId, symbol). */
   try {
