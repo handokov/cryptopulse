@@ -121,6 +121,15 @@ export async function GET(req: NextRequest) {
   const winRate = closed.length ? wins.length / closed.length : null;
   const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null;
   const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : null;
+  /* Trade-history durations (Task 19) — how long a position lives before it
+     exits, split by outcome so the user can see how fast profit vs loss
+     materialises. Minutes, computed from openedAt → closedAt. */
+  const durMin = (p: (typeof closed)[number]) =>
+    p.closedAt && p.openedAt ? Math.max(0, (p.closedAt.getTime() - p.openedAt.getTime()) / 60_000) : null;
+  const allDurs = closed.map(durMin).filter((v): v is number => v != null);
+  const winDurs = closed.filter((p) => (p.realizedPnlUsdt ?? 0) > 0).map(durMin).filter((v): v is number => v != null);
+  const lossDurs = closed.filter((p) => (p.realizedPnlUsdt ?? 0) < 0).map(durMin).filter((v): v is number => v != null);
+  const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
   const stats = {
     closedCount: closed.length,
     winCount: wins.length,
@@ -133,9 +142,32 @@ export async function GET(req: NextRequest) {
     worstUsdt: closed.length ? Math.min(...pnls) : null,
     /* expectancy: average PnL per closed trade */
     expectancyUsdt: closed.length ? pnls.reduce((a, b) => a + b, 0) / closed.length : null,
+    avgDurationMin: avg(allDurs),
+    avgWinDurationMin: avg(winDurs),
+    avgLossDurationMin: avg(lossDurs),
     exitCounts,
     dailyPnl,
   };
+
+  /* Trade history (Task 19) — the last 50 closed positions of the active
+     bot in the current mode, newest first, for the Riwayat Trade table. */
+  const history = [...closed]
+    .sort((a, b) => (b.closedAt?.getTime() ?? 0) - (a.closedAt?.getTime() ?? 0))
+    .slice(0, 50)
+    .map((p) => ({
+      id: p.id,
+      symbol: p.symbol,
+      paper: p.paper,
+      entryPrice: p.entryPrice,
+      exitPrice: p.exitPrice,
+      qty: p.qty,
+      sizeUsdt: p.sizeUsdt,
+      realizedPnlUsdt: p.realizedPnlUsdt,
+      exitReason: p.exitReason,
+      tpslArmed: p.tpslArmed,
+      openedAt: p.openedAt.toISOString(),
+      closedAt: p.closedAt?.toISOString() ?? null,
+    }));
 
   /* multi-bot payload: light list + quota usage */
   const bots = configs.map((c) => ({
@@ -349,6 +381,7 @@ export async function GET(req: NextRequest) {
     bots,
     quota,
     positions: positionsOut,
+    history,
     trades,
     summary,
     stats,

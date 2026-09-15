@@ -108,8 +108,28 @@ interface BotStats {
   bestUsdt: number | null;
   worstUsdt: number | null;
   expectancyUsdt: number | null;
+  avgDurationMin: number | null;
+  avgWinDurationMin: number | null;
+  avgLossDurationMin: number | null;
   exitCounts: Record<string, number>;
   dailyPnl: { day: string; pnl: number }[];
+}
+
+/* Riwayat Trade row (Task 19) — a CLOSED position with its lifecycle
+   timestamps so the UI can show how long each profit/loss took to form. */
+interface TradeHistoryRow {
+  id: string;
+  symbol: string;
+  paper: boolean;
+  entryPrice: number;
+  exitPrice: number | null;
+  qty: number;
+  sizeUsdt: number;
+  realizedPnlUsdt: number | null;
+  exitReason: string | null;
+  tpslArmed: boolean;
+  openedAt: string;
+  closedAt: string | null;
 }
 
 interface PortfolioPerBot {
@@ -195,6 +215,30 @@ function draftConfig(): BotConfig {
   };
 }
 
+/* Duration in minutes → compact localized string, e.g. "45m", "2j 15m",
+   "3h 05m" — unit letters come from the per-locale durH/durM keys. */
+function fmtDuration(min: number | null | undefined, t: (k: string) => string): string {
+  if (min == null || !Number.isFinite(min) || min < 0) return "—";
+  const total = Math.round(min);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h <= 0) return `${m}${t("durM")}`;
+  return `${h}${t("durH")} ${m}${t("durM")}`;
+}
+
+/* Engine exitReason strings start with a stable prefix ("take-profit …",
+   "stop-loss …", "trail-stop …", "signal flip …", "manual …", or OCO
+   reconciled variants) — map to the short i18n label keys. */
+function exitReasonKey(reason: string | null | undefined): string {
+  const r = (reason ?? "").toLowerCase();
+  if (r.startsWith("take-profit")) return "tp";
+  if (r.startsWith("trail-stop")) return "trail";
+  if (r.startsWith("stop-loss")) return "sl";
+  if (r.startsWith("signal")) return "flip";
+  if (r.includes("manual")) return "manual";
+  return "other";
+}
+
 export function BotSection() {
   const t = useTranslations("bot");
   const user = useAuthStore((s) => s.user);
@@ -210,6 +254,7 @@ export function BotSection() {
   const [trades, setTrades] = useState<BotTrade[]>([]);
   const [summary, setSummary] = useState<BotSummary | null>(null);
   const [stats, setStats] = useState<BotStats | null>(null);
+  const [history, setHistory] = useState<TradeHistoryRow[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [wallet, setWallet] = useState<BotWallet | null>(null);
   const [pendingInfo, setPendingInfo] = useState<PendingEntry | null>(null);
@@ -242,6 +287,7 @@ export function BotSection() {
         setTrades(data.trades ?? []);
         setSummary(data.summary ?? null);
         setStats(data.stats ?? null);
+        setHistory(data.history ?? []);
         setPortfolio(data.portfolio ?? null);
         setWallet(data.wallet ?? null);
         setPendingInfo(data.pending ?? null);
@@ -1283,6 +1329,103 @@ export function BotSection() {
           </div>
         )}
       </div>
+
+      {/* Riwayat Trade (Task 19) — closed positions with per-trade duration */}
+      {history.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">{t("historyTitle")}</h3>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+              {stats?.avgWinDurationMin != null && (
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-semibold text-primary">
+                  {t("avgDurWin", { value: fmtDuration(stats.avgWinDurationMin, t) })}
+                </span>
+              )}
+              {stats?.avgLossDurationMin != null && (
+                <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-semibold text-destructive">
+                  {t("avgDurLoss", { value: fmtDuration(stats.avgLossDurationMin, t) })}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 max-h-96 overflow-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-card text-[10px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="py-1.5 pr-3">{t("histClosed")}</th>
+                  <th className="py-1.5 pr-3">{t("symbol")}</th>
+                  <th className="py-1.5 pr-3">{t("histEntryExit")}</th>
+                  <th className="py-1.5 pr-3">{t("histResult")}</th>
+                  <th className="py-1.5 pr-3">{t("histDuration")}</th>
+                  <th className="py-1.5">{t("histReason")}</th>
+                </tr>
+              </thead>
+              <tbody className="tnum">
+                {history.map((h) => {
+                  const pnl = h.realizedPnlUsdt ?? 0;
+                  const pnlPct = h.exitPrice && h.entryPrice ? ((h.exitPrice - h.entryPrice) / h.entryPrice) * 100 : null;
+                  const win = pnl > 0;
+                  const loss = pnl < 0;
+                  const durMin = h.closedAt ? Math.max(0, (new Date(h.closedAt).getTime() - new Date(h.openedAt).getTime()) / 60_000) : null;
+                  const rk = exitReasonKey(h.exitReason);
+                  return (
+                    <tr key={h.id} className="border-t border-border/60">
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">
+                        {h.closedAt
+                          ? new Date(h.closedAt).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                          : "—"}
+                      </td>
+                      <td className="py-1.5 pr-3 font-mono">
+                        <span className="inline-flex items-center gap-1.5">
+                          {h.symbol}
+                          <span className="text-[9px] font-sans font-bold text-muted-foreground/70">
+                            {h.paper ? t("paperBadge") : t("liveBadge")}
+                          </span>
+                          {!h.paper && h.tpslArmed && (
+                            <span className="rounded bg-primary/10 px-1 py-0.5 text-[9px] font-bold text-primary" title={t("ocoHint")}>
+                              {t("ocoBadge")}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        ${h.entryPrice.toPrecision(6)} <span className="text-muted-foreground">→</span>{" "}
+                        {h.exitPrice != null ? `$${h.exitPrice.toPrecision(6)}` : "—"}
+                      </td>
+                      <td className={`py-1.5 pr-3 font-semibold ${win ? "text-primary" : loss ? "text-destructive" : ""}`}>
+                        {pnl >= 0 ? "+" : ""}
+                        {pnl.toFixed(2)} $
+                        {pnlPct != null && (
+                          <span className="ml-1 font-normal text-muted-foreground">
+                            ({pnlPct >= 0 ? "+" : ""}
+                            {pnlPct.toFixed(2)}%)
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDuration(durMin, t)}</td>
+                      <td className="py-1.5">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            rk === "tp" || rk === "trail"
+                              ? "bg-primary/10 text-primary"
+                              : rk === "sl"
+                                ? "bg-destructive/10 text-destructive"
+                                : "bg-muted text-muted-foreground"
+                          }`}
+                          title={h.exitReason ?? undefined}
+                        >
+                          {t(`histReason_${rk}` as Parameters<typeof t>[0])}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">{t("historyNote", { count: history.length })}</p>
+        </div>
+      )}
 
       {/* trade log */}
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
