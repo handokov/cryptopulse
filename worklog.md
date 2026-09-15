@@ -1147,3 +1147,26 @@ Work Log:
 Stage Summary:
 - Mobile kini berpaging antar section (stop di batas) + ikon lebih besar; desktop tidak berubah
 - Catatan: dev server kadang menyajikan CSS stale → restart dev.sh bila edit globals.css tak muncul
+
+---
+Task ID: 13 (paper wallet / modal paper)
+Agent: main
+Task: User minta mode paper diberi nominal modal (mis. $20) agar terlihat untung/rugi DARI MODAL itu — bukan hanya notifikasi profit per trade
+
+Work Log:
+- Prisma: BotConfig.paperCapitalUsdt Float @default(20) + db push lokal; migrasi runtime step 4 di migrate.ts (ADD COLUMN DEFAULT 20 — produksi Turso dapat kolom via ensureBotColumns, tick route sudah memanggilnya)
+- Engine: BUY paper kini dibiayai dompet — free = capital + Σrealized(closed,paper) − Σsize(open,paper); free < order size → clamp ke free bila ≥ exchange min (note "clamped to free wallet"), else HOLD "paper wallet full"; live bot tak terpengaruh
+- API GET /api/bot: objek `wallet` bot aktif (capital/realized/unrealized/equity/pnlUsdt/pnlPct/openSize/free/hasMark) dengan mark price dari getTickerRows (cache 60s, 1 call utk semua simbol); positions diberi markPrice+unrealizedUsdt; portfolio.wallet = agregat modal→saldo bot PAPER saja
+- API PUT: validasi modal 1..100000; absent/null = pertahankan nilai lama (kompatibel client lama); default create 20
+- BUG DITEMUKAN TEST SENDIRI: pfEquix diinisialisasi dari pfCapital SEBELUM loop modal → modal tak masuk equity; fix urutan inisialisasi
+- UI bot-section: kartu PAPER WALLET (3 kolom CAPITAL | BALANCE NOW open ±x | P/L VS CAPITAL $ + %, footer In positions/Free/Realized, note hasMark); input "Paper capital (USDT)" di form (setelah loss limit); baris "Capital → balance (paper bots) X → Y $(±Z)" di kartu portfolio; kolom "Open P/L" di tabel posisi terbuka; angka pakai whitespace-nowrap text-lg sm:text-xl (anti-wrap 390px)
+- i18n: 13 kunci (wallet*, modalField, modalHint, pfWallet, upnl) di 6 locale via scripts/insert-wallet-i18n.py
+- Debug infra: dev server LAMA (PID 1108 dari sesi sebelumnya) masih pegang port 3000 — server baru gagal bind diam-diam sehingga Prisma client baru tak termuat (500 "Unknown argument paperCapitalUsdt"); fix = kill seluruh tree lama + init ulang
+- E2E scripts/verify-paper-wallet.ts: 21/21 PASS (echo create, default 20, wallet math, equity identity, mark live BTC, portfolio agregat 2 bot = 40, update 50, 400 utk 0/200000/"abc", legacy PUT tanpa field mempertahankan); cleanup user test
+- Browser 390px: kartu tampil (20.00 → 20.31, +0.31/+1.55%, free +15.30), kolom P/L posisi, input modal, save 30 via UI → kartu ikut (30.31, free +25.30); desktop 1440px rapi; 0 console error; probe user dihapus
+- Commit f2d022b "(38)" → push PAT sukses d60bcd3..f2d022b → probe produksi menyusul
+
+Stage Summary:
+- Bot paper kini punya DOMPET: modal awal (default $20, bisa diubah per bot), saldo live = modal + realized + unrealized (mark harga Bitget), P/L $ dan % dari modal
+- Entry dibatasi saldo bebas — simulasi realistis, tak bisa beli tanpa dana
+- Catatan: pfEquity harus diinisialisasi SETELAH loop pfCapital; dev server lama penyebab 500 siluman
