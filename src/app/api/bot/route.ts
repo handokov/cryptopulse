@@ -20,12 +20,17 @@ import { MODE_PRESETS, TF_OPTIONS, TF_DEFAULT, cooldownMinFor, type BotMode, typ
 import { tfMsFor } from "@/lib/bot/timeframes";
 import { ensureBotColumns } from "@/lib/bot/migrate";
 import { getTickerRows, num } from "@/lib/market/smallcaps";
+import { decryptSecret } from "@/lib/secure";
+import { fetchSpotBalance } from "@/lib/bot/bitget-trade";
 
 export const dynamic = "force-dynamic";
 
 const SYMBOL_RE = /^[A-Z0-9]{2,10}USDT$/;
 const MAX_PAPER_BOTS = 5;
 const MAX_LIVE_BOTS = 2;
+
+/* spot USDT availability cache — signed call, so keep it to 1 per 30s/user */
+const spotAvailCache = new Map<string, { available: number | null; at: number }>();
 
 function defaults(userId: string, symbol: string) {
   return {
@@ -273,7 +278,8 @@ export async function GET(req: NextRequest) {
     return { ...p, markPrice: mark, unrealizedUsdt: mark != null ? ((mark - p.entryPrice) / p.entryPrice) * p.sizeUsdt : null };
   });
 
-  /* active-bot pending limit entry (paper maker-style) — UI countdown fuel */
+  /* active-bot pending limit entry (paper maker-style / live post-only) —
+     UI countdown fuel. `live` tells the client this is a REAL resting order. */
   const pending =
     config?.pendingEntryPrice != null
       ? {
@@ -283,8 +289,45 @@ export async function GET(req: NextRequest) {
           expiresAt: config.pendingEntryAt
             ? new Date(config.pendingEntryAt.getTime() + 3 * tfMsFor(config.timeframe ?? "4H")).toISOString()
             : null,
+          orderId: (config as { pendingEntryOrderId?: string | null }).pendingEntryOrderId ?? null,
+          live: !paperFlag,
         }
       : null;
+
+  /* live wallet — the REAL spot USDT balance that funds live entries
+     (Task 14 design: modal bot diambil dari saldo spot Bitget). Cached to
+     keep the signed API call at most one per 30s. null = unavailable
+     (no connection / upstream error) so the UI can say so honestly. */
+  let spot: { coin: string; available: number | null } | null = null;
+  if (config && !paperFlag) {
+    const hit = spotAvailCache.get(user.id);
+    if (hit && Date.now() - hit.at < 30_000) {
+      spot = { coin: "USDT", available: hit.available };
+    } else {
+      let available: number | null = null;
+      try {
+        const conn = await db.exchangeConnection.findFirst({
+          where: { userId: user.id, exchange: "bitget", status: "active" },
+          orderBy: { createdAt: "desc" },
+        });
+        if (conn) {
+          const bal = await fetchSpotBalance(
+            {
+              apiKey: decryptSecret(conn.apiKeyEnc),
+              apiSecret: decryptSecret(conn.apiSecretEnc),
+              apiPassphrase: conn.apiPassphraseEnc ? decryptSecret(conn.apiPassphraseEnc) : undefined,
+            },
+            "USDT"
+          );
+          available = bal ? bal.available : null;
+        }
+      } catch {
+        available = null;
+      }
+      spotAvailCache.set(user.id, { available, at: Date.now() });
+      spot = { coin: "USDT", available };
+    }
+  }
 
   return NextResponse.json({
     config: config ?? { ...defaults(user.id, wantSymbol || "BTCUSDT"), id: null },
@@ -297,6 +340,7 @@ export async function GET(req: NextRequest) {
     portfolio: { ...portfolio, wallet: portfolioWallet },
     wallet,
     pending,
+    spot,
   });
 }
 

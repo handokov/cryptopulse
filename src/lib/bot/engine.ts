@@ -24,6 +24,15 @@ import {
   fetchTickerPrice,
   fetchSpotProduct,
   placeSpotMarketOrder,
+  placeSpotLimitOrderWithTpsl,
+  cancelSpotOrder,
+  fetchSpotBalance,
+  fetchOcoPlanRows,
+  cancelOcoPlan,
+  fetchRecentFills,
+  classifyOrderStatus,
+  clipToPrecision,
+  planLimitBuySize,
   fetchOrderFill,
   barsPerYearFor,
 } from "./bitget-trade";
@@ -73,6 +82,8 @@ interface BotConfigRow {
   pendingEntryPrice: number | null;
   pendingEntrySize: number | null;
   pendingEntryAt: Date | null;
+  /* Bitget-real: orderId of the armed LIVE post-only limit entry. */
+  pendingEntryOrderId: string | null;
   maxTradesPerDay: number;
   dailyLossLimitUsdt: number;
   takeProfitPct: number | null;
@@ -87,6 +98,21 @@ interface BotConfigRow {
 
 /** Minimal shape the audit-log helper needs. */
 type TradeLogConfig = Pick<BotConfigRow, "id" | "userId" | "symbol" | "paper">;
+
+/** Minimal shape of an open position row the live exit paths rely on. */
+interface OpenPositionRow {
+  id: string;
+  symbol: string;
+  entryPrice: number;
+  qty: number;
+  sizeUsdt: number;
+  paper: boolean;
+  stopPrice: number;
+  targetPrice: number;
+  highestPrice: number | null;
+  tpslArmed: boolean;
+  openedAt: Date;
+}
 
 function utcDayStart(): Date {
   return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
@@ -281,17 +307,21 @@ async function limitEntryTick(
 }
 
 /** In-memory product-rules cache (exchange minimums rarely change). */
-const productCache = new Map<string, { rules: { minOrderUsdt: number; quantityPrecision: number }; at: number }>();
-async function minOrderUsdt(symbol: string): Promise<number> {
+const productCache = new Map<string, { rules: { minOrderUsdt: number; quantityPrecision: number; pricePrecision: number }; at: number }>();
+async function productRules(symbol: string): Promise<{ minOrderUsdt: number; quantityPrecision: number; pricePrecision: number }> {
   const hit = productCache.get(symbol);
-  if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.rules.minOrderUsdt;
+  if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.rules;
   try {
     const rules = await fetchSpotProduct(symbol);
     productCache.set(symbol, { rules, at: Date.now() });
-    return rules.minOrderUsdt;
+    return rules;
   } catch {
-    return FALLBACK_MIN_USDT;
+    return { minOrderUsdt: FALLBACK_MIN_USDT, quantityPrecision: 8, pricePrecision: 8 };
   }
+}
+
+async function minOrderUsdt(symbol: string): Promise<number> {
+  return (await productRules(symbol)).minOrderUsdt;
 }
 
 async function loadCreds(userId: string) {
@@ -306,6 +336,486 @@ async function loadCreds(userId: string) {
     apiPassphrase: conn.apiPassphraseEnc ? decryptSecret(conn.apiPassphraseEnc) : undefined,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Bitget-real (Task 16) — live order-limit + OCO machinery            */
+/*                                                                     */
+/* The live entry mirrors the paper maker-entry rule (Task 15) 1:1:    */
+/*   signal → post-only LIMIT at ticker × (1 − offset%) with ATTACHED  */
+/*   TP/SL (Bitget's spot OCO) → fill only when the market trades      */
+/*   down into the level → TTL 3 bars → re-price while the signal      */
+/*   holds, cancel when it dies.                                       */
+/* The attached TP/SL is armed atomically by the exchange at fill —    */
+/* there is never an unprotected window between entry and protection.  */
+/* TP/SL exits belong to the exchange; the engine reconciles their     */
+/* real fills. Engine-initiated exits (trail-stop, signal-flip, manual */
+/* close) cancel the armed OCO plans FIRST so nothing can fire into    */
+/* an already-closed position.                                         */
+/* ------------------------------------------------------------------ */
+
+type BitgetCreds = NonNullable<Awaited<ReturnType<typeof loadCreds>>>;
+
+/** USDT actually available on the user's spot account (frozen excluded). */
+async function liveFreeUsdt(creds: BitgetCreds): Promise<number | null> {
+  try {
+    const bal = await fetchSpotBalance(creds, "USDT");
+    return bal ? bal.available : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Base coin of a spot pair ("LITUSDT" → "LIT"). */
+function baseCoinOf(symbol: string): string {
+  return symbol.replace(/USDT$/i, "") || symbol;
+}
+
+/**
+ * Place the live post-only limit BUY with attached TP/SL and persist the
+ * pending state. Returns the orderId. Throws on exchange rejection —
+ * the caller logs the failure and the next tick re-evaluates from scratch.
+ */
+async function armLiveLimit(args: {
+  cfg: BotConfigRow;
+  creds: BitgetCreds;
+  signal: ReturnType<typeof computeBotSignal>;
+  marketPrice: number;
+  effSlPct: number;
+  effTpPct: number;
+  minUsdt: number;
+  quantityPrecision: number;
+  pricePrecision: number;
+  availableUsdt: number;
+  walletNote?: string;
+}): Promise<{ orderId: string; level: number; notional: number; qty: string }> {
+  const { cfg, creds, signal, marketPrice, effSlPct, effTpPct, minUsdt, quantityPrecision, pricePrecision, availableUsdt } = args;
+  const levelRaw = armLimitLevel(marketPrice, entryOffsetOf(cfg));
+  const level = Number(clipToPrecision(levelRaw, pricePrecision)); // never round ABOVE the maker level
+  if (!(level > 0) || level >= marketPrice) throw new Error("limit level not below market — skipped");
+
+  const sizing = planLimitBuySize({
+    marketPrice,
+    level,
+    budgetUsdt: cfg.orderSizeUsdt,
+    minOrderUsdt: minUsdt,
+    availableUsdt,
+    quantityPrecision,
+  });
+  if (!sizing) throw new Error("budget below exchange minimum after precision clipping");
+
+  // TP/SL triggers are computed from the LIMIT level (the actual entry),
+  // so the bands hold regardless of where the fill happens.
+  const tpStr = clipToPrecision(level * (1 + effTpPct / 100), pricePrecision);
+  const slStr = clipToPrecision(level * (1 - effSlPct / 100), pricePrecision);
+
+  const placed = await placeSpotLimitOrderWithTpsl(creds, {
+    symbol: cfg.symbol,
+    side: "buy",
+    price: level.toPrecision(12).replace(/0+$/, "").replace(/\.$/, ""),
+    size: sizing.qty,
+    takeProfitTrigger: tpStr,
+    stopLossTrigger: slStr,
+  });
+
+  await db.botConfig.update({
+    where: { id: cfg.id },
+    data: {
+      pendingEntryPrice: level,
+      pendingEntrySize: sizing.notional,
+      pendingEntryAt: new Date(),
+      pendingEntryOrderId: placed.orderId,
+    },
+  });
+  await logTrade(cfg, {
+    action: "HOLD",
+    status: "SUBMITTED",
+    sizeUsdt: sizing.notional,
+    price: level,
+    orderId: placed.orderId,
+    clientOid: placed.clientOid,
+    reason: `live limit armed @ ${level} (−${entryOffsetOf(cfg)}% vs market ${marketPrice.toPrecision(6)}), OCO TP ${tpStr} / SL ${slStr}, TTL ${ENTRY_TTL_BARS}×${cfg.timeframe ?? "4H"}${args.walletNote ?? ""}`,
+    detail: detailJson(signal, { limitEntry: true, level, live: true, orderId: placed.orderId }),
+  });
+  return { orderId: placed.orderId, level, notional: sizing.notional, qty: sizing.qty };
+}
+
+/** Effective entry offset for a config (0..5, 0 = legacy market entry). */
+function entryOffsetOf(cfg: Pick<BotConfigRow, "entryOffsetPct">): number {
+  return cfg.entryOffsetPct != null && Number.isFinite(cfg.entryOffsetPct) && cfg.entryOffsetPct > 0
+    ? Math.min(cfg.entryOffsetPct, 5)
+    : 0;
+}
+
+/** Create the live position row after a confirmed entry fill. */
+async function openLivePosition(args: {
+  cfg: BotConfigRow;
+  entryPrice: number;
+  qty: number;
+  sizeUsdt: number;
+  effSlPct: number;
+  effTpPct: number;
+}): Promise<void> {
+  const { cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct } = args;
+  await db.botPosition.create({
+    data: {
+      userId: cfg.userId,
+      configId: cfg.id,
+      symbol: cfg.symbol,
+      side: "LONG",
+      entryPrice,
+      qty,
+      sizeUsdt,
+      paper: false,
+      stopPrice: entryPrice * (1 - effSlPct / 100),
+      targetPrice: entryPrice * (1 + effTpPct / 100),
+      highestPrice: entryPrice,
+      tpslArmed: true, // attached OCO on the entry order protects this position
+      status: "OPEN",
+    },
+  });
+}
+
+/**
+ * Lifecycle of an armed LIVE limit, evaluated once per tick (reached only
+ * when NO position is open — the exit ladder returns earlier):
+ *   1. orderInfo FILLED → position + the exchange already armed the OCO;
+ *   2. CANCELLED externally (user cancelled on Bitget) → clear, wait;
+ *   3. TTL elapsed → cancel → race-check (may have filled mid-cancel) →
+ *      re-price while the signal holds, else cancel (free anti-buy-the-top);
+ *   4. otherwise keep waiting.
+ */
+async function livePendingEntryTick(
+  cfg: BotConfigRow,
+  creds: BitgetCreds,
+  signal: ReturnType<typeof computeBotSignal>,
+  price: number,
+  effSlPct: number,
+  effTpPct: number,
+  minUsdt: number,
+  quantityPrecision: number,
+  pricePrecision: number,
+  maxTradesPerDay: number
+): Promise<TickOutcome> {
+  const base = { userId: cfg.userId, symbol: cfg.symbol, paper: false, score: signal.score };
+  const level = cfg.pendingEntryPrice as number;
+  const orderId = cfg.pendingEntryOrderId as string;
+  const placedAt = cfg.pendingEntryAt?.getTime() ?? 0;
+  const ttlMs = ENTRY_TTL_BARS * tfMsFor(cfg.timeframe ?? "4H");
+  const clear = { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null, pendingEntryOrderId: null };
+  const mode = (cfg.mode as BotMode) in MODE_PRESETS ? (cfg.mode as BotMode) : "MODERATE";
+
+  const fill = await fetchOrderFill(creds, cfg.symbol, orderId);
+  const state = classifyOrderStatus(fill.status);
+
+  /* 1. Filled → open the position; OCO protection already lives on the exchange. */
+  if (state === "FILLED") {
+    const entryPrice = fill.priceAvg ?? level;
+    const qty = fill.baseVolume ?? 0;
+    if (qty <= 0 || entryPrice <= 0) {
+      // fill info not usable — wait for a better read, never guess
+      return { ...base, action: "HOLD", reason: `live limit filled but fill data incomplete (${fill.status}), retrying` };
+    }
+    const sizeUsdt = qty * entryPrice;
+    await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+    await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct });
+    const reason = `live limit filled @ ${entryPrice.toPrecision(6)} — OCO TP/SL armed by exchange`;
+    await logTrade(cfg, {
+      action: "BUY",
+      status: "SUBMITTED",
+      sizeUsdt,
+      qty,
+      price: entryPrice,
+      orderId,
+      reason,
+      detail: detailJson(signal, { limitEntry: true, live: true, armedLevel: level }),
+    });
+    return { ...base, action: "BUY", reason };
+  }
+
+  /* 2. Cancelled outside the engine (user pressed cancel on Bitget). */
+  if (state === "CANCELLED") {
+    await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+    await logTrade(cfg, {
+      action: "HOLD",
+      status: "FAILED",
+      reason: `live limit ${orderId} no longer on the book (cancelled/rejected) — pending cleared`,
+    });
+    return { ...base, action: "HOLD", reason: `live limit cancelled on exchange (was ${level.toPrecision(6)})` };
+  }
+
+  /* 3. TTL — cancel, then re-price or retire depending on the signal. */
+  if (placedAt > 0 && Date.now() - placedAt >= ttlMs) {
+    try {
+      await cancelSpotOrder(creds, { symbol: cfg.symbol, orderId });
+      // cancel raced with a fill? re-read the order once
+      const after = await fetchOrderFill(creds, cfg.symbol, orderId);
+      const afterState = classifyOrderStatus(after.status);
+      if (afterState === "FILLED" && (after.baseVolume ?? 0) > 0) {
+        const entryPrice = after.priceAvg ?? level;
+        const qty = after.baseVolume as number;
+        const sizeUsdt = qty * entryPrice;
+        await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+        await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct });
+        const reason = `live limit filled during TTL cancel @ ${entryPrice.toPrecision(6)} — OCO armed`;
+        await logTrade(cfg, {
+          action: "BUY",
+          status: "SUBMITTED",
+          sizeUsdt,
+          qty,
+          price: entryPrice,
+          orderId,
+          reason,
+          detail: detailJson(signal, { limitEntry: true, live: true, armedLevel: level }),
+        });
+        return { ...base, action: "BUY", reason };
+      }
+    } catch {
+      // cancel failed (network/exchange) — the order may still be live; wait a tick
+      return { ...base, action: "HOLD", reason: `TTL hit but cancel failed — limit ${level.toPrecision(6)} left on the book, retry next tick` };
+    }
+
+    if (entryOffsetOf(cfg) > 0 && shouldEnter(signal, mode)) {
+      try {
+        const available = await liveFreeUsdt(creds);
+        if (available == null) throw new Error("spot balance unavailable");
+        const armed = await armLiveLimit({
+          cfg,
+          creds,
+          signal,
+          marketPrice: price,
+          effSlPct,
+          effTpPct,
+          minUsdt,
+          quantityPrecision,
+          pricePrecision,
+          availableUsdt: available,
+          walletNote: " (re-priced after TTL)",
+        });
+        // level/orderId were refreshed by armLiveLimit
+        return {
+          ...base,
+          action: "HOLD",
+          reason: `limit re-priced @ ${armed.level} (TTL ${ENTRY_TTL_BARS}×${cfg.timeframe ?? "4H"} hit, score ${signal.score.toFixed(2)} still ≥ entry)`,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.slice(0, 160) : "re-arm failed";
+        await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+        await logTrade(cfg, { action: "HOLD", status: "FAILED", reason: `re-arm after TTL failed: ${msg}` });
+        return { ...base, action: "HOLD", reason: `limit expired after TTL — re-arm failed (${msg})` };
+      }
+    }
+
+    await db.botConfig.update({ where: { id: cfg.id }, data: clear });
+    await logTrade(cfg, {
+      action: "HOLD",
+      status: "FAILED",
+      reason: `live limit expired after ${ENTRY_TTL_BARS}×${cfg.timeframe ?? "4H"} — signal gone (score ${signal.score.toFixed(2)})`,
+    });
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `limit expired after ${ENTRY_TTL_BARS}×${cfg.timeframe ?? "4H"} — signal gone (score ${signal.score.toFixed(2)})`,
+    };
+  }
+
+  /* 4. Still waiting. */
+  const minsLeft = Math.max(0, Math.ceil((placedAt + ttlMs - Date.now()) / 60_000));
+  return {
+    ...base,
+    action: "HOLD",
+    reason: `waiting live limit ${level.toPrecision(6)} (~${minsLeft}m to TTL, market ${price.toPrecision(6)})`,
+  };
+}
+
+/**
+ * Cancel the armed OCO plan rows that protect a position (matched by sell
+ * side and ≈ the position's size — attached TP/SL rows surface in
+ * current-plan-order after the entry fills).
+ */
+async function cancelOcoPlansFor(creds: BitgetCreds, pos: OpenPositionRow): Promise<{ cancelled: number; failed: number }> {
+  const rows = await fetchOcoPlanRows(creds, pos.symbol);
+  const mine = rows.filter((r) => r.side === "sell" && r.size > 0 && Math.abs(r.size - pos.qty) / pos.qty <= 0.35);
+  let cancelled = 0;
+  let failed = 0;
+  for (const row of mine) {
+    try {
+      await cancelOcoPlan(creds, row.orderId);
+      cancelled += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { cancelled, failed };
+}
+
+/** OrderIds this engine already sold with (never reconcile our own sells). */
+async function engineSoldOrderIds(cfgId: string): Promise<Set<string>> {
+  const rows = await db.botTrade.findMany({
+    where: { configId: cfgId, action: "SELL", orderId: { not: null } },
+    select: { orderId: true },
+    take: 100,
+  });
+  return new Set(rows.map((r) => r.orderId as string).filter(Boolean));
+}
+
+/**
+ * Reconcile an OCO-triggered exit with the exchange's real fill. The
+ * position's TP/SL plans are gone from current-plan-order; the actual sell
+ * fill appears in /fills. Returns null while the outcome is still unclear
+ * (caller keeps the position open and retries next tick).
+ */
+async function findOcoExitFill(
+  creds: BitgetCreds,
+  cfg: TradeLogConfig,
+  pos: OpenPositionRow
+): Promise<{ price: number; qty: number } | null> {
+  const [rows, sold] = await Promise.all([
+    fetchRecentFills(creds, pos.symbol, pos.openedAt.getTime() - 60_000),
+    engineSoldOrderIds(cfg.id),
+  ]);
+  const candidates = rows
+    .filter((f) => f.side === "sell" && !sold.has(f.orderId))
+    .filter((f) => Math.abs(f.size - pos.qty) / pos.qty <= 0.35)
+    .sort((a, b) => b.ts - a.ts);
+  const hit = candidates[0];
+  return hit ? { price: hit.price, qty: hit.size } : null;
+}
+
+/**
+ * Base-coin balance clamp for live SELLs: buy fees are charged in the
+ * received coin, so pos.qty can exceed the actual balance by the fee.
+ * Selling more than owned fails — always sell the smaller amount.
+ */
+async function liveSellQty(creds: BitgetCreds, pos: OpenPositionRow): Promise<string> {
+  let available = pos.qty;
+  try {
+    const bal = await fetchSpotBalance(creds, baseCoinOf(pos.symbol));
+    if (bal && bal.available > 0) available = Math.min(available, bal.available);
+  } catch {
+    /* balance read failed — fall back to the position qty */
+  }
+  return clipToPrecision(available, 8);
+}
+
+/**
+ * Engine-initiated live exit: cancel the armed OCO FIRST (fail → keep the
+ * position: protection intact beats a manual exit), then market-sell the
+ * balance-clamped quantity and close with the real fill.
+ */
+async function liveEngineExit(
+  cfg: BotConfigRow,
+  creds: BitgetCreds,
+  pos: OpenPositionRow,
+  signal: ReturnType<typeof computeBotSignal>,
+  fallbackPrice: number,
+  exitReason: string,
+  exitKind: string
+): Promise<TickOutcome> {
+  const base = { userId: cfg.userId, symbol: cfg.symbol, paper: false, score: signal.score };
+  const oco = await cancelOcoPlansFor(creds, pos);
+  if (oco.failed > 0) {
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `${exitKind} skipped — OCO cancel failed (${oco.failed}); protection kept, retry next tick`,
+    };
+  }
+  try {
+    const qtyStr = await liveSellQty(creds, pos);
+    if (!qtyStr || Number(qtyStr) <= 0) {
+      // nothing to sell — the OCO probably fired already; reconcile instead
+      const fill = await findOcoExitFill(creds, cfg, pos);
+      if (fill) {
+        const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
+        await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled from OCO fill)`);
+        await logTrade(cfg, {
+          action: "SELL",
+          status: "SUBMITTED",
+          sizeUsdt: pos.sizeUsdt,
+          qty: fill.qty,
+          price: fill.price,
+          reason: `${exitReason} (OCO fill reconciled)`,
+          pnlUsdt: pnl,
+          detail: detailJson(signal, { exit: exitKind, reconciled: true }),
+        });
+        return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)`, pnlUsdt: pnl };
+      }
+      return { ...base, action: "HOLD", reason: `${exitKind} skipped — no sellable balance and no OCO fill found yet` };
+    }
+    const placed = await placeSpotMarketOrder(creds, { symbol: cfg.symbol, side: "sell", quantity: qtyStr });
+    const fill = await fetchOrderFill(creds, cfg.symbol, placed.orderId);
+    const exitPrice = fill.priceAvg ?? fallbackPrice;
+    const exitQty = fill.baseVolume ?? Number(qtyStr);
+    const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
+    await closePosition(pos.id, exitPrice, livePnl, exitReason);
+    await logTrade(cfg, {
+      action: "SELL",
+      status: "SUBMITTED",
+      sizeUsdt: pos.sizeUsdt,
+      qty: exitQty,
+      price: exitPrice,
+      orderId: placed.orderId,
+      clientOid: placed.clientOid,
+      reason: exitReason,
+      pnlUsdt: livePnl,
+      detail: detailJson(signal, { exit: exitKind, ocoCancelled: oco.cancelled, fillStatus: fill.status }),
+    });
+    return { ...base, action: "SELL", reason: exitReason, pnlUsdt: livePnl };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.slice(0, 160) : "sell failed";
+    await logTrade(cfg, { action: "SELL", status: "FAILED", reason: `${exitKind} sell failed: ${msg}`, detail: detailJson(signal, { exit: exitKind }) });
+    return { ...base, action: "ERROR", reason: `${exitKind} sell failed: ${msg}` };
+  }
+}
+
+/**
+ * Exchange-owned exit (TP or the original SL) for an OCO-armed position:
+ * the price crossed the band, so either the trigger is pending or it just
+ * fired. NEVER market-sell here — the exchange will do it; selling too
+ * would oversell. Reconcile the real fill instead.
+ */
+async function liveOcoReconcile(
+  cfg: BotConfigRow,
+  creds: BitgetCreds,
+  pos: OpenPositionRow,
+  signal: ReturnType<typeof computeBotSignal>,
+  price: number,
+  exitReason: string,
+  exitKind: string
+): Promise<TickOutcome> {
+  const base = { userId: cfg.userId, symbol: cfg.symbol, paper: false, score: signal.score };
+  const rows = await fetchOcoPlanRows(creds, pos.symbol);
+  const stillArmed = rows.some((r) => r.side === "sell" && r.size > 0 && Math.abs(r.size - pos.qty) / pos.qty <= 0.35);
+  if (stillArmed) {
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `${exitKind} crossed (${exitReason}) — OCO trigger pending on exchange, waiting for the exchange exit`,
+    };
+  }
+  const fill = await findOcoExitFill(creds, cfg, pos);
+  if (!fill) {
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `${exitKind} crossed but OCO fill not visible yet — position kept, reconcile retries next tick`,
+    };
+  }
+  const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
+  await closePosition(pos.id, fill.price, pnl, `${exitReason} (via OCO)`);
+  await logTrade(cfg, {
+    action: "SELL",
+    status: "SUBMITTED",
+    sizeUsdt: pos.sizeUsdt,
+    qty: fill.qty,
+    price: fill.price,
+    reason: `${exitReason} (via OCO)`,
+    pnlUsdt: pnl,
+    detail: detailJson(signal, { exit: exitKind, oco: true }),
+  });
+  return { ...base, action: "SELL", reason: `${exitReason} (via OCO)`, pnlUsdt: pnl };
+}
+
 
 function detailJson(signal: ReturnType<typeof computeBotSignal>, extra?: Record<string, unknown>): string {
   return JSON.stringify({
@@ -363,11 +873,10 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   /* Exit ladder: user overrides win when set (>0), otherwise the mode preset. */
   const tpPct = cfg.takeProfitPct && cfg.takeProfitPct > 0 ? cfg.takeProfitPct : preset.takeProfitPct;
   const slPct = cfg.stopLossPct && cfg.stopLossPct > 0 ? cfg.stopLossPct : preset.stopLossPct;
-  /* Paper maker-entry offset: >0 = arm limits BELOW market; 0 = legacy market BUY. */
-  const entryOffset =
-    cfg.paper && cfg.entryOffsetPct != null && Number.isFinite(cfg.entryOffsetPct) && cfg.entryOffsetPct > 0
-      ? Math.min(cfg.entryOffsetPct, 5)
-      : 0;
+  /* Maker-entry offset (Task 15 paper / Task 16 live): >0 = arm limits
+     BELOW market; 0 = legacy market BUY. Live runs the SAME rule as paper —
+     a real post-only limit with attached TP/SL (OCO). */
+  const entryOffset = entryOffsetOf(cfg);
   const creds = cfg.paper ? null : await loadCreds(cfg.userId);
   if (!cfg.paper && !creds) {
     await logTrade(cfg, {
@@ -380,7 +889,8 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
 
   const { closes } = await fetchCloses(cfg.symbol, 160, tf);
   const price = await fetchTickerPrice(cfg.symbol);
-  const minUsdt = await minOrderUsdt(cfg.symbol);
+  const rules = await productRules(cfg.symbol);
+  const minUsdt = rules.minOrderUsdt;
   const signal = computeBotSignal(closes, bpy);
 
   /* VOL exit style — bands scale with the symbol's own volatility ON THE
@@ -451,35 +961,20 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
       await touchConfig(cfg.id, price);
       return { userId: cfg.userId, symbol: cfg.symbol, paper: true, action: "SELL", reason: exitReason, pnlUsdt: pnl, score: signal.score };
     }
-    /* live SELL: base quantity, precision-clipped */
-    const qtyStr = pos.qty.toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
-    try {
-      const placed = await placeSpotMarketOrder(creds!, { symbol: cfg.symbol, side: "sell", quantity: qtyStr });
-      const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
-      const exitPrice = fill.priceAvg ?? price;
-      const exitQty = fill.baseVolume ?? pos.qty;
-      const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-      await closePosition(pos.id, exitPrice, livePnl, exitReason);
-      await logTrade(cfg, {
-        action: "SELL",
-        status: "SUBMITTED",
-        sizeUsdt: pos.sizeUsdt,
-        qty: exitQty,
-        price: exitPrice,
-        orderId: placed.orderId,
-        clientOid: placed.clientOid,
-        reason: exitReason,
-        pnlUsdt: livePnl,
-        detail: detailJson(signal, { exit: exitKind, fillStatus: fill.status }),
-      });
+    /* live exits — OCO-aware routing (Task 16):
+       · take-profit / original stop-loss on an OCO-armed position belong to
+         the EXCHANGE — reconcile its real fill, never double-sell;
+       · trail-stop and signal-flip are engine-initiated: cancel the armed
+         OCO first, then market-sell (protection kept if cancel fails);
+       · legacy positions without OCO behave exactly as before. */
+    if (pos.tpslArmed && (exit === "take-profit" || (exit === "stop-loss" && !isTrail))) {
+      const out = await liveOcoReconcile(cfg, creds!, pos, signal, price, exitReason, exitKind);
       await touchConfig(cfg.id, price);
-      return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "SELL", reason: exitReason, pnlUsdt: livePnl, score: signal.score };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "sell failed";
-      await logTrade(cfg, { action: "SELL", status: "FAILED", reason: msg, detail: detailJson(signal, { exit: exitKind }) });
-      await touchConfig(cfg.id, price);
-      return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "ERROR", reason: msg };
+      return out;
     }
+    const out = await liveEngineExit(cfg, creds!, pos, signal, price, exitReason, exitKind);
+    await touchConfig(cfg.id, price);
+    return out;
   }
 
   /* ---- 1b. Paper limit-entry lifecycle (fill / TTL re-arm / waiting).
@@ -502,6 +997,49 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
       };
     }
     const out = await limitEntryTick(cfg, signal, price, effSlPct, effTpPct, tf, entryOffset, minUsdt, preset.maxTradesPerDay);
+    await touchConfig(cfg.id, price);
+    return out;
+  }
+
+  /* ---- 1c. LIVE limit-entry lifecycle (Bitget-real, Task 16) — the same
+     maker-entry rule as paper, executed with a real post-only order that
+     carries its own OCO. An armed live order must always have an orderId;
+     a level without one is stale state (pre-Task-16 or a crashed placement)
+     and is dropped before anything else can happen. ---- */
+  if (!cfg.paper && (cfg.pendingEntryOrderId || (cfg.pendingEntryPrice != null && cfg.pendingEntryPrice > 0))) {
+    if (!cfg.pendingEntryOrderId) {
+      await db.botConfig.update({
+        where: { id: cfg.id },
+        data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null, pendingEntryOrderId: null },
+      });
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: false,
+        action: "HOLD",
+        reason: "stale pending limit without orderId cleared",
+        score: signal.score,
+      };
+    }
+    if (entryOffset <= 0) {
+      /* user turned the offset off → cancel the real order on the exchange */
+      try {
+        await cancelSpotOrder(creds!, { symbol: cfg.symbol, orderId: cfg.pendingEntryOrderId });
+      } catch {
+        /* cancel raced a fill or already gone — orderInfo next tick settles it */
+      }
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: false,
+        action: "HOLD",
+        reason: "live limit cancel requested (entry offset set to 0) — verifying next tick",
+        score: signal.score,
+      };
+    }
+    const out = await livePendingEntryTick(cfg, creds!, signal, price, effSlPct, effTpPct, minUsdt, rules.quantityPrecision, rules.pricePrecision, preset.maxTradesPerDay);
     await touchConfig(cfg.id, price);
     return out;
   }
@@ -643,12 +1181,87 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     return { userId: cfg.userId, symbol: cfg.symbol, paper: true, action: "BUY", reason: `${entryReason}${walletNote}`, score: signal.score };
   }
 
-  /* live BUY: quote amount (USDT), 2dp */
+  /* ---- LIVE entry (Bitget-real, Task 16) ----
+     offset > 0: funding is the REAL spot USDT balance; the order is a
+     post-only limit below the market with ATTACHED TP/SL (true OCO armed
+     atomically at fill). offset = 0: legacy market BUY, but it also carries
+     the attached TP/SL so no live position is ever unprotected. */
+  const available = await liveFreeUsdt(creds!);
+  if (available == null) {
+    await touchConfig(cfg.id, price);
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "HOLD", reason: "spot USDT balance unavailable — entry skipped this tick", score: signal.score };
+  }
+  const minBuy = minUsdt > 0 ? minUsdt : FALLBACK_MIN_USDT;
+
+  if (entryOffset > 0) {
+    if (available < Math.max(cfg.orderSizeUsdt, minBuy)) {
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: false,
+        action: "HOLD",
+        reason: `insufficient spot USDT — available ${available.toFixed(2)} < order ${Math.max(cfg.orderSizeUsdt, minBuy).toFixed(2)}`,
+        score: signal.score,
+      };
+    }
+    try {
+      const armed = await armLiveLimit({
+        cfg,
+        creds: creds!,
+        signal,
+        marketPrice: price,
+        effSlPct,
+        effTpPct,
+        minUsdt,
+        quantityPrecision: rules.quantityPrecision,
+        pricePrecision: rules.pricePrecision,
+        availableUsdt: available,
+      });
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: false,
+        action: "HOLD",
+        reason: `live limit armed @ ${armed.level} (−${entryOffset}% vs market, OCO TP/SL preset), TTL ${ENTRY_TTL_BARS}×${tf}`,
+        score: signal.score,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.slice(0, 160) : "limit placement failed";
+      await logTrade(cfg, { action: "HOLD", status: "FAILED", sizeUsdt: cfg.orderSizeUsdt, reason: `live limit arm failed: ${msg}`, detail: detailJson(signal) });
+      await touchConfig(cfg.id, price);
+      return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "ERROR", reason: msg };
+    }
+  }
+
+  /* offset 0 → market BUY with attached TP/SL; drop any stale pending limit first */
+  if (cfg.pendingEntryPrice != null || cfg.pendingEntrySize != null || cfg.pendingEntryAt || cfg.pendingEntryOrderId) {
+    await db.botConfig.update({
+      where: { id: cfg.id },
+      data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null, pendingEntryOrderId: null },
+    });
+  }
+  if (available < sizeUsdt) {
+    await touchConfig(cfg.id, price);
+    return {
+      userId: cfg.userId,
+      symbol: cfg.symbol,
+      paper: false,
+      action: "HOLD",
+      reason: `insufficient spot USDT — available ${available.toFixed(2)} < order ${sizeUsdt.toFixed(2)}`,
+      score: signal.score,
+    };
+  }
   try {
+    const tpStr = clipToPrecision(price * (1 + effTpPct / 100), rules.pricePrecision);
+    const slStr = clipToPrecision(price * (1 - effSlPct / 100), rules.pricePrecision);
     const placed = await placeSpotMarketOrder(creds!, {
       symbol: cfg.symbol,
       side: "buy",
       quantity: sizeUsdt.toFixed(2),
+      takeProfitTrigger: tpStr,
+      stopLossTrigger: slStr,
     });
     const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
     const entryPrice = fill.priceAvg ?? price;
@@ -666,6 +1279,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         stopPrice: entryPrice * (1 - effSlPct / 100),
         targetPrice: entryPrice * (1 + effTpPct / 100),
         highestPrice: entryPrice,
+        tpslArmed: true,
         status: "OPEN",
       },
     });
@@ -677,11 +1291,11 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
       price: entryPrice,
       orderId: placed.orderId,
       clientOid: placed.clientOid,
-      reason: entryReason,
-      detail: detailJson(signal, { fillStatus: fill.status }),
+      reason: `${entryReason} — OCO TP ${tpStr} / SL ${slStr}`,
+      detail: detailJson(signal, { fillStatus: fill.status, oco: true }),
     });
     await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "BUY", reason: entryReason, score: signal.score };
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "BUY", reason: `${entryReason} — OCO TP/SL armed`, score: signal.score };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "buy failed";
     await logTrade(cfg, { action: "BUY", status: "FAILED", sizeUsdt, reason: msg, detail: detailJson(signal) });
@@ -762,13 +1376,51 @@ export async function manualClosePositions(
       out.results.push({ positionId: pos.id, price: ticker, pnlUsdt: pnl });
       continue;
     }
-    /* live SELL — same precision-clipping as the engine's exit ladder */
+    /* live SELL — OCO-aware (Task 16): cancel armed TP/SL plans FIRST (a
+       failing cancel keeps the position — protection intact), then sell the
+       balance-clamped quantity; if the OCO already exited on the exchange,
+       reconcile the real fill instead of selling nothing. */
     try {
-      const qtyStr = pos.qty.toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
+      if (pos.tpslArmed) {
+        const oco = await cancelOcoPlansFor(creds!, pos);
+        if (oco.failed > 0) {
+          const emsg = `manual close aborted — OCO cancel failed (${oco.failed}); protection kept`;
+          await logTrade(cfg, { action: "SELL", status: "FAILED", reason: emsg });
+          out.ok = false;
+          out.results.push({ positionId: pos.id, price: null, pnlUsdt: null, error: emsg });
+          continue;
+        }
+      }
+      const qtyStr = await liveSellQty(creds!, pos);
+      if (!qtyStr || Number(qtyStr) <= 0) {
+        const fill = await findOcoExitFill(creds!, cfg, pos);
+        if (fill) {
+          const livePnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
+          await closePosition(pos.id, fill.price, livePnl, `${reason} (OCO fill reconciled)`);
+          await logTrade(cfg, {
+            action: "SELL",
+            status: "SUBMITTED",
+            sizeUsdt: pos.sizeUsdt,
+            qty: fill.qty,
+            price: fill.price,
+            reason: `${reason} (OCO fill reconciled)`,
+            pnlUsdt: livePnl,
+            detail: JSON.stringify({ manual: true, reconciled: true }),
+          });
+          out.closed += 1;
+          out.results.push({ positionId: pos.id, price: fill.price, pnlUsdt: livePnl });
+          continue;
+        }
+        const emsg = "manual close skipped — no sellable base balance and no OCO fill found";
+        await logTrade(cfg, { action: "SELL", status: "FAILED", reason: emsg });
+        out.ok = false;
+        out.results.push({ positionId: pos.id, price: null, pnlUsdt: null, error: emsg });
+        continue;
+      }
       const placed = await placeSpotMarketOrder(creds!, { symbol: cfg.symbol, side: "sell", quantity: qtyStr });
       const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
       const exitPrice = fill.priceAvg ?? ticker ?? pos.entryPrice;
-      const exitQty = fill.baseVolume ?? pos.qty;
+      const exitQty = fill.baseVolume ?? Number(qtyStr);
       const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
       await closePosition(pos.id, exitPrice, livePnl, reason);
       await logTrade(cfg, {

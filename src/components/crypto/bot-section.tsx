@@ -73,6 +73,8 @@ interface BotPosition {
   openedAt: string;
   markPrice?: number | null;
   unrealizedUsdt?: number | null;
+  /* Bitget-real: TP/SL (OCO) armed on the exchange for this live position */
+  tpslArmed?: boolean;
 }
 
 interface BotTrade {
@@ -143,12 +145,20 @@ interface BotWallet {
   free: number;
 }
 
-/* armed paper limit entry (maker-style) of the ACTIVE bot */
+/* armed limit entry (maker-style) of the ACTIVE bot — paper or live */
 interface PendingEntry {
   price: number;
   sizeUsdt: number | null;
   placedAt: string | null;
   expiresAt: string | null;
+  orderId?: string | null;
+  live?: boolean;
+}
+
+/* live wallet — REAL spot USDT balance of the connected Bitget account */
+interface SpotWallet {
+  coin: string;
+  available: number | null;
 }
 
 interface TickResult {
@@ -198,6 +208,7 @@ export function BotSection() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [wallet, setWallet] = useState<BotWallet | null>(null);
   const [pendingInfo, setPendingInfo] = useState<PendingEntry | null>(null);
+  const [spot, setSpot] = useState<SpotWallet | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -229,6 +240,7 @@ export function BotSection() {
         setPortfolio(data.portfolio ?? null);
         setWallet(data.wallet ?? null);
         setPendingInfo(data.pending ?? null);
+        setSpot(data.spot ?? null);
         if (data.summary?.presets) setPreset(data.summary.presets);
       }
     } finally {
@@ -293,6 +305,7 @@ export function BotSection() {
     setStats(null);
     setWallet(null);
     setPendingInfo(null);
+    setSpot(null);
     setLastTick(null);
     setConfirmLive(false);
   };
@@ -652,6 +665,50 @@ export function BotSection() {
               </span>
               {pendingInfo.sizeUsdt != null && (
                 <span className="tnum text-muted-foreground">≈ {pendingInfo.sizeUsdt.toFixed(2)} $</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* live wallet — REAL spot balance that funds live entries (Bitget-real) */}
+      {!cfg.paper && (
+        <div className="rounded-xl border border-amber-500/30 bg-card p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("liveWalletTitle")}</p>
+            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500">{t("liveBadge")}</span>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("liveWalletAvail")}</p>
+              <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">
+                {spot?.available != null ? `${spot.available.toFixed(2)} $` : "—"}
+              </p>
+              {spot?.available == null && <p className="mt-0.5 text-[10px] text-muted-foreground">{t("liveWalletNoConn")}</p>}
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("liveWalletOpen")}</p>
+              <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">
+                {wallet ? `${wallet.openSize.toFixed(2)} $` : "—"}
+              </p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{positions.length}×</p>
+            </div>
+          </div>
+          <p className="mt-2 border-t border-border pt-2 text-[11px] leading-relaxed text-muted-foreground">{t("liveWalletNote")}</p>
+          {pendingInfo && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[11px] text-amber-500">
+              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500">{t("liveBadge")}</span>
+              <span className="tnum">
+                {t("walletPending", {
+                  price: pendingInfo.price.toPrecision(6),
+                  mins: pendingInfo.expiresAt ? Math.max(0, Math.round((new Date(pendingInfo.expiresAt).getTime() - Date.now()) / 60000)) : 0,
+                })}
+              </span>
+              {pendingInfo.sizeUsdt != null && (
+                <span className="tnum text-muted-foreground">≈ {pendingInfo.sizeUsdt.toFixed(2)} $</span>
+              )}
+              {pendingInfo.orderId && (
+                <span className="tnum text-[10px] text-muted-foreground">{t("pendingOrderId", { id: String(pendingInfo.orderId).slice(-8) })}</span>
               )}
             </div>
           )}
@@ -1155,7 +1212,19 @@ export function BotSection() {
                     <td className={`py-1.5 pr-3 ${(p.unrealizedUsdt ?? 0) > 0 ? "text-primary" : (p.unrealizedUsdt ?? 0) < 0 ? "text-destructive" : ""}`}>
                       {p.unrealizedUsdt != null ? `${p.unrealizedUsdt >= 0 ? "+" : ""}${p.unrealizedUsdt.toFixed(2)} $` : "—"}
                     </td>
-                    <td className="py-1.5 pr-3">{p.paper ? t("paperBadge") : t("liveBadge")}</td>
+                    <td className="py-1.5 pr-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        {p.paper ? t("paperBadge") : t("liveBadge")}
+                        {!p.paper && p.tpslArmed && (
+                          <span
+                            className="rounded bg-primary/10 px-1 py-0.5 text-[9px] font-bold text-primary"
+                            title={t("ocoHint")}
+                          >
+                            {t("ocoBadge")}
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="py-1.5">
                       <Button
                         variant="outline"

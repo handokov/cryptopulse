@@ -72,13 +72,18 @@ model BotConfig {
   // buys at the market price — it arms a pending LIMIT at
   // ticker × (1 − offset/100) and fills only when a candle actually trades
   // down through that level (TTL 3 bars → re-arm while the signal holds,
-  // cancel when it dies). 0 = legacy market entry. Live bots ignore it.
+  // cancel when it dies). 0 = legacy market entry. LIVE bots (Task 16) run
+  // the same rule as a real post-only limit with attached TP/SL.
   entryOffsetPct    Float     @default(0.3)
   // Pending limit-entry state (paper only). pendingEntryPrice null = no
   // armed order; pendingEntryAt drives the TTL clock (3 bars of the TF).
   pendingEntryPrice Float?
   pendingEntrySize  Float?
   pendingEntryAt    DateTime?
+  // Bitget-real (Task 16): orderId of the armed LIVE post-only limit entry.
+  // null = no armed live order. The entry carries attached TP/SL (OCO), so
+  // protection is armed atomically by the exchange when it fills.
+  pendingEntryOrderId String?
   maxTradesPerDay   Int       @default(4)
   // Stop trading for the UTC day once realized PnL ≤ −limit.
   dailyLossLimitUsdt Float    @default(20)
@@ -132,6 +137,10 @@ model BotPosition {
   // VOL exit style: highest ticker price seen since entry (drives the
   // trailing stop). null on legacy rows — the engine treats it as entryPrice.
   highestPrice   Float?
+  // Bitget-real (Task 16): true when the entry order carried attached TP/SL
+  // (OCO) — the exchange owns the TP/SL exits and the engine reconciles
+  // their fills. Legacy live positions (false) stay engine-monitored.
+  tpslArmed      Boolean @default(false)
   // "OPEN" | "CLOSED"
   status         String    @default("OPEN")
   exitPrice      Float?

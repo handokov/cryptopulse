@@ -211,6 +211,27 @@ async function run(): Promise<boolean> {
     ok = false;
     console.error("[bot-migrate] BotConfig.pendingEntry* failed:", err instanceof Error ? err.message : err);
   }
+  /* Bitget-real (Task 16) — live order-limit + OCO state:
+     BotConfig.pendingEntryOrderId TEXT (armed live limit orderId)
+     BotPosition.tpslArmed         INTEGER NOT NULL DEFAULT 0 (attached OCO) */
+  try {
+    if (!(await columnExists("BotConfig", "pendingEntryOrderId"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotConfig" ADD COLUMN "pendingEntryOrderId" TEXT`);
+      console.log("[bot-migrate] BotConfig.pendingEntryOrderId added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotConfig.pendingEntryOrderId failed:", err instanceof Error ? err.message : err);
+  }
+  try {
+    if (!(await columnExists("BotPosition", "tpslArmed"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotPosition" ADD COLUMN "tpslArmed" BOOLEAN NOT NULL DEFAULT false`);
+      console.log("[bot-migrate] BotPosition.tpslArmed added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotPosition.tpslArmed failed:", err instanceof Error ? err.message : err);
+  }
   /* Multi-bot: swap UNIQUE(userId) for UNIQUE(userId, symbol). */
   try {
     if (!(await multiBotIndexReady())) {
