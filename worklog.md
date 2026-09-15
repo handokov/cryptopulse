@@ -1184,3 +1184,26 @@ Work Log:
 Stage Summary:
 - (38) terkonfirmasi live di produksi
 - Catatan integrasi Bitget-real terekam: funding dari saldo spot + entry limit bawah market (maker); siap diimplement begitu user green-light fase live; opsi jembatan: simulasi paper fill-hanya-jika-candle-sentuh-level-limit
+
+---
+Task ID: 15 (paper maker-entry — limit di bawah market)
+Agent: main
+Task: User green-light simulasi aturan "jangan beli di harga market" di mode paper: BUY memasang limit sedikit di bawah market (ala garis ungu Bitget), TTL, re-arm/cancel; modal live nanti dari saldo spot (catatan desain Task 14)
+
+Work Log:
+- Prisma: BotConfig.entryOffsetPct REAL DEFAULT 0.3 + pendingEntryPrice/Size/At (nullable); db push lokal; runtime migrate step baru (ADD COLUMN idempoten) di migrate.ts
+- timeframes.ts: TF_MS + tfMsFor (bar length per TF, dipakai TTL + API)
+- bitget-trade.ts: fetchCandles dapat param minBars (default 30, backwards-compatible) — probe fill hanya butuh 2 bar
+- engine.ts: armLimitLevel (ticker×(1−offset%), < market by construction = post-only), limitFillPrice (gap→open lebih murah, touch→level), paperWalletFree (helper dipakai entry lama+juga limit), limitEntryTick (fill ≥60s umur; TTL 3×TF → re-arm bila sinyal masih ≥ threshold, else cancel = filter anti-buy-the-top gratis), blok 1b lifecycle sebelum risk gates, placement limit di jalur paper entry, offset 0 = market entry lama + buang pending stale; live mode tak terpengaruh
+- BUG TEST SENDIRI: fetchCandles(limit=2) kena guard "too short" → probe selalu null → fill tak pernah; fix via param minBars=1
+- API: GET kembalikan pending {price,sizeUsdt,placedAt,expiresAt} + bots[].entryOffsetPct; PUT validasi offset 0..5 (absent = keep), create default 0.3
+- UI bot-section: interface+draft 0.3, input "Entry offset (%)" setelah modal, state pendingInfo, baris amber "Limit entry waiting/menunggu: {price} · TTL ~{mins}m ≈ size" di kartu PAPER WALLET
+- i18n: offsetField/offsetHint/walletPending di 6 locale via scripts/insert-offset-i18n.py
+- E2E scripts/verify-limit-entry.ts 19/19 PASS (echo 0.5/default 0.3, 400 utk −1/6/"abc", unit arm/fill, FILL live BUY@77570.7 posisi 5 USDT + pending clear + audit trail, waiting, TTL expired (sinyal mati), offset-0 cancel); deterministik via level 999999 (pasti fill) & 1e-7 (tak pernah fill)
+- Browser 390px: input offset 0.5 tampil, wallet card + baris "Limit entry waiting: 77212.0 · TTL ~178m ≈ 5.00 $", desktop 1440 ok, 0 console error; probe user dihapus
+- Commit 5b157f1 "(39)" → push PAT sukses f2d022b..5b157f1 → probe produksi: string fitur di chunk 2052b3331f6f8904.js ✓
+
+Stage Summary:
+- Mode paper kini mensimulasikan entry maker: sinyal TIDAK lagi beli di harga market — memasang limit offset% di bawahnya, terisi hanya jika harga benar-benar turun menyentuh, hangus/re-arm setelah 3 candle sesuai sinyal
+- Offset 0 mengembalikan perilaku lama; default bot baru 0.3%; bot lama ikut 0.3% otomatis
+- Siap dipakai sebagai cetak biru fase Bitget-real (order limit + OCO pasca-fill)
