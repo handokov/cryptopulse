@@ -1207,3 +1207,29 @@ Stage Summary:
 - Mode paper kini mensimulasikan entry maker: sinyal TIDAK lagi beli di harga market — memasang limit offset% di bawahnya, terisi hanya jika harga benar-benar turun menyentuh, hangus/re-arm setelah 3 candle sesuai sinyal
 - Offset 0 mengembalikan perilaku lama; default bot baru 0.3%; bot lama ikut 0.3% otomatis
 - Siap dipakai sebagai cetak biru fase Bitget-real (order limit + OCO pasca-fill)
+
+---
+Task ID: 16 (Bitget-real — order limit sungguhan + OCO)
+Agent: main
+Task: User green-light fase Bitget-real: "coba jadikan template ini order limit + OCO sungguhan" — aturan maker-entry paper (Task 15) dijalankan sebagai order NYATA di Bitget spot: post-only limit di bawah market + OCO (TP/SL) sungguhan
+
+Work Log:
+- Riset kontrak API via SDK resmi bitget-api (dist types): spot v2 kini memakai param `size` (bukan `quantity` yang sudah pensiun); OCO spot = TP/SL TERLAMPIR di place-order (tpslType:'tpsl' + presetTakeProfitPrice/presetStopLossPrice, trigger → eksekusi market); armed TP/SL muncul di current-plan-order (bentuk {orderList}), cancel via cancel-plan-order; fills di /api/v2/spot/trade/fills; saldo /api/v2/spot/account/assets?coin=. Cross-check ccxt (belum adopsi attached TP/SL spot) — keputusan pakai kontrak SDK resmi
+- bitget-trade.ts: placeSpotLimitOrderWithTpsl (post_only + TP/SL), placeSpotMarketOrder mendapat TP/SL opsional + ganti param size, cancelSpotOrder, fetchSpotBalance, fetchOcoPlanRows (parse defensif array|orderList), cancelOcoPlan, fetchRecentFills (uTime/cTime), classifyOrderStatus (defensif: cancel/partial/full/new→UNKNOWN tak pernah ditebak), clipToPrecision (floor), planLimitBuySize (clamp saldo, bump-UP ke langkah minimum bila pembulatan turun di bawah min notional — bug ketemu test sendiri)
+- Schema: BotConfig.pendingEntryOrderId TEXT + BotPosition.tpslArmed BOOLEAN DEFAULT false; db push lokal + langkah runtime migrate.ts (idempoten, produksi Turso)
+- Engine tickOne: entryOffsetOf() kini berlaku utk LIVE juga (0.3 default, 0=market legacy); blok 1c live pending lifecycle — stale pending tanpa orderId dibuang, orderInfo → FILLED (posisi + OCO sudah ter-armed oleh bursa) / CANCELLED eksternal / TTL → cancel + race-check re-read → re-price bila sinyal hidup (armLiveLimit ulang) / cancel bila gugur / cancel gagal → retry tick berikut
+- Entry live: funding = saldo spot USDT AKTUAL (Task 14 design); limit post-only = ticker×(1−offset%), TP/SL dihitung dari LEVEL limit; qty clip quantityPrecision, min notional dijamin; offset 0 = market buy TETAP bawa TP/SL terlampir (tpslArmed=true) — tak ada posisi live tanpa proteksi
+- Exit ladder OCO-aware: TP & SL asli milik BURSA → liveOcoReconcile (current-plan-order masih armed → HOLD tunggu trigger; hilang → cari fill SELL di /fills via findOcoExitFill, exclude orderId engine sendiri; belum ketemu → retry); trail-stop & signal-flip engine-initiated → liveEngineExit (cancel OCO DULU, gagal = proteksi dipertahankan + HOLD; jual qty = min(pos.qty, saldo base) — fee buy dipotong dari base coin; saldo 0 + ada fill OCO → rekonsiliasi); trailing tetap lokal (display) — OCO SL bursa tetap fallback bencana
+- manualClosePositions: cancel OCO dulu (gagal → abort, proteksi utuh) → saldo base-clamped → market sell → jika OCO sudah exit sendiri, rekonsiliasi fill
+- API GET /api/bot: pending + orderId + live flag; `spot` {coin, available} untuk bot live aktif (cache 30s/user, signed call); posisi bawa tpslArmed via spread
+- UI bot-section: kartu LIVE WALLET (AVAILABLE USDT — "—" jujur saat API tak terhubung, IN POSITIONS, catatan funding, baris pending LIVE + order id 8 digit akhir), badge OCO di tabel posisi (title ocoHint); i18n 8 kunci × 6 locale via scripts/insert-live-i18n.py
+- E2E scripts/verify-live-limit-oco.ts 29/29 PASS — trik: kredensial PALSU terenkripsi diseed → semua call signed ditolak HTTP 401 oleh bursa → menguji degradasi anggun tanpa order nyata (no-connection ERROR + audit log, fake-creds survive tanpa posisi hantu, stale pending dibuang, waiting state tersimpan, TTL+cancel-401 → retry, kuota live 2, paper tanpa payload spot, 11 unit helper); regresi verify-limit-entry.ts 19/19 PASS
+- Dev server jebakan lama berulang: proses 05:03 memuat Prisma client pre-schema → "Invalid update invocation" siluman; fix = kill PID exact (4929 tree) + start via setsid double-fork (nohup polos mati dibunuh supervisor)
+- Browser 390×844 (probe data live bot + pending 76000 + posisi tpslArmed seed): kartu LIVE WALLET + LIVE badge, baris pending amber "Limit entry waiting: 76000.0 · TTL ~177m ≈ 5.00 $ order 88888888", tabel posisi "LIVE OCO", console bersih; probe user dihapus
+- Commit c2559e3 "(40)" → push PAT sukses a1cd382..c2559e3 → probe produksi: "LIVE WALLET" + "TP/SL armed on Bitget" ditemukan di chunk 5d19b2b0fcf3bd17.js ✓
+
+Stage Summary:
+- Fase Bitget-real DIMULAI: bot live kini memakai order limit post-only di bawah market (identik aturan paper) dengan OCO TP/SL yang ter-armed ATOMIK saat entry terisi — tak ada jeda tanpa proteksi
+- Modal live dari saldo spot Bitget aktual (available), bukan dompet paper; kuota 2 bot live; semua kegagalan bursa ter-audit di BotTrade
+- Yang TIDAK bisa diuji di sandbox: order sungguhan terisi (butuh API key Bitget aktif di menu koneksi exchange) — jalur terisi diuji via unit + race-check + rekonsiliasi; sarankan pilot ≤$1.5/order dulu
+- Risiko diketahui: trigger OCO dieksekusi bursa (≤1 tick deteksi engine utk rekonsiliasi PnL); trailing stop tetap engine-side 5-menit (SL bursa tetap terpasang)
