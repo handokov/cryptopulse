@@ -71,6 +71,10 @@ interface ConnectionRow {
   lastSyncAt: string | null;
   createdAt: string;
   assetCount: number;
+  // Bitget spot-trade permission verdict (Task 17).
+  tradePermission: string;
+  tradeProbedAt: string | null;
+  tradeProbeNote: string | null;
 }
 
 type ErrorCode =
@@ -140,6 +144,42 @@ function ActionBadge({ action, label }: { action: string; label: string }) {
   return (
     <span className={`rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ${cls}`}>
       {label}
+    </span>
+  );
+}
+
+/**
+ * Spot-trade permission badge (Task 17) — Bitget rows only. Reads the
+ * stored probe verdict: granted = emerald "Spot trade OK" (the key may
+ * place orders for the live bot), denied = amber "Read-only" (balances
+ * work, orders WILL be rejected), unverified = muted "Trade?" (probe
+ * inconclusive — hit Sync to retry). Tooltip carries the raw exchange
+ * note + when it was probed.
+ */
+function TradePermBadge({ conn, t }: { conn: ConnectionRow; t: (k: string) => string }) {
+  if (conn.exchange !== "bitget") return null;
+  const perm = conn.tradePermission;
+  if (perm !== "granted" && perm !== "denied") {
+    return (
+      <span
+        className="rounded-full border border-border bg-muted/40 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+        title={conn.tradeProbeNote ?? undefined}
+      >
+        {t("permUnverified")}
+      </span>
+    );
+  }
+  const granted = perm === "granted";
+  return (
+    <span
+      className={`rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ${
+        granted
+          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+          : "border-amber-400/40 bg-amber-400/10 text-amber-300"
+      }`}
+      title={conn.tradeProbeNote ?? undefined}
+    >
+      {granted ? t("permGranted") : t("permDenied")}
     </span>
   );
 }
@@ -388,6 +428,7 @@ export function ExchangeConnections({ onChanged }: { onChanged: () => void }) {
                         · {conn.label}
                       </span>
                     )}
+                    <TradePermBadge conn={conn} t={t} />
                   </p>
                   <p className="tnum text-[11px] text-muted-foreground">{conn.apiKeyMasked}</p>
                 </div>
@@ -549,6 +590,15 @@ export function ExchangeConnections({ onChanged }: { onChanged: () => void }) {
                 {exchange === "bitget" && t("howToBitget")}
                 {exchange === "tokocrypto" && t("howToTokocrypto")}
               </p>
+            )}
+
+            {/* Bitget trade-permission requirement (Task 17) — the same key
+                powers the live bot, so spell out exactly what to enable. */}
+            {exchange === "bitget" && (
+              <div className="flex gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
+                <p className="text-xs leading-relaxed text-muted-foreground">{t("tradeHintBitget")}</p>
+              </div>
             )}
 
             {formError && (

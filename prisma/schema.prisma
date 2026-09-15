@@ -226,6 +226,15 @@ model ExchangeConnection {
   status           String    @default("active")
   lastError        String?
   lastSyncAt       DateTime?
+  // Spot-trade permission probe (Bitget only, Task 17): a deliberately
+  // INVALID place-order call is sent — a permission rejection proves the key
+  // is read-only, while a symbol/parameter rejection proves the order got
+  // past the permission gate (trade scope present) without ever filling.
+  // "granted" | "denied" | "unverified" (never probed / probe inconclusive).
+  tradePermission  String    @default("unverified")
+  tradeProbedAt    DateTime?
+  // Raw Bitget message from the last probe — surfaced in the UI report.
+  tradeProbeNote   String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

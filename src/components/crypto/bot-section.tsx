@@ -155,10 +155,15 @@ interface PendingEntry {
   live?: boolean;
 }
 
-/* live wallet — REAL spot USDT balance of the connected Bitget account */
+/* live wallet — REAL spot USDT balance of the connected Bitget account.
+   Task 17: also carries the connection state + trade-permission verdict so
+   the card can say exactly WHY orders cannot flow (not connected /
+   read-only key / connected). */
 interface SpotWallet {
   coin: string;
   available: number | null;
+  connected: boolean;
+  tradePermission: string | null;
 }
 
 interface TickResult {
@@ -678,13 +683,37 @@ export function BotSection() {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("liveWalletTitle")}</p>
             <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500">{t("liveBadge")}</span>
           </div>
+          {/* connection report (Task 17) — explicit Bitget spot-trade state */}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {spot?.connected && spot.tradePermission === "granted" ? (
+              <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                {t("liveConnOk")}
+              </span>
+            ) : spot?.connected && spot.tradePermission === "denied" ? (
+              <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                {t("liveConnReadonly")}
+              </span>
+            ) : spot?.connected ? (
+              <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                {t("liveConnUnknown")}
+              </span>
+            ) : (
+              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
+                {t("liveConnNone")}
+              </span>
+            )}
+          </div>
           <div className="mt-2 grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("liveWalletAvail")}</p>
               <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">
                 {spot?.available != null ? `${spot.available.toFixed(2)} $` : "—"}
               </p>
-              {spot?.available == null && <p className="mt-0.5 text-[10px] text-muted-foreground">{t("liveWalletNoConn")}</p>}
+              {spot?.available == null && (
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {spot?.connected ? t("liveWalletApiErr") : t("liveWalletNoConn")}
+                </p>
+              )}
             </div>
             <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("liveWalletOpen")}</p>
@@ -694,6 +723,16 @@ export function BotSection() {
               <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{positions.length}×</p>
             </div>
           </div>
+          {spot?.connected && spot.tradePermission === "denied" && (
+            <p className="mt-2 rounded-lg border border-amber-400/30 bg-amber-400/5 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-300">
+              {t("liveConnReadonlyHint")}
+            </p>
+          )}
+          {!spot?.connected && (
+            <p className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              {t("liveConnNoneHint")}
+            </p>
+          )}
           <p className="mt-2 border-t border-border pt-2 text-[11px] leading-relaxed text-muted-foreground">{t("liveWalletNote")}</p>
           {pendingInfo && (
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[11px] text-amber-500">

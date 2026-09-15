@@ -297,19 +297,29 @@ export async function GET(req: NextRequest) {
   /* live wallet — the REAL spot USDT balance that funds live entries
      (Task 14 design: modal bot diambil dari saldo spot Bitget). Cached to
      keep the signed API call at most one per 30s. null = unavailable
-     (no connection / upstream error) so the UI can say so honestly. */
-  let spot: { coin: string; available: number | null } | null = null;
+     (no connection / upstream error) so the UI can say so honestly.
+     Task 17: also report the connection itself + its trade-permission
+     verdict so the UI can distinguish "not connected" from "read-only key"
+     from "connected". */
+  let spot: {
+    coin: string;
+    available: number | null;
+    connected: boolean;
+    tradePermission: string | null;
+  } | null = null;
   if (config && !paperFlag) {
+    const conn = await db.exchangeConnection.findFirst({
+      where: { userId: user.id, exchange: "bitget", status: "active" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, apiKeyEnc: true, apiSecretEnc: true, apiPassphraseEnc: true, tradePermission: true },
+    });
     const hit = spotAvailCache.get(user.id);
+    let available: number | null;
     if (hit && Date.now() - hit.at < 30_000) {
-      spot = { coin: "USDT", available: hit.available };
+      available = hit.available;
     } else {
-      let available: number | null = null;
+      available = null;
       try {
-        const conn = await db.exchangeConnection.findFirst({
-          where: { userId: user.id, exchange: "bitget", status: "active" },
-          orderBy: { createdAt: "desc" },
-        });
         if (conn) {
           const bal = await fetchSpotBalance(
             {
@@ -325,8 +335,13 @@ export async function GET(req: NextRequest) {
         available = null;
       }
       spotAvailCache.set(user.id, { available, at: Date.now() });
-      spot = { coin: "USDT", available };
     }
+    spot = {
+      coin: "USDT",
+      available,
+      connected: Boolean(conn),
+      tradePermission: conn ? ((conn as { tradePermission?: string }).tradePermission ?? "unverified") : null,
+    };
   }
 
   return NextResponse.json({

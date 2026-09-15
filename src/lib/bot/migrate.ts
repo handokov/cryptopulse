@@ -232,6 +232,19 @@ async function run(): Promise<boolean> {
     ok = false;
     console.error("[bot-migrate] BotPosition.tpslArmed failed:", err instanceof Error ? err.message : err);
   }
+  /* Trade-permission probe columns (Task 17) on the shared ExchangeConnection
+     table — the same row powers balance sync AND live-bot credentials. */
+  try {
+    if (!(await columnExists("ExchangeConnection", "tradePermission"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "ExchangeConnection" ADD COLUMN "tradePermission" TEXT NOT NULL DEFAULT 'unverified'`);
+      await db.$executeRawUnsafe(`ALTER TABLE "ExchangeConnection" ADD COLUMN "tradeProbedAt" DATETIME`);
+      await db.$executeRawUnsafe(`ALTER TABLE "ExchangeConnection" ADD COLUMN "tradeProbeNote" TEXT`);
+      console.log("[bot-migrate] ExchangeConnection.tradePermission* added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] ExchangeConnection.tradePermission* failed:", err instanceof Error ? err.message : err);
+  }
   /* Multi-bot: swap UNIQUE(userId) for UNIQUE(userId, symbol). */
   try {
     if (!(await multiBotIndexReady())) {

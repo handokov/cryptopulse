@@ -20,6 +20,8 @@ import {
   isExchangeId,
 } from "@/lib/exchanges";
 import { syncConnection } from "@/lib/exchanges/sync";
+import { probeAndStoreTradePermission } from "@/lib/exchanges/trade-permission";
+import { ensureBotColumns } from "@/lib/bot/migrate";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +35,17 @@ export interface ConnectionRow {
   lastSyncAt: string | null;
   createdAt: string;
   assetCount: number;
+  // Bitget spot-trade permission verdict (Task 17):
+  // "granted" | "denied" | "unverified".
+  tradePermission: string;
+  tradeProbedAt: string | null;
+  tradeProbeNote: string | null;
 }
 
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  await ensureBotColumns(); // idempotent — also adds ExchangeConnection.tradePermission*
 
   const rows = await db.exchangeConnection.findMany({
     where: { userId: user.id },
@@ -62,6 +70,9 @@ export async function GET() {
     lastSyncAt: c.lastSyncAt?.toISOString() ?? null,
     createdAt: c.createdAt.toISOString(),
     assetCount: countByConn.get(c.id) ?? 0,
+    tradePermission: c.tradePermission,
+    tradeProbedAt: c.tradeProbedAt?.toISOString() ?? null,
+    tradeProbeNote: c.tradeProbeNote,
   }));
 
   return NextResponse.json({ connections });
@@ -70,6 +81,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  await ensureBotColumns();
 
   let body: {
     exchange?: unknown;
@@ -134,7 +146,15 @@ export async function POST(req: Request) {
     },
   });
 
-  /* Initial sync imports the matched assets right away. */
+  /* Initial sync imports the matched assets right away. Bitget connections
+     also get the spot-trade permission probe (invalid-order trick — the
+     probe can never place a real order) so the UI can show "Spot trade OK"
+     vs "Read-only" from the very first connect. */
+  try {
+    await probeAndStoreTradePermission(created.id);
+  } catch (err) {
+    console.error("[exchange-connections] trade-permission probe failed:", err instanceof Error ? err.message : err);
+  }
   try {
     const outcome = await syncConnection(created.id, user.id);
     return NextResponse.json(
