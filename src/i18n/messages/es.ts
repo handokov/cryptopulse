@@ -575,7 +575,7 @@ const es: Messages = {
     needKeyNote:
       "El modo real necesita una conexión Bitget (sección Portafolio) con API key que tenga permiso de trading spot. El modo papel funciona sin ninguna key.",
     alwaysOn:
-      "Se ejecuta en el servidor: el cron hace tick cada 5 minutos — no necesitas dejar esta página abierta. Las posiciones abiertas mantienen su take-profit / stop-loss mientras no estás.",
+      "El motor opera cada ~5 min: cron del servidor + el latido de esta página mientras esté abierta. Las posiciones abiertas mantienen su TP / SL aunque cierres la página o desactives el bot.",
     reportTitle: "Informe de rendimiento",
     reportMode: "{count} operaciones cerradas",
     winRate: "Tasa de acierto",
@@ -640,6 +640,7 @@ const es: Messages = {
     pendingOrderId: "orden {id}",
     ocoBadge: "OCO",
     ocoHint: "TP/SL armado en Bitget — el exchange sale automáticamente (uno cancela al otro)",
+    disabledManagedNote: "Bot desactivado: no abre posiciones nuevas, pero las abiertas siguen con toma de ganancias / stop-loss / trailing.",
     historyTitle: "Historial de operaciones",
     historyNote: "Últimas {count} operaciones cerradas — más recientes primero",
     histClosed: "Cierre",

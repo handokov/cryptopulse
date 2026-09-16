@@ -13,9 +13,10 @@
  *        (stop ≠ sell: the bot manages its exits, deleting would orphan them).
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { runBotTicks } from "@/lib/bot/engine";
 import { MODE_PRESETS, TF_OPTIONS, TF_DEFAULT, cooldownMinFor, type BotMode, type BotTimeframe } from "@/lib/bot/strategy";
 import { tfMsFor } from "@/lib/bot/timeframes";
 import { ensureBotColumns } from "@/lib/bot/migrate";
@@ -24,6 +25,7 @@ import { decryptSecret } from "@/lib/secure";
 import { fetchSpotBalance } from "@/lib/bot/bitget-trade";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const SYMBOL_RE = /^[A-Z0-9]{2,10}USDT$/;
 const MAX_PAPER_BOTS = 5;
@@ -375,6 +377,19 @@ export async function GET(req: NextRequest) {
       tradePermission: conn ? ((conn as { tradePermission?: string }).tradePermission ?? "unverified") : null,
     };
   }
+
+  /* Opportunistic guardian tick — every dashboard load doubles as a heartbeat
+     fallback for when the GitHub cron is degraded (measured 2-7 h gaps on the
+     free tier). Guarded by the engine's 4-min min-gap, exits always evaluated,
+     entries only for enabled bots. Runs AFTER the response — the dashboard
+     never waits on it and never fails because of it. */
+  after(async () => {
+    try {
+      await runBotTicks({ userId: user.id, force: false });
+    } catch {
+      /* best-effort heartbeat */
+    }
+  });
 
   return NextResponse.json({
     config: config ?? { ...defaults(user.id, wantSymbol || "BTCUSDT"), id: null },

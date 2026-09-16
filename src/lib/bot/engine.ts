@@ -833,13 +833,22 @@ function detailJson(signal: ReturnType<typeof computeBotSignal>, extra?: Record<
 }
 
 export async function runBotTicks(opts: { userId?: string; force?: boolean } = {}): Promise<TickOutcome[]> {
-  /* Cron path: only ENABLED bots. Manual path (userId given, e.g. "Run now"):
-     run the user's config even when disabled — that's the point of a manual
-     test tick — but it still goes through every risk gate. */
+  /* Exit guardian — an OPEN POSITION must never be left unmanaged. Cron and
+     guarded (non-force) runs therefore evaluate "enabled OR has-open-position":
+     disabling a bot stops NEW entries, but its live/paper exits (TP/SL/trail)
+     keep being managed. Explicit manual runs ("Run now") still see every bot
+     of the user. (Measured reality this fixes: free-tier GitHub cron degrades
+     to 2-7 h gaps, and a disabled bot used to strand its position forever.) */
+  const openConfigIds = (
+    await db.botPosition.findMany({ where: { status: "OPEN" }, select: { configId: true }, distinct: ["configId"] })
+  ).map((r) => r.configId);
+  const exitGuard = { OR: [{ enabled: true }, { id: { in: openConfigIds } }] };
   const configs = (await db.botConfig.findMany({
     where: opts.userId
-      ? { userId: opts.userId }
-      : { enabled: true },
+      ? opts.force
+        ? { userId: opts.userId }
+        : { userId: opts.userId, ...exitGuard }
+      : exitGuard,
   })) as BotConfigRow[];
 
   const outcomes: TickOutcome[] = [];
@@ -852,13 +861,11 @@ export async function runBotTicks(opts: { userId?: string; force?: boolean } = {
     try {
       outcomes.push(await tickOne(cfg, opts.force === true));
     } catch (err) {
-      outcomes.push({
-        userId: cfg.userId,
-        symbol: cfg.symbol,
-        paper: cfg.paper,
-        action: "ERROR",
-        reason: err instanceof Error ? err.message.slice(0, 200) : "unknown error",
-      });
+      const reason = err instanceof Error ? err.message.slice(0, 200) : "unknown error";
+      /* Silent per-bot failure is how a tick blackout goes unnoticed — every
+         error lands in the audit trail (best-effort; never mask the original). */
+      await logTrade(cfg, { action: "ERROR", status: "FAILED", reason }).catch(() => {});
+      outcomes.push({ userId: cfg.userId, symbol: cfg.symbol, paper: cfg.paper, action: "ERROR", reason });
     }
   }
   return outcomes;
@@ -1450,7 +1457,7 @@ export async function manualClosePositions(
 async function logTrade(
   cfg: TradeLogConfig,
   data: {
-    action: "BUY" | "SELL" | "HOLD";
+    action: "BUY" | "SELL" | "HOLD" | "ERROR";
     status: "PAPER" | "SUBMITTED" | "FAILED";
     reason: string;
     sizeUsdt?: number;

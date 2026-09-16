@@ -572,7 +572,7 @@ const zh: Messages = {
     needKeyNote:
       "实盘模式需要“投资组合”区的 Bitget 连接，且 API key 具备现货交易权限。模拟盘无需任何 key。",
     alwaysOn:
-      "在服务器端运行：cron 每 5 分钟执行一次——无需保持本页面打开。你离开时，持仓的止盈 / 止损仍然有效。",
+      "引擎约每 5 分钟运行一次：服务器 cron + 本页打开时的心跳。即使关闭页面或停用机器人，持仓的止盈 / 止损仍会被守护。",
     reportTitle: "绩效报告",
     reportMode: "{count} 笔已平仓交易",
     winRate: "胜率",
@@ -637,6 +637,7 @@ const zh: Messages = {
     pendingOrderId: "订单 {id}",
     ocoBadge: "OCO",
     ocoHint: "止盈/止损已挂在 Bitget——由交易所自动执行（一方成交即撤销另一方）",
+    disabledManagedNote: "机器人已停用——不再开新仓，但持仓的止盈 / 止损 / 移动止损仍由引擎持续管理。",
     historyTitle: "交易历史",
     historyNote: "最近 {count} 笔平仓交易（最新在前）",
     histClosed: "平仓时间",

@@ -272,6 +272,10 @@ export function BotSection() {
   const [lastTick, setLastTick] = useState<TickResult | null>(null);
   const [preset, setPreset] = useState<{ MODERATE: { takeProfitPct: number; stopLossPct: number; maxTradesPerDay: number; cooldownMin: number }; AGGRESSIVE: { takeProfitPct: number; stopLossPct: number; maxTradesPerDay: number; cooldownMin: number } } | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const draftRef = useRef(false);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   const load = useCallback(async (symbol?: string | null) => {
     setLoading(true);
@@ -304,10 +308,10 @@ export function BotSection() {
   }, [status, load]);
 
   const runTick = useCallback(
-    async (silent: boolean) => {
+    async (silent: boolean, heartbeat = false) => {
       setRunning(true);
       try {
-        const res = await fetch("/api/bot/tick", { method: "POST" });
+        const res = await fetch(heartbeat ? "/api/bot/tick?mode=heartbeat" : "/api/bot/tick", { method: "POST" });
         if (res.ok) {
           const data = await res.json();
           const results = (data.results ?? []) as TickResult[];
@@ -316,7 +320,9 @@ export function BotSection() {
           if (!silent && mine) {
             toast.success(`${mine.action} · ${mine.reason}`);
           }
-          await load(activeSymbol);
+          /* A draft edit must not be clobbered by the refresh — the heartbeat
+             still ran server-side, only the form reload is skipped. */
+          if (!draftRef.current) await load(activeSymbol);
           setChartRefresh((k) => k + 1);
         } else if (!silent) {
           toast.error(t("saveError"));
@@ -328,16 +334,21 @@ export function BotSection() {
     [activeSymbol, load, t]
   );
 
-  /* While the page is open and the bot is enabled, tick every 5 minutes. */
+  /* Guardian heartbeat — while this page is open, tick every 5 minutes EVEN
+     when the bot is disabled or a draft is open: open positions must keep
+     their TP/SL/trail management around the clock (free-tier GitHub cron
+     degrades to 2-7 h gaps). The heartbeat is engine-guarded (4-min min gap,
+     entries only for enabled bots) so it is safe to leave running. */
+  const hasCfg = cfg != null;
   useEffect(() => {
     if (tickTimer.current) clearInterval(tickTimer.current);
-    if (cfg?.enabled && !draft) {
-      tickTimer.current = setInterval(() => void runTick(true), AUTO_TICK_MS);
+    if (hasCfg && status === "authenticated") {
+      tickTimer.current = setInterval(() => void runTick(true, true), AUTO_TICK_MS);
     }
     return () => {
       if (tickTimer.current) clearInterval(tickTimer.current);
     };
-  }, [cfg?.enabled, draft, runTick]);
+  }, [hasCfg, status, runTick]);
 
   const selectBot = (symbol: string) => {
     setDraft(false);
@@ -1269,6 +1280,11 @@ export function BotSection() {
       {/* open positions */}
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <h3 className="text-sm font-semibold">{t("openPosition")}</h3>
+        {cfg != null && !cfg.enabled && positions.length > 0 && (
+          <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-500">
+            {t("disabledManagedNote")}
+          </p>
+        )}
         {positions.length === 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">{t("none")}</p>
         ) : (

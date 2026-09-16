@@ -576,7 +576,7 @@ const id: Messages = {
     needKeyNote:
       "Mode live membutuhkan koneksi Bitget (bagian Portofolio) dengan API key berizin spot-trade. Mode paper jalan tanpa key apa pun.",
     alwaysOn:
-      "Berjalan di server: cron men-tick tiap 5 menit — halaman ini tidak perlu tetap terbuka. Posisi terbuka tetap dijaga take-profit / stop-loss saat Anda pergi.",
+      "Engine men-tick tiap ±5 menit: cron server + heartbeat halaman ini saat terbuka. Posisi terbuka tetap dijaga take-profit / stop-loss walau halaman ditutup atau bot dinonaktifkan.",
     reportTitle: "Laporan performa",
     reportMode: "{count} transaksi ditutup",
     winRate: "Rasio menang",
@@ -641,6 +641,7 @@ const id: Messages = {
     pendingOrderId: "order {id}",
     ocoBadge: "OCO",
     ocoHint: "TP/SL terpasang di Bitget — bursa yang mengeksekusi otomatis (satu membatalkan yang lain)",
+    disabledManagedNote: "Bot nonaktif — posisi baru tidak dibuka, tapi posisi terbuka tetap dijaga take profit / stop loss / trailing oleh engine.",
     historyTitle: "Riwayat Trade",
     historyNote: "{count} trade terakhir — terbaru di atas",
     histClosed: "Ditutup",

@@ -576,7 +576,7 @@ const en = {
     needKeyNote:
       "Live mode needs a Bitget connection (Portfolio section) whose API key has spot-trade permission. Paper mode works without any key.",
     alwaysOn:
-      "Runs server-side: cron ticks every 5 minutes — you don't need this page open. Open positions keep their take-profit / stop-loss while you're away.",
+      "The engine ticks every ~5 min: server cron + this page's heartbeat while open. Open positions keep their take-profit / stop-loss even with the page closed or the bot disabled.",
     reportTitle: "Performance report",
     reportMode: "{count} closed trades",
     winRate: "Win rate",
@@ -641,6 +641,7 @@ const en = {
     pendingOrderId: "order {id}",
     ocoBadge: "OCO",
     ocoHint: "TP/SL armed on Bitget — the exchange exits automatically (one cancels the other)",
+    disabledManagedNote: "Bot is off — no new entries, but open positions keep their take-profit / stop-loss / trailing management.",
     historyTitle: "Trade history",
     historyNote: "Last {count} closed trades — newest first",
     histClosed: "Closed",

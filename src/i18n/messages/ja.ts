@@ -574,7 +574,7 @@ const ja: Messages = {
     needKeyNote:
       "ライブモードには「ポートフォリオ」の Bitget 接続（スポット取引権限付き API key）が必要です。ペーパーモードは key 不要で動作します。",
     alwaysOn:
-      "サーバー側で実行：cron が 5 分ごとに tick します——このページを開いておく必要はありません。離席中も建玉のテイクプロフィット / ストップロスは維持されます。",
+      "エンジンは約5分ごとに動作：サーバーcron＋このページを開いている間のハートビート。ページを閉じてもボット停止中でも、保有ポジションのTP / SLは守られます。",
     reportTitle: "パフォーマンスレポート",
     reportMode: "決済済み取引 {count} 件",
     winRate: "勝率",
@@ -639,6 +639,7 @@ const ja: Messages = {
     pendingOrderId: "注文 {id}",
     ocoBadge: "OCO",
     ocoHint: "TP/SL は Bitget 側に設置済み — 取引所が自動で決済します（片方成立でもう片方を取消）",
+    disabledManagedNote: "ボットは停止中 — 新規エントリーはありませんが、保有ポジションのTP / SL / トレーリングはエンジンが管理し続けます。",
     historyTitle: "取引履歴",
     historyNote: "直近{count}件の決済済み取引（新しい順）",
     histClosed: "決済時刻",
