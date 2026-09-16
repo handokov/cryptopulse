@@ -1322,3 +1322,28 @@ Work Log:
 Stage Summary:
 - User kini bisa melihat per trade: kapan ditutup, entry→exit, hasil $/%, BERAPA LAMA posisi hidup, dan alasan keluar — plus agregat rata-rata durasi profit vs loss di header kartu
 - Panduan pilot user disesuaikan: orderSizeUsdt boleh 1.5–2 utk pair min-1-USDT; utk pair utama (BTC/ETH dkk) tetap ≥5
+
+---
+Task ID: 20 (exit guardian — posisi tak di-TP padahal harga tembus)
+Agent: main
+Task: User: "kenapa masih belum TP ya, padahal udh melesat jauh, tapi malah kembali turun lagi" (CROSSUSDT 15M, TP 0.13710, spike ke ~0.156, posisi tetap terbuka)
+
+Work Log:
+- DIAGNOSIS: logic TP engine BENAR (shouldExit: price >= target → take-profit); yang mati adalah DETAK jantungnya:
+  (a) cron GitHub Actions */5 free-tier terdegradasi — terukur dari API: 50 run/2 hari, jarak antar run 2-7 JAM; run terakhir 23:57 UTC, harga tembus TP ~00:30 UTC, blackout 3+ jam tepat saat spike
+  (b) auto-tick UI bersyarat cfg?.enabled && !draft — bot disabled / draft terbuka = nol heartbeat walau halaman terbuka
+  (c) cron server hanya { enabled: true } — posisi terbuka di bot nonaktif tidak pernah dikelola
+  (d) error per-bot di path cron hilang diam-diam (outcomes ERROR tidak pernah ditulis DB)
+- FIX engine (runBotTicks): exit guard "enabled OR has-open-position" utk SEMUA path guarded (cron + heartbeat); disable = stop entri baru, exit tetap dijaga; manual force tetap lihat semua bot user
+- FIX engine catch: logTrade action ERROR (union diperluas) → kegagalan tick kini muncul di activity log
+- FIX route tick: mode=heartbeat (session, guarded force:false) terpisah dr manual force
+- FIX route GET /api/bot: after() opportunistic tick + maxDuration 60 — tiap buka dashboard = guardian fallback
+- FIX UI bot-section: heartbeat jalan selama ada cfg (abaikan enabled/draft; load() di-skip saat draft via draftRef agar form tak tertimpa); chip amber disabledManagedNote di kartu posisi
+- i18n: disabledManagedNote + rewrite alwaysOn ×6 via scripts/insert-guardian-i18n.py
+- E2E scripts/verify-exit-guardian.ts 22/22 (exit bot disabled, guard SKIP 4-menit, bot flat-disabled dikecualikan, ERROR tercatat); regresi limit-entry 19/19, live-limit-oco 29/29, trade-permission 24/24, trade-history 18/18; lint bersih; tsc src tetap 4 pre-existing
+- Commit 38f96ff "(44)" → push 7a75d79..38f96ff → produksi menunggu probe chunk
+
+Stage Summary:
+- Posisi CROSSUSDT user: setelah deploy, buka dashboard → GET after() + heartbeat akan langsung mengeksekusi TP di harga market (masih di atas TP saat ini); kalau harga sudah jatuh di bawah TP, posisi tetap dijaga SL/trail
+- Kebenaran operasional baru: disable bot = hanya menghentikan ENTRI; posisi terbuka SELALU dijaga TP/SL/trail oleh engine, cron, heartbeat halaman, dan opportunistic tick
+- Sisa risiko diterima: saat halaman tutup + GA cron blackout, exit tertunda sampai run cron berikutnya (2-7 jam); opsi lanjutan jika perlu: cron eksternal (cron-job.org/Upstash) menembak /api/bot/tick dengan x-bot-secret
