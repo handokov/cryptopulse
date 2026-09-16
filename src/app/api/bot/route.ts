@@ -428,8 +428,8 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "validation", message: "symbol must look like BTCUSDT" }, { status: 400 });
   }
   const orderSizeUsdt = Number(body.orderSizeUsdt);
-  if (!Number.isFinite(orderSizeUsdt) || orderSizeUsdt < 1.5 || orderSizeUsdt > 1000) {
-    return NextResponse.json({ error: "validation", message: "order size must be between 1.5 and 1000 USDT" }, { status: 400 });
+  if (!Number.isFinite(orderSizeUsdt) || orderSizeUsdt < 1 || orderSizeUsdt > 1000) {
+    return NextResponse.json({ error: "validation", message: "order size must be between 1 and 1000 USDT" }, { status: 400 });
   }
   /* Paper-wallet capital — optional on update (absent = keep current). */
   let paperCapitalUsdt: number | undefined;

@@ -977,7 +977,7 @@ export function BotSection() {
             <Input
               id="bot-size"
               type="number"
-              min={1.5}
+              min={1}
               step={0.5}
               className="tnum mt-1.5"
               value={cfg.orderSizeUsdt}

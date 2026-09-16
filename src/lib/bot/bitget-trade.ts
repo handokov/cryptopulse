@@ -459,7 +459,7 @@ export function planLimitBuySize(opts: {
 }): { qty: string; notional: number } | null {
   const { marketPrice, level, budgetUsdt, minOrderUsdt, availableUsdt, quantityPrecision } = opts;
   if (!(level > 0) || !(marketPrice > 0)) return null;
-  const minNotional = minOrderUsdt > 0 ? minOrderUsdt : 5;
+  const minNotional = minOrderUsdt > 0 ? minOrderUsdt : 1; // Bitget spot min verified 2026-09: 1 USDT
   const p = Number.isFinite(quantityPrecision) && quantityPrecision >= 0 ? Math.min(Math.floor(quantityPrecision), 12) : 8;
   let usdt = Math.max(budgetUsdt, minNotional);
   if (usdt > availableUsdt) usdt = availableUsdt; // the order freezes this much quote

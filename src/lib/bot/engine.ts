@@ -50,8 +50,9 @@ import {
 
 /** Cron guard: skip a bot ticked less than this ago (schedule jitter safety). */
 const MIN_TICK_GAP_MS = 4 * 60_000;
-/** Fallback minimum when the exchange rules cannot be fetched. */
-const FALLBACK_MIN_USDT = 5;
+/** Fallback minimum when the exchange rules cannot be fetched.
+ *  Bitget spot minimum verified live 2026-09: 1 USDT (user-corrected, was 5). */
+const FALLBACK_MIN_USDT = 1;
 /** Paper maker-entry TTL: cancel/re-arm after this many bars of the TF. */
 const ENTRY_TTL_BARS = 3;
 /** A just-armed limit cannot fill off the SAME bar's earlier low. */
