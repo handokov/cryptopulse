@@ -1347,3 +1347,19 @@ Stage Summary:
 - Posisi CROSSUSDT user: setelah deploy, buka dashboard → GET after() + heartbeat akan langsung mengeksekusi TP di harga market (masih di atas TP saat ini); kalau harga sudah jatuh di bawah TP, posisi tetap dijaga SL/trail
 - Kebenaran operasional baru: disable bot = hanya menghentikan ENTRI; posisi terbuka SELALU dijaga TP/SL/trail oleh engine, cron, heartbeat halaman, dan opportunistic tick
 - Sisa risiko diterima: saat halaman tutup + GA cron blackout, exit tertunda sampai run cron berikutnya (2-7 jam); opsi lanjutan jika perlu: cron eksternal (cron-job.org/Upstash) menembak /api/bot/tick dengan x-bot-secret
+
+---
+Task ID: 21 (verifikasi cron user + indikator tick-health)
+Agent: main
+Task: User: "kan saya sudah pasang cron job, seperti kamu sarankan sebelumnya" — klarifikasi kenapa cron yang terpasang tetap melewatkan TP
+
+Work Log:
+- Bukti segar via GitHub API: sekarang 03:40 UTC, run cron terakhir MASIH 23:57 UTC = blackout 3 jam 43 menit (seharusnya tiap 5 menit); workflow bot-tick state=active & semua run success — degradasi murni dari scheduler GitHub free tier, bukan salah setting
+- Jawaban: cron terpasang & aktif ✓, tapi GitHub menunda jadwal 2-7 jam; commit (44) menambal sisi halaman+posisi; coverage 24/7 penuh butuh cron eksternal non-degraded
+- Fitur baru: tile "Tick terakhir" di status strip (grid sm:4→5): hijau <10 mnt, amber <60 mnt, merah ≥60 mnt, abu = belum pernah; re-render 30 dtk via nowMs; data dr cfg.lastTickAt (sudah ada di payload GET); tooltip menjelaskan bot disabled+flat memang tak di-tick
+- BotConfig interface UI += lastTickAt?: string|null; i18n 4 key (lastTick/tickAgo/tickNever/tickHint) ×6 via scripts/insert-tickhealth-i18n.py
+- Lint bersih; tsc src tetap 4 pre-existing; commit 7e78998 "(45)" → push 38f96ff..7e78998 → probe chunk: "Last tick"/"Tick terakhir"/"{min} mnt lalu" FOUND (b08ba52a284ec38c.js, c1882b46a6b0582d.js)
+
+Stage Summary:
+- User kini bisa memverifikasi sendiri denyut cron langsung dari dashboard: buka bot → lihat tile "Tick terakhir" — hijau berarti penjaga hidup, merah berarti blackout
+- Instruksi cron eksternal (cron-job.org, gratis, tak didegradasi): URL POST https://cryptopulse-iota-self.vercel.app/api/bot/tick + header x-bot-secret = BOT_TICK_SECRET dari Vercel env, interval 5 menit; tanpa header → 401 diam-diam
