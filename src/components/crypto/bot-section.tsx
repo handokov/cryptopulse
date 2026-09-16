@@ -40,6 +40,7 @@ interface BotConfig {
   exitStyle: "FIXED" | "VOL";
   timeframe: string;
   entryLine: number | null;
+  lastTickAt?: string | null;
 }
 
 interface BotLight {
@@ -276,6 +277,19 @@ export function BotSection() {
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  /* Tick-health clock — re-renders every 30 s so the "last tick" age in the
+     status strip stays honest between data loads. */
+  const [nowMs, setNowMs] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  /* Age of the engine's last decision for THIS bot. A disabled flat bot is
+     intentionally not ticked (guardian set skips it) — the tooltip says so. */
+  const lastTickAgeMin = cfg?.lastTickAt
+    ? Math.max(0, Math.floor((nowMs - new Date(cfg.lastTickAt).getTime()) / 60_000))
+    : null;
 
   const load = useCallback(async (symbol?: string | null) => {
     setLoading(true);
@@ -656,7 +670,7 @@ export function BotSection() {
       )}
 
       {/* status strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-lg border border-border bg-card px-3 py-2.5">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("enabled")}</p>
           <p className={`mt-0.5 text-sm font-bold ${cfg.enabled ? "text-primary" : "text-muted-foreground"}`}>
@@ -681,6 +695,23 @@ export function BotSection() {
           <p className="tnum mt-0.5 text-sm font-bold">
             {summary?.tradesToday ?? 0}
             {summary?.maxTradesPerDay ? ` / ${summary.maxTradesPerDay}` : ""}
+          </p>
+        </div>
+        <div
+          className="rounded-lg border border-border bg-card px-3 py-2.5"
+          title={t("tickHint")}
+        >
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("lastTick")}</p>
+          <p className={`tnum mt-0.5 text-sm font-bold ${
+            lastTickAgeMin == null
+              ? "text-muted-foreground"
+              : lastTickAgeMin < 10
+                ? "text-primary"
+                : lastTickAgeMin < 60
+                  ? "text-amber-500"
+                  : "text-destructive"
+          }`}>
+            {lastTickAgeMin == null ? t("tickNever") : t("tickAgo", { min: lastTickAgeMin })}
           </p>
         </div>
       </div>
