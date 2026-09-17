@@ -952,7 +952,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     const exitKind = isTrail ? "trail-stop" : exit;
     const exitReason = isTrail
       ? `trail-stop: locked ≥ ${(((trailStopPrice - pos.entryPrice) / pos.entryPrice) * 100).toFixed(2)}% (peak ${newHighest.toPrecision(6)}, trail ${vol!.trailPct.toFixed(2)}%)`
-      : reason;
+      : `${exitKind}: ${reason}`;
     const pnl = ((price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
     if (cfg.paper) {
       await closePosition(pos.id, price, pnl, exitReason);

@@ -229,7 +229,10 @@ function fmtDuration(min: number | null | undefined, t: (k: string) => string): 
 
 /* Engine exitReason strings start with a stable prefix ("take-profit …",
    "stop-loss …", "trail-stop …", "signal flip …", "manual …", or OCO
-   reconciled variants) — map to the short i18n label keys. */
+   reconciled variants) — map to the short i18n label keys.
+   Rows closed BEFORE commit (47) stored the raw shouldExit reason without
+   the kind prefix ("price ≥ target …", "price ≤ stop …", "score … ≤ −x") —
+   the fallback patterns below recolor those legacy rows too. */
 function exitReasonKey(reason: string | null | undefined): string {
   const r = (reason ?? "").toLowerCase();
   if (r.startsWith("take-profit")) return "tp";
@@ -237,6 +240,9 @@ function exitReasonKey(reason: string | null | undefined): string {
   if (r.startsWith("stop-loss")) return "sl";
   if (r.startsWith("signal")) return "flip";
   if (r.includes("manual")) return "manual";
+  if (r.includes("≥ target")) return "tp";
+  if (r.includes("≤ stop")) return "sl";
+  if (r.startsWith("score ") || r.startsWith("score-")) return "flip";
   return "other";
 }
 
