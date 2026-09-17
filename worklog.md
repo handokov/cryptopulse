@@ -1363,3 +1363,32 @@ Work Log:
 Stage Summary:
 - User kini bisa memverifikasi sendiri denyut cron langsung dari dashboard: buka bot → lihat tile "Tick terakhir" — hijau berarti penjaga hidup, merah berarti blackout
 - Instruksi cron eksternal (cron-job.org, gratis, tak didegradasi): URL POST https://cryptopulse-iota-self.vercel.app/api/bot/tick + header x-bot-secret = BOT_TICK_SECRET dari Vercel env, interval 5 menit; tanpa header → 401 diam-diam
+
+---
+Task ID: 22 (eksekusi antrean: min order $1 + verifikasi cron produksi)
+Agent: main
+Task: User: "eksekusi saja, yang tadi mengantre cron job dll. Saya memang mau menggunakan min. order $1.0000 yang di syaratkan dari bitget"
+
+Work Log:
+- Koreksi min order 4 titik: engine FALLBACK_MIN_USDT 5→1; planLimitBuySize fallback 5→1; validasi API 1.5→1; input UI min 1 (sumber utama tetap live minTradeUSDT per-pair)
+- Unit-check scripts/verify-min-order-1usdt.ts 7/7; cron produksi: POST tick unauth → 401 = BOT_TICK_SECRET TERPASANG; 8 run GA terakhir semua success = secret cocok; gap run tetap 2-5 jam → cron eksternal tetap dibutuhkan
+- Commit 5c7d542 (46) → push → Vercel completed 09:23Z → probe chunk: c1882b46a6b0582d.js 404, needle mode=heartbeat pindah ke e6c997313545564a.js = LIVE
+
+Stage Summary:
+- Order $1.0000 sah end-to-end; fee 0.1%/side proporsional lebih terasa di order kecil; jangan di bawah $1
+
+---
+Task ID: 23 (badge "lainnya" → TP/SL/trail/flip; + RECOVERY local repo)
+Agent: main
+Task: User setuju pasang perbaikan badge Riwayat Trade (semua baris tampil "lainnya" karena exitReason TP/SL/flip tersimpan tanpa prefix jenis exit; hanya trail-stop yang berprefix)
+
+Work Log:
+- DIAGNOSIS: engine menyimpan reason mentah shouldExit ("price ≥ target …" / "price ≤ stop …" / "score … ≤ −x") — exitReasonKey di UI hanya mengenali prefix → semua jatuh ke "other"/lainnya
+- FIX 2 sisi (murni tampilan, nol perubahan perilaku): engine.ts exitReason non-trail kini `${exitKind}: ${reason}` (trade baru self-describing + audit BotTrade ikut terbaca); bot-section exitReasonKey += fallback pola lama (includes "≥ target" → tp, "≤ stop" → sl, startsWith "score" → flip) sehingga BARIS LAMA ikut terwarnai retroaktif
+- INSIDEN: antara turn, local repo ter-reset ke lineage lama 653e250 (pre-(44), commit UUID 12:34Z derau mode-file) — FALLBACK_MIN_USDT kembali 5, guardian (44) HILANG dari tree; GitHub main tetap benar di 5c7d542 (produksi aman). RECOVERY: git diff disimpan → reset --hard origin/main → git apply --3way patch badge → verifikasi marker (44)(45)(46) lengkap. Commit badge di tree lama akan meregresi guardian — tertangkap sebelum push
+- Regresi: verify-trade-history ALL PASS; verify-bot-exits (3 FAIL) & verify-bot-engine (tick1 BUY got HOLD) terbukti pre-existing via git stash A/B (pohon bersih gagal identik — test debt era default entryOffsetPct 0.3, bukan dari perubahan ini); lint bersih; tsc src tetap 4 pre-existing
+- Worklog Task 22 ikut di-replay (entri lama hilang bersih container)
+
+Stage Summary:
+- Riwayat Trade kini menampilkan badge TP hijau / SL merah / trail / flip untuk trade lama & baru; perilaku bot (entry/exit/rotasi simbol) nol perubahan
+- Pelajaran: selalu verifikasi git log + marker sebelum commit di sesi lanjutan; GitHub main = sumber kebenaran
