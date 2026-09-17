@@ -1392,3 +1392,32 @@ Work Log:
 Stage Summary:
 - Riwayat Trade kini menampilkan badge TP hijau / SL merah / trail / flip untuk trade lama & baru; perilaku bot (entry/exit/rotasi simbol) nol perubahan
 - Pelajaran: selalu verifikasi git log + marker sebelum commit di sesi lanjutan; GitHub main = sumber kebenaran
+
+---
+Task ID: 23 (penutup — status push dikoreksi + verifikasi produksi)
+Agent: main
+Task: Sesi lanjutan pasca container recycle — duga awal "(47) belum di-push" TERNYATA keliru; verifikasi deploy produksi
+
+Work Log:
+- `git log origin/main..main` menampilkan c80911c + 02def45 "pending" — MIKNAH: ref origin/main stale pasca recycle; push nyata mengembalikan `02def45..c80911c` = remote SUDAH memegang 02def45 (sha identik, dibuat sesi sebelumnya 05:40:43Z)
+- c80911c (artifact UUID) ikut ter-push → redeploy kode identik, tanpa dampak; origin/main ref diperbaiki via git update-ref → c80911c
+- Verifikasi produksi (47): GitHub commit status API → success "Deployment has completed" 2026-09-17T05:41:39Z; probe scripts/probe-deploy-47.sh → needle baru "≥ target"/"≤ stop" FOUND di chunk ae03c2b09297a8e7.js + chunk bot-section build-46 e6c997313545564a.js 404 = LIVE PASTI
+- A/B isi commit dicek ulang: engine.ts:955 `${exitKind}: ${reason}` + exitReasonKey fallback (includes "≥ target"→tp, "≤ stop"→sl, startsWith "score"→flip); FALLBACK_MIN_USDT=1 utuh
+
+Stage Summary:
+- (47) badge fix LIVE di produksi sejak 05:41:39Z — baris lama terwarnai retroaktif, trade baru berprefix; 0 perubahan kode aplikasi hari ini
+- Pelajaran baru: cek `git fetch` + commit status API dulu sebelum menyimpulkan "belum push" dari ref lokal
+
+---
+Task ID: 24 (Q&A — otomatisasi tick tanpa klik manual)
+Agent: main
+Task: User: "tanpa klik 'jalankan tick sekarang' bot sudah otomatis kan? tick terakhir 140 menit, jadi saya klik manual lagi"
+
+Work Log:
+- Kontrak otomatisasi diverifikasi di kode (tick/route.ts + bot-section.tsx): (1) cron-job.org milik user tiap 5 mnt POST +x-bot-secret = lapisan utama 24/7; (2) GitHub Actions cadangan — data API terbaru 8 run semua success tapi jarak 2-5 jam (04:11→09:18→14:14→18:13→21:20→23:40→01:42→06:41 UTC) = degradasi berlanjut; (3) heartbeat halaman tiap 5 mnt (AUTO_TICK_MS 5×60_000, guarded 4 mnt) selama dashboard terbuka — juga menjaga bot disabled + draft; (4) after() opportunistic tick tiap GET /api/bot
+- Jawaban ke user: ya otomatis, klik manual hanya fallback & aman (bukan dobel order — entri diblokir saat ada posisi; guard 4 mnt); gap 140 mnt = ketiga lapis absen bersamaan (cron-job.org episode + GA blackout + halaman tertutup); checklist: log cron-job.org harus 200 tiap 5 mnt, tile "Tick terakhir" hijau <10 mnt
+- Tooling baru: scripts/probe-deploy-47.sh (probe chunk paralel), scripts/check-tick-health.ts (read-only; lokal TANPA kredensial Turso di .env → membaca DB dev, bukan produksi — penting utk sesi berikutnya)
+
+Stage Summary:
+- User tidak perlu klik manual; denyut diverifikasi via tile hijau + log cron-job.org
+- GA free tier tetap tak bisa diandalkan (2-5 jam) → cron-job.org adalah nyawa bot; tile merah berkepanjangan = cek/enable ulang job di cron-job.org
