@@ -1518,3 +1518,17 @@ Stage Summary:
 - 0 perubahan kode/db; artefak: scripts/ga-scan.sh, scripts/ga-parse.py, scripts/ga_work/{runs.tsv,ticks_raw.txt}
 - Jawaban: total trade 1 bulan TIDAK bisa dihitung eksak dari luar; sampel 9 hari GA menunjukkan ≥4 posisi nyata (BTW/APR/QUID/DGAI), 1 fill terlihat langsung, daily-cap & gerbang skor/garis bekerja normal, cron-job.org sehat
 - Opsi angka eksak ditawarkan: (a) token Turso read-only utk 1 query, (b) screenshot statistik dashboard per bot
+
+---
+Task ID: 31 (konfirmasi user — akar "bot OFF sendiri" terkonfirmasi, kasus ditutup)
+Agent: main (Super Z)
+Task: User mengonfirmasi diagnosis T29: sebelumnya lupa klik Simpan setelah menyalakan bot; setelah Simpan, bot tetap ON dan tick terakhir selalu hijau
+
+Work Log:
+- Konfirmasi user mengakhiri misteri T27/T28/T29: TIDAK ada jalur tersembunyi yang mematikan bot; akar = saklar BOT AKTIF di form hanya state lokal, baru persist via Simpan (bot-section 1062/1131), dan reload runTick (345) menimpa balik saklar yang belum disimpan
+- Implikasi: Patch B (saklar auto-save) menurun urgensinya (user sudah paham workflow); Patch A (gerbang manual-tick pada bot OFF) tetap relevan tapi TIDAK diapprove — user minta tidak ada perubahan (T30)
+- 0 perubahan kode
+
+Stage Summary:
+- Kasus "klik ON balik ke OFF / kehilangan momen buy" DITUTUP: root cause = switch tanpa Simpan + reload clobber; solusi operasional user: nyalakan → Simpan
+- Status bot produksi: ON stabil, tick hijau (cadence 5 mnt sehat); rotasi simbol tetap harus ditutup Simpan agar enabled:true terbawa
