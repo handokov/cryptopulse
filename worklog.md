@@ -1421,3 +1421,18 @@ Work Log:
 Stage Summary:
 - User tidak perlu klik manual; denyut diverifikasi via tile hijau + log cron-job.org
 - GA free tier tetap tak bisa diandalkan (2-5 jam) → cron-job.org adalah nyawa bot; tile merah berkepanjangan = cek/enable ulang job di cron-job.org
+
+---
+Task ID: 25 (Q&A — cron-job.org saja tanpa cron GitHub; dugaan "GA mati malam Jakarta")
+Agent: main
+Task: User: "jika cron hanya pakai cron-job.org tanpa cron GitHub, bisa jalan? saya duga cron GitHub tidak jalan malam waktu Jakarta"
+
+Work Log:
+- Q&A murni, 0 perubahan kode. Analisis 8 run GA terakhir dikonversi ke WIB (UTC+7): 11:11, 16:18, 21:14, 01:13, 04:20, 06:40, 08:42, 13:41 → run TETAP terjadi jam malam WIB (01:13/04:20/06:40) = dugaan "mati khusus malam" tidak terbukti; polanya delay acak 2-5 jam di SEMUA jam (degradasi free tier GitHub, bukan pola malam)
+- Jawaban: cron-job.org saja CUKUP — endpoint /api/bot/tick caller-agnostic (yang penting x-bot-secret benar); GA hanya cadangan opsional; tidak ada dependensi aplikasi pada workflow GitHub
+- Aman dobel-cron: kedua cron = force:false → guard MIN_TICK_GAP_MS 4 menit, eksekusi kedua = SKIP; opsi redundansi tanpa GitHub: job cron-job.org kedua offset beberapa menit
+- Catatan lanjutan: gap 140 mnt kemarin mustahil dari GA saja kalau cron-job.org sehat → prioritas cek log cron-job.org (200 tiap 5 mnt)
+
+Stage Summary:
+- Arsitektur tick final: cron-job.org = penjaga utama 24/7; GA = bonus hampir nilai; heartbeat halaman + after() = jaring pengaman saat dashboard terbuka; posisi terbuka selalu dijaga di tick manapun
+- Tidak ada tindak lanjut teknis; kalau user mau, GA workflow bisa dimatikan tanpa efek samping
