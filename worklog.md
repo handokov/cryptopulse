@@ -1467,3 +1467,20 @@ Work Log:
 Stage Summary:
 - Akar masalah BUKAN cooldown (5 mnt utk 15M) dan BUKAN bug engine — melainkan bot dalam status enabled:false pasca Stop manual, plus footgun manual-force membuat ilusi "klik manual = menyalakan"
 - Cooldown 15M = 5 menit terkonfirmasi; engine tidak pernah auto-disable; tidak ada perubahan kode
+
+---
+Task ID: 28 (Q&A — "skor OK + garis terpenuhi + cooldown lewat tapi tidak entry; apakah pengaruh cron GitHub?")
+Agent: main
+Task: User menyangkal pernah stop manual; klaim sering kehilangan momen buy meski skor ≥0.40 + garis tersentuh + cooldown lewat; curiga cron GitHub
+
+Work Log:
+- entryLineTouched (engine.ts:140-149) = SAMPLING 2 titik: harga tick sebelumnya vs sekarang + band ±0.1% di harga kini. Komentar kode klaim "never misses a move through the level between ticks" — SALAH utk spike-and-revert: prev 1.118 → wick 1.130 → kembali 1.119 (garis 1.124) tak terdeteksi (tak ada crossing antar sampel, harga kini di luar band). Wick yang terlihat jelas di candle = tak terlihat engine bila naik-turun dalam jeda 5 mnt antar-tick → MEKANIK A (kehilangan momen, tanpa jejak selain HOLD "entry line not touched")
+- MEKANIK B (by design, permintaan user Task 15 "jangan beli di harga market"): garis tersentuh + skor lolos → limit dipasang di market −0.3%, menunggu dip, TTL 3 candle (45 mnt @15M); harga pump tanpa dip = limit tak terisi = momen lewat; jejak: log "limit armed @ … TTL 3×15M"
+- Diferensiasi via log aktivitas: "limit armed" tanpa fill = B; "entry line not touched" padahal wick menembus = A
+- Bot baru mulai OFF: startDraft → draftConfig enabled:false (bot-section:205/381) — save() PUT {...cfg} (395-403); saklar BOT AKTIF di form yang menulis enabled — bot yang dibuat tanpa meng-ON-kan saklar = tidak pernah jalan otomatis (jelaskan kontradiksi "tidak pernah stop" vs screenshot OFF)
+- VERDIK CRON: bukan GitHub — cron-job.org 5 mnt menguasai tick; gate hanya dievaluasi saat tick, cron tak mempengaruhi hasil gate
+- Tawaran FIX (menunggu approve, mengubah KAPAN entry terpicu — bukan strategi): wick-catch = deteksi sentuh garis via high/low candle sejak evaluasi terakhir (Bitget klines punya high/low); plus safety patch manual-tick OFF (Task 26/27)
+
+Stage Summary:
+- Jawaban: bukan cron GitHub; kehilangan momen = (A) sampling-deteksi garis yg buta thd wick antar-tick + (B) maker-entry −0.3%/TTL by design; bot OFF lahir dr default draft
+- 0 perubahan kode; FIX wick-catch + safety patch menunggu keputusan user
