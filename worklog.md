@@ -1451,3 +1451,19 @@ Work Log:
 Stage Summary:
 - Perilaku terverifikasi 3 titik: (1) guarded runs skip bot OFF+flat BY DESIGN, (2) manual force bypass seleksi → bisa entry pada bot OFF (footgun, belum dipatch), (3) keterangan limit entry hanya muncul saat path entry berjalan (bot ON)
 - 0 perubahan kode; opsi patch pengaman manual-entry-gate menunggu keputusan user
+
+---
+Task ID: 27 (Q&A — "kenapa bot tidak auto-on setelah close + cooldown?")
+Agent: main
+Task: User: "kenapa jika bot sudah close trade, cooling down 15M sudah tercapai, tidak otomatis on kembali? harus klik 'jalankan satu tick sekarang' baru bot menyala"
+
+Work Log:
+- VERIFIKASI COOLDOWN: TF_COOLDOWN_MIN["15M"]=5 MENIT (timeframes.ts:27, bukan 15!) — pesan log "cooldown 5m (15M)" kerap dibaca user sbg "cooldown 15M"; cooldown = jeda entry post-exit utk bot ON, anchor lastClosed.closedAt (engine.ts:1074), TIDAK mematikan bot
+- VERIFIKASI AUTO-DISABLE: engine TIDAK PERNAH menulis enabled:false (grep: hanya where-clause di exitGuard); penulis enabled=false hanya 3 jalur UI: saklar ON/OFF (bot-section:1054), tombol "Stop saja / Stop & Jual" (doStop, bot-section:499 PUT {...cfg, enabled:false}), save form dgn saklar OFF → bot OFF = pasti pernah dihentikan manual
+- SIKLUS ZOMBI user terjelaskan: bot OFF (efek Stop) → semua lapis otomatis skip (OFF+flat) → user klik manual tick → force menjalankan bot OFF (footgun Task 26) → entry terbuka → terasa "menyala" padahal tile tetap OFF → trade close → OFF+flat lagi → mati lagi → klik manual lagi
+- Jawaban: yang dimaukan user (close → cooldown → auto entry) ADALAH perilaku bot ON; kuncinya jangan akhiri trade lewat "Stop & Jual"/"Stop saja" utk rutinitas — pakai tutup posisi (bot tetap jalan); "Stop" hanya utk idle sungguhan, pulihkan lewat saklar BOT AKTIF
+- Tawaran patch (menunggu approve): (A) manual tick tidak boleh entry saat bot OFF + (B) toast saat manual tick pada bot OFF: "bot OFF — nyalakan BOT AKTIF"; keduanya kosmetik/pengaman, nol sentuh logika entry/exit/rotasi
+
+Stage Summary:
+- Akar masalah BUKAN cooldown (5 mnt utk 15M) dan BUKAN bug engine — melainkan bot dalam status enabled:false pasca Stop manual, plus footgun manual-force membuat ilusi "klik manual = menyalakan"
+- Cooldown 15M = 5 menit terkonfirmasi; engine tidak pernah auto-disable; tidak ada perubahan kode
