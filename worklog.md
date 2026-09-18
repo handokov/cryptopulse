@@ -1484,3 +1484,19 @@ Work Log:
 Stage Summary:
 - Jawaban: bukan cron GitHub; kehilangan momen = (A) sampling-deteksi garis yg buta thd wick antar-tick + (B) maker-entry −0.3%/TTL by design; bot OFF lahir dr default draft
 - 0 perubahan kode; FIX wick-catch + safety patch menunggu keputusan user
+
+---
+Task ID: 29 (Q&A — "apakah bot autobuy saat bot tidak ON? klik ON balik ke OFF; klik manual → buy → SL/trailing, beli di puncak")
+Agent: main (Super Z)
+Task: Jawab (1) apakah sistem autobuy saat BOT AKTIF OFF; (2) fenomena "klik bot ON, kembali lagi ke OFF"; (3) kenapa klik "jalankan satu tick sekarang" membuat beberapa token buy lalu kena SL/trailing (beli di puncak)
+
+Work Log:
+- Verifikasi tick/route.ts:28-46 — cron-job.org (x-bot-secret) → runBotTicks({force:false}) GUARDED; heartbeat ?mode=heartbeat → force:false GUARDED; tombol manual (tanpa mode) → force:!heartbeat = TRUE → memilih SEMUA bot user tanpa gerbang enabled + tanpa cron-guard (engine.ts:836-863, komentar 840 "manual runs still see every bot"). Konfirmasi final footgun T26/T27 di level route
+- AKAR BARU "klik ON balik ke OFF" (bot-section.tsx): saklar BOT AKTIF (1053-1065) hanya setCfg lokal; tersimpan HANYA via tombol Simpan (1131 → save 395-430). Setiap runTick — manual maupun heartbeat 5 mnt — memanggil load() yang menimpa cfg dari server (345: `if (!draftRef.current) await load(...)`), dan draftRef.current HANYA true untuk draft bot BARU (startDraft 381-382; edit bot lama = false) → saklar ON yang belum di-Simpan tersnap balik ke OFF oleh reload tick berikutnya. Reproduksi persis keluhan user
+- route.ts PUT: enabled = Boolean(body.enabled) (462) dipakai apa adanya (513; Path A/B/C) — TIDAK ada silent-disable di handler; rotasi simbol mempertahankan enabled sesuai state form saat Simpan. confirm_live gate (506): menyalakan bot LIVE tanpa centang konfirmasi → Simpan gagal → tetap OFF
+- Rantai "beli di puncak": bot faktis OFF (saklar tak tersimpan / snap balik) → tidak ada tick otomatis yang menonton → satu-satunya entry = klik manual force saat user SUDAH melihat harga naik (skor tinggi justru karena harga sudah naik) → entry di akhir pump → SL/trailing. Cron GitHub tidak berpengaruh pada flag enabled (cron hanya POST tick)
+- 0 perubahan kode
+
+Stage Summary:
+- Jawaban T29: (1) autobuy saat OFF: TIDAK untuk semua jalur otomatis (guarded skip OFF+flat); YA hanya via tombol manual (force). (2) "ON balik ke OFF" = saklar belum di-Simpan lalu di-clobber reload runTick (load() line 345); bukan cron/engine. (3) Buy-kena-SL = entry manual force di akhir pump pada bot yang faktis OFF
+- Proposal Patch A (manual-tick gate: klik tick pada bot OFF tidak membuka posisi baru) + Patch B (saklar auto-save pola saveLine) — menunggu keputusan user; jangan ubah strategi entry/exit/rotasi
