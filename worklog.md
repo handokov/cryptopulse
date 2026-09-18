@@ -1546,3 +1546,19 @@ Work Log:
 Stage Summary:
 - Kepercayaan user tinggi; fase berikutnya kemungkinan transisi paper → live
 - Outstanding tetap: revoke PAT GitHub, patch A/B (unapproved), rekap performa eksak (turso token/screenshot) belum dipilih user
+
+---
+Task ID: 33 (Q&A — fee perdagangan live + rencana uji kecil paper & live)
+Agent: main (Super Z)
+Task: User berencana mulai live dengan order size kecil (~1.1225 USDT) dan ingin melihat berapa potongan fee; akan test paralel paper & live
+
+Work Log:
+- Web search tarif Bitget: spot standar maker/taker 0.1%/0.1% (diskon 0.08% bila bayar fee dgn BGB) — dikonfirmasi 2 sumber (bitget.com Apr 2025 + cryptoninjas Des 2025); hasil 0.02%/0.06% di sumber pertama = tier VIP/promo, bukan standar
+- Grep engine: fee TIDAK dimodelkan di PnL (laporan = gross selisih harga); engine SUDAH mengantisipasi buy-fee dalam koin via balance clamp utk live SELL (engine.ts:686-687) supaya sell tidak gagal saldo kurang
+- Matematika contoh utk order 1.1225 USDT: round trip ~0.2% ≈ 0.0022 USDT/trade (0.16% dgn BGB); TP 1.8% → net ~1.6%; SL 1.2% → net ~-1.4%
+- Catatan operasional: 1 simbol = 1 bot per user (@@unique userId+symbol) → paper & live TIDAK bisa simbol sama, bandingkan pakai simbol berbeda; live butuh API key izin trading + confirm_live; min notional per pair Bitget bervariasi (umumnya 1 USDT, beberapa 5 USDT) — order < min ditolak & tercatat FAILED
+- 0 perubahan kode; opsi masa depan ditawarkan: rekam fee aktual dari respons Bitget ke Riwayat Trade (net PnL)
+
+Stage Summary:
+- Jawaban fee: standar 0.1%/sisi (0.08% BGB); entry bot = maker, exit TP = maker, exit SL = taker; PnL dashboard = gross, fee asli terlihat di riwayat order Bitget
+- User dalam fase transisi hati-hati ke live (order kecil); jangan overpromise hasil
