@@ -1436,3 +1436,18 @@ Work Log:
 Stage Summary:
 - Arsitektur tick final: cron-job.org = penjaga utama 24/7; GA = bonus hampir nilai; heartbeat halaman + after() = jaring pengaman saat dashboard terbuka; posisi terbuka selalu dijaga di tick manapun
 - Tidak ada tindak lanjut teknis; kalau user mau, GA workflow bisa dimatikan tanpa efek samping
+
+---
+Task ID: 26 (Q&A — bot OFF + garis entry: tile merah 256 mnt, tidak ada keterangan limit entry)
+Agent: main
+Task: User (screenshot): BOT AKTIF OFF, flat 0.00 $, ZROUSDT garis entry 1.124, skor 0.73, tile TICK TERAKHIR merah 256 mnt — "tidak usah klik manual? apakah berjalan otomatis?"
+
+Work Log:
+- Verifikasi kode: runBotTicks exitGuard = { OR: [{enabled:true}, {id in openConfigIds}] } (engine.ts:846) → bot OFF+tanpa posisi TIDAK dipilih guarded runs (cron/heartbeat) → lastTickAt tak pernah ter-update → tile merah SESUAI DESAIN; tooltip tile (tickHint id.ts:648) sudah menjelaskan: "Bot nonaktif tanpa posisi terbuka memang tidak di-tick"
+- FOOTGUN DITEMUKAN: tickOne TIDAK punya gerbang cfg.enabled di dalamnya (grep 0 hit selain where-clause) + manual force memilih SEMUA bot user (engine.ts:848-851 {userId} tanpa enabled) → "Jalankan satu tick sekarang" pada bot OFF tetap menjalankan keputusan penuh: kalau skor lolos + garis entry tersentuh → BISA MEMBUKA POSISI walau bot OFF. Saat ini aman (harga 1.12 di bawah garis 1.124 → HOLD "entry line not touched"), tapi jadi kebiasaan = risiko
+- Penjelasan "tidak ada keterangan limit entry": limit hanya dipasang di path entry (engine.ts:1136-1151 armLimitLevel −0.3%, TTL 3 bar, log "limit armed @ …") yang tidak pernah dieksekusi untuk bot OFF — bukan bug
+- Jawaban ke user: bot OFF+flat = sengaja tidak di-tick (tile merah wajar); agar otomatis penuh → nyalakan BOT AKTIF; manual tick saat OFF jangan dijadikan kebiasaan; ditawarkan opsional: guard kecil "manual tick tidak boleh entry saat bot disabled" (belum dieksekusi, menunggu persetujuan)
+
+Stage Summary:
+- Perilaku terverifikasi 3 titik: (1) guarded runs skip bot OFF+flat BY DESIGN, (2) manual force bypass seleksi → bisa entry pada bot OFF (footgun, belum dipatch), (3) keterangan limit entry hanya muncul saat path entry berjalan (bot ON)
+- 0 perubahan kode; opsi patch pengaman manual-entry-gate menunggu keputusan user
