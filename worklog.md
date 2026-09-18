@@ -1500,3 +1500,21 @@ Work Log:
 Stage Summary:
 - Jawaban T29: (1) autobuy saat OFF: TIDAK untuk semua jalur otomatis (guarded skip OFF+flat); YA hanya via tombol manual (force). (2) "ON balik ke OFF" = saklar belum di-Simpan lalu di-clobber reload runTick (load() line 345); bukan cron/engine. (3) Buy-kena-SL = entry manual force di akhir pump pada bot yang faktis OFF
 - Proposal Patch A (manual-tick gate: klik tick pada bot OFF tidak membuka posisi baru) + Patch B (saklar auto-save pola saveLine) — menunggu keputusan user; jangan ubah strategi entry/exit/rotasi
+
+---
+Task ID: 30 (read-only — "lihat hasil bot 1 bulan, jangan ubah apa pun")
+Agent: main (Super Z)
+Task: Tampilkan hasil trading bot bulan terakhir TANPA mengubah kode/db/strategi
+
+Work Log:
+- Akses produksi: .env lokal hanya DATABASE_URL sqlite dev; tanpa turso/vercel CLI → ledger lengkap (BotTrade/BotPosition produksi) TIDAK terjangkau (by design, kredensial tidak disimpan)
+- Jendela data yang tersedia: log GitHub Actions workflow bot-tick.yml (satu2nya workflow, dibuat 2026-09-09) — tiap run mencatat ≤2000 char respons tick produksi (mode cron, guarded)
+- scripts/ga-scan.sh: unduh 64/64 run log (9 Sep→18 Sep 2026, 59 berisi tick JSON). Bug fix: rg -h = help → ganti -I (no-filename); export $RAW
+- scripts/ga-parse.py: ekstrak objek hasil per run → aksi/simbol/alasan/score/pnl
+- Hasil sampel (59 momen tick, ~tiap 2-5 jam, BUKAN total): 18 simbol terlihat (LIT 32x, BTC 23x, HYPE 23x paling konsisten = 3 bot aktif tetap; sisanya rotasi); 1 BUY nyata: DGAIUSDT 16 Sep 14:14 UTC limit fill @0.858 (armed 0.8706, score 0.816); 0 SELL pada momen sampel; posisi terbuka terlihat: BTW (13 Sep), APR (14 Sep ×2), QUID +1.64% (16 Sep), DGAI setelah fill; HOLD "max 4 trades/day" ×5 + "max 8 trades/day" ×2 (daily cap binding); banyak "score -0.xx < entry 0.55/0.40" (bot menunggu); SKIP 89x "tick guard" = cron-job.org sehat (tick <4 mnt sebelumnya)
+- Keterbatasan dinyatakan ke user: angka eksak 30 hari hanya via Turso (token read-only revocable) atau screenshot kartu statistik dashboard per bot (stats all-time + riwayat 50)
+
+Stage Summary:
+- 0 perubahan kode/db; artefak: scripts/ga-scan.sh, scripts/ga-parse.py, scripts/ga_work/{runs.tsv,ticks_raw.txt}
+- Jawaban: total trade 1 bulan TIDAK bisa dihitung eksak dari luar; sampel 9 hari GA menunjukkan ≥4 posisi nyata (BTW/APR/QUID/DGAI), 1 fill terlihat langsung, daily-cap & gerbang skor/garis bekerja normal, cron-job.org sehat
+- Opsi angka eksak ditawarkan: (a) token Turso read-only utk 1 query, (b) screenshot statistik dashboard per bot
