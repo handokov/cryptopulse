@@ -1562,3 +1562,19 @@ Work Log:
 Stage Summary:
 - Jawaban fee: standar 0.1%/sisi (0.08% BGB); entry bot = maker, exit TP = maker, exit SL = taker; PnL dashboard = gross, fee asli terlihat di riwayat order Bitget
 - User dalam fase transisi hati-hati ke live (order kecil); jangan overpromise hasil
+
+---
+Task ID: 34 (Q&A — "kenapa 1 siklus beli+jual dihitung 2x trade?")
+Agent: main (Super Z)
+Task: Jelaskan semantik hitungan trade: user merasa 1 siklus (buy → TP/SL) seharusnya 1 trade, bukan 2
+
+Work Log:
+- Verifikasi engine.ts: gate batas harian menghitung BARIS ORDER, bukan posisi — line 1057-1058 (path market) & 231-239 (limitEntryTick): botTrade.count({ action: { in: ["BUY","SELL"] } }) → 1 siklus = 2 slot maxTradesPerDay
+- Konsekuensi: max 4/hari = hanya 2 siklus penuh/hari/bot; sesudahnya HOLD "max N trades/day" sampai reset UTC (utcDayStart, jam 07:00 WIB) — konsisten dgn temuan T30 ("max 4 trades/day" ×5, "max 8" ×2 di log GA)
+- DailyLossLimit TIDAK terpengaruh: realizedToday menjumlah pnlUsdt (hanya baris SELL yang punya pnl; BUY null) — hanya hitungan SLOT yang 2x
+- Dashboard sudah benar: stats.closedCount & Riwayat Trade menghitung POSISI tertutup (1 siklus = 1 baris); yang 2x hanya (a) Log Aktivitas (jurnal order, 2 baris/siklus — by design) dan (b) slot batas harian (semantik tersembunyi)
+- Opsi solusi: (1) tanpa kode — naikkan maxTradesPerDay di form (8 = 4 siklus); (2) dengan kode (butuh approve) — counter hanya menghitung BUY agar max N = N siklus
+- 0 perubahan kode
+
+Stage Summary:
+- Jawaban: ya, engine menghitung per ORDER bukan per posisi; user benar; fix semantik (count BUY saja) ditawarkan menunggu keputusan, atau user bisa naikkan sendiri angkanya di form
