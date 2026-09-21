@@ -1671,3 +1671,21 @@ Stage Summary:
 - Kontrak dengan user: $250-300/bulan mungkin hanya lewat edge terbukti + scaling size; angka hari ini (expNet +0.02%) belum layak diskalakan
 - Instrumen weekly-recap siap dipakai mingguan; kredensial lokal aman (gitignored)
 - Menunggu keputusan user: (1) approve Patch C fee-modeling, (2) komit protokol fase 0 30 hari
+
+---
+Task ID: 40 (PATCH C — PnL net of fee + kartu 30 hari; approve user)
+Agent: main (Super Z)
+Task: User approve Patch C dan ingin melihat real profit per hari & per bulan sebelum LIVE
+
+Work Log:
+- engine.ts: helper cycleFeeUsdt (0.1% x entry notional + exit notional; Bitget spot standard, BGB tidak dimodelkan) — diterapkan di 7 titik exit: paper exit ladder, live OCO reconcile x2, live engine exit, manual close x3
+- route.ts: allClosed select + closedAt; portfolio aggregate tambah monthUsdt/monthCount (30 hari) + per-bot monthUsdt
+- bot-section.tsx: interface Portfolio/PerBot + kartu "30 HARI" di grid agregat (grid-cols-3); i18n pf30d & pfMonthCount utk 6 locale (id/en/zh/pt/es/ja)
+- weekly-recap.mjs: FEE default 0.2 → 0 (fee sudah embedded sejak patch; baris lama pre-C masih gross — bisa set FEE_PCT env utk analisis baris lama)
+- Verifikasi: tsc 0 error baru (4 pre-existing sama), eslint bersih, recap smoke-test OK
+- Commit fd410b4 (10 file, +65/-14) — BELUM push (butuh token baru dari user; token lama sudah diminta di-revoke)
+
+Stage Summary:
+- Mulai patch ini, semua PnL baru (paper & live) tercatat NET fee → tile HARI INI / 30 HARI / SEPANJANG WAKTU = real profit
+- Catatan transisi: angka agregat lama (termasuk +$3.24 all-time) masih GROSS campuran; perbandingan adil dimulai dari data pasca-deploy
+- Deploy menunggu push; setelah live, user bisa melihat real profit harian & bulanan langsung di dashboard
