@@ -80,7 +80,15 @@ export async function GET(req: NextRequest) {
   const summary = {
     tradesToday: relevant.length,
     realizedTodayUsdt: relevant.reduce((acc, t) => acc + (t.pnlUsdt ?? 0), 0),
-    maxTradesPerDay: config ? MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay : null,
+    /* Effective daily cap: the user's saved setting (1..20) when sane, preset
+       only as fallback — must mirror the engine gate, which reads the same
+       value. Before this fix the tile always showed the preset (4/8) even
+       after the user saved a different number. */
+    maxTradesPerDay: config
+      ? Number.isInteger(config.maxTradesPerDay) && config.maxTradesPerDay >= 1 && config.maxTradesPerDay <= 20
+        ? config.maxTradesPerDay
+        : MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay
+      : null,
     cooldownMin: config ? cooldownMinFor((config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE", config.timeframe ?? "4H") : null,
     timeframe: config?.timeframe ?? null,
     presets: MODE_PRESETS,
