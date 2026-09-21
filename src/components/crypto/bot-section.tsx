@@ -137,6 +137,7 @@ interface PortfolioPerBot {
   symbol: string;
   totalUsdt: number;
   todayUsdt: number;
+  monthUsdt: number;
   closed: number;
 }
 
@@ -145,6 +146,8 @@ interface Portfolio {
   botsActive: number;
   totalUsdt: number;
   todayUsdt: number;
+  monthUsdt: number;
+  monthCount: number;
   closedCount: number;
   todayCount: number;
   perBot: PortfolioPerBot[];
@@ -570,13 +573,20 @@ export function BotSection() {
               {t("pfBotsActive", { active: portfolio.botsActive, total: portfolio.bots })}
             </p>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-3">
+          <div className="mt-2 grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfToday")}</p>
               <p className={`tnum mt-0.5 text-xl font-bold ${portfolio.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
                 {portfolio.todayUsdt >= 0 ? "+" : ""}{portfolio.todayUsdt.toFixed(2)} $
               </p>
               <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("pfTodayCount", { count: portfolio.todayCount })}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pf30d")}</p>
+              <p className={`tnum mt-0.5 text-xl font-bold ${portfolio.monthUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                {portfolio.monthUsdt >= 0 ? "+" : ""}{portfolio.monthUsdt.toFixed(2)} $
+              </p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("pfMonthCount", { count: portfolio.monthCount })}</p>
             </div>
             <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfAllTime")}</p>

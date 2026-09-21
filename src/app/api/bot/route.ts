@@ -205,9 +205,9 @@ export async function GET(req: NextRequest) {
     allIds.length
       ? db.botPosition.findMany({
           where: { configId: { in: allIds }, status: "CLOSED" },
-          select: { configId: true, realizedPnlUsdt: true },
+          select: { configId: true, realizedPnlUsdt: true, closedAt: true },
         })
-      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null }[]),
+      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null; closedAt: Date | null }[]),
     allIds.length
       ? db.botTrade.findMany({
           where: { configId: { in: allIds }, createdAt: { gte: dayStart }, action: "SELL", status: { in: ["PAPER", "SUBMITTED"] } },
@@ -215,10 +215,13 @@ export async function GET(req: NextRequest) {
         })
       : Promise.resolve([] as { configId: string; pnlUsdt: number | null }[]),
   ]);
-  const perBotMap = new Map<string, { symbol: string; totalUsdt: number; todayUsdt: number; closed: number }>();
-  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, totalUsdt: 0, todayUsdt: 0, closed: 0 });
+  const perBotMap = new Map<string, { symbol: string; totalUsdt: number; todayUsdt: number; monthUsdt: number; closed: number }>();
+  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, totalUsdt: 0, todayUsdt: 0, monthUsdt: 0, closed: 0 });
   let pfTotal = 0;
   let pfToday = 0;
+  let pfMonth = 0;
+  let pfMonthCount = 0;
+  const monthStart = Date.now() - 30 * 86_400_000;
   for (const p of allClosed) {
     const amt = p.realizedPnlUsdt ?? 0;
     pfTotal += amt;
@@ -226,6 +229,11 @@ export async function GET(req: NextRequest) {
     if (row) {
       row.totalUsdt += amt;
       row.closed += 1;
+    }
+    if (p.closedAt && new Date(p.closedAt).getTime() >= monthStart) {
+      pfMonth += amt;
+      pfMonthCount += 1;
+      if (row) row.monthUsdt += amt;
     }
   }
   for (const tr of allTodaySells) {
@@ -239,6 +247,8 @@ export async function GET(req: NextRequest) {
     botsActive: configs.filter((c) => c.enabled).length,
     totalUsdt: pfTotal,
     todayUsdt: pfToday,
+    monthUsdt: pfMonth,
+    monthCount: pfMonthCount,
     closedCount: allClosed.length,
     todayCount: allTodaySells.length,
     perBot: [...perBotMap.values()].sort((a, b) => b.totalUsdt - a.totalUsdt),

@@ -609,6 +609,8 @@ const pt: Messages = {
     pfAllTime: "Histórico",
     pfTodayCount: "{count} operações hoje",
     pfClosedCount: "{count} operações fechadas",
+    pf30d: "Últimos 30 dias",
+    pfMonthCount: "{count} ciclos em 30 dias",
     pfBotsActive: "{active}/{total} bots ativos",
     pfJumpTo: "Clique para abrir este bot",
     walletTitle: "Carteira simulada",

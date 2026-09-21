@@ -606,6 +606,8 @@ const zh: Messages = {
     pfAllTime: "累计",
     pfTodayCount: "今日 {count} 笔交易",
     pfClosedCount: "已平仓 {count} 笔",
+    pf30d: "近30天",
+    pfMonthCount: "30天内 {count} 个循环",
     pfBotsActive: "{active}/{total} 个机器人运行中",
     pfJumpTo: "点击打开该机器人",
     walletTitle: "模拟钱包",

@@ -610,6 +610,8 @@ const id: Messages = {
     pfAllTime: "Sepanjang waktu",
     pfTodayCount: "{count} trade hari ini",
     pfClosedCount: "{count} trade tertutup",
+    pf30d: "30 hari terakhir",
+    pfMonthCount: "{count} siklus 30 hari",
     pfBotsActive: "{active}/{total} bot aktif",
     pfJumpTo: "Klik untuk membuka bot ini",
     walletTitle: "Dompet paper",

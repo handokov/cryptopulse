@@ -10,7 +10,9 @@
  *
  * Jalankan:  node scripts/weekly-recap.mjs
  * Env: TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (fallback: dibaca dari .env lokal — gitignored)
- * FEE_PCT  : fee round-trip per siklus dalam % (default 0.2 = 0.1% x 2 sisi)
+ * FEE_PCT  : fee round-trip TAMBAHAN per siklus dalam % (default 0 — sejak
+ *            Patch C, PnL yang direkam engine sudah NET of fee; hanya set
+ *            >0 kalau menganalisis baris LAMA pre-Patch-C)
  * TARGET   : target bulanan USD (default 275)
  */
 import { createClient } from '@libsql/client'
@@ -29,7 +31,7 @@ if (!url || !authToken) {
   console.error('Missing TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (env atau .env)')
   process.exit(1)
 }
-const FEE = parseFloat(process.env.FEE_PCT || '0.2')
+const FEE = parseFloat(process.env.FEE_PCT || '0')
 const TARGET = parseFloat(process.env.TARGET || '275')
 const client = createClient({ url, authToken })
 const pct = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`)

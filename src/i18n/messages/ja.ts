@@ -608,6 +608,8 @@ const ja: Messages = {
     pfAllTime: "累計",
     pfTodayCount: "今日 {count} 件の取引",
     pfClosedCount: "決済済み {count} 件",
+    pf30d: "過去30日",
+    pfMonthCount: "30日間で {count} サイクル",
     pfBotsActive: "{active}/{total} ボット稼働中",
     pfJumpTo: "クリックでこのボットを開く",
     walletTitle: "ペーパーウォレット",
