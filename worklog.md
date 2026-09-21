@@ -1653,3 +1653,21 @@ Stage Summary:
 - Edge net saat ini ≈ NOL (gross +0.23%/siklus dig fee 0.2%); sampel 28 siklus/2 hari terlalu kecil utk kesimpulan (CI95 WR [38%,75%])
 - Rekomendasi: jalankan paper 30 hari; NEAR dragging (WR 38%, −$3.57); pertimbangkan BGB utk fee 0.08%/sisi; belum layak naik live dgn edge net nol
 - Token turso ro sebaiknya di-revoke user; file script bersih, aman commit
+
+---
+Task ID: 39 (RENCANA PENGHASILAN + weekly recap tool)
+Agent: main (Super Z)
+Task: User ingin jadikan pendapatan utama, minta dibantu capai $250-300/bulan — susun jalur jujur + instrumen monitor
+
+Work Log:
+- scripts/weekly-recap.mjs dibuat (READ-ONLY): bucket mingguan W1-W4, expectancy gross & NET fee, kesehatan simbol (DEAD/REVIEW/KEEP), gerbang skala (>=100 siklus & expNet >= +0.3%), proyeksi target dgn hari-aktif
+- Kredensial Turso ro disimpan di .env (terverifikasi gitignored) — user bisa rerun tanpa kirim token lagi
+- Bug fix kecil: proyeksi awal pakai rata-rata kalender (menyesatkan utk data 2 hari) → diganti rata-rata hari-aktif
+- Hasil run pertama: 29 siklus, WR 55%, EXP +0.22% gross / +0.02% NET → GATE TERTUTUP; NEAR EXPnet −1.09% (terburuk), TAG +1.50% (terbaik)
+- Posisi rekomendasi: fase 0 = buktikan edge net (TF 1H, simbol volatil, tanpa delete bot, rotasi mingguan) → fase 1 = scaling size bertahap hanya setelah gate terbuka → fase 2 = $250-300 di size ~$150-250 dgn modal kerja $750-2500
+- Patch C diusulkan (belum approve): paper PnL memasukkan fee agar dashboard = NET (data pengujian jujur)
+
+Stage Summary:
+- Kontrak dengan user: $250-300/bulan mungkin hanya lewat edge terbukti + scaling size; angka hari ini (expNet +0.02%) belum layak diskalakan
+- Instrumen weekly-recap siap dipakai mingguan; kredensial lokal aman (gitignored)
+- Menunggu keputusan user: (1) approve Patch C fee-modeling, (2) komit protokol fase 0 30 hari
