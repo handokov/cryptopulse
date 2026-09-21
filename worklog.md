@@ -1578,3 +1578,19 @@ Work Log:
 
 Stage Summary:
 - Jawaban: ya, engine menghitung per ORDER bukan per posisi; user benar; fix semantik (count BUY saja) ditawarkan menunggu keputusan, atau user bisa naikkan sendiri angkanya di form
+
+---
+Task ID: 35 (BUG DITEMUKAN USER — setelan maxTradesPerDay tidak pernah dipakai engine)
+Agent: main (Super Z)
+Task: User melaporkan tidak bisa mengubah max 8 → 10 transaksi/hari (di setting "hanya maksimal 8")
+
+Work Log:
+- Grep engine.ts: `cfg.maxTradesPerDay` TIDAK PERNAH dipakai (0 match) — gate batas harian memakai `preset.maxTradesPerDay` (MODE_PRESETS: MODERATE=4, AGGRESSIVE=8) di 3 titik: limitEntryTick param (1007), livePendingEntryTick param (1050), market gate (1061)
+- route.ts GET line 83: tile "Trades hari ini X / N" juga menampilkan MODE_PRESETS, bukan setelan user → user selalu melihat "/8" (AGGRESSIVE) meski sudah isi 10
+- Form memang mengizinkan 1..20 (input max={20}) dan PUT menyimpan 1..20 ke DB — tapi nilai tersimpan TIDAK dibaca siapa pun = dead setting
+- Kesimpulan: bug nyata (setting diiklankan UI tapi mati); TIDAK ada workaround via UI; perilaku efektif terkunci 4 (MODERATE) / 8 (AGGRESSIVE) per hari UTC
+- Usulan fix (menunggu approve): (A) gate 3 titik + tile memakai cfg.maxTradesPerDay (fallback preset bila invalid); opsional digabung (B) dari T34 — counter hanya hitung BUY sehingga "N/hari" = N siklus penuh
+- 0 perubahan kode
+
+Stage Summary:
+- User menemukan bug dead-setting maxTradesPerDay lewat observasi; fix A (+opsional B) ditawarkan, menunggu keputusan; jangan deploy tanpa approve
