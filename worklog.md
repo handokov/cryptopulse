@@ -1634,3 +1634,22 @@ Stage Summary:
 - PAT #2 (aktif, dipakai push) HARUS di-revoke user sekarang
 - PAT lama Task 30 terkonfirmasi mati; history bersih
 - Clone lokal lain (bila ada) perlu git fetch + git reset --hard origin/main karena hash berubah
+
+---
+Task ID: 38 (ANALISIS EXPECTANCY — token Turso read-only dari user)
+Agent: main (Super Z)
+Task: Hitung expectancy eksak bot dari data produksi Turso (menindaklanjiti diskusi proyeksi $260/bulan)
+
+Work Log:
+- User kirim JWT Turso read-only ("a":"ro"); URL db dari worklog lama: libsql://cryptopulse-handokov.aws-ap-northeast-1.turso.io
+- scripts/turso-expectancy.mjs (READ-ONLY): token via env var saja — 0 secret di file (pelajaran insiden T37)
+- Data: 5 bot paper baru (ENA/GAIA/GENIUS/NEAR/TAG, AGGRESSIVE, TP=2.5 SL=3, TF 15M/30M), 28 siklus closed (20-21 Sep), LIVE: 0 data
+- Hasil: WR 57.1% (16W/12L), avg win +2.77% (trail-stop 6x mendorong di atas TP), avg loss −3.16%, expectancy +0.23%/siklus GROSS, total +$3.24
+- Realitas harian: 20 Sep RUGI −$4.24 (17 siklus, 8W); 21 Sep +$7.48 (11 siklus, 8W, belum selesai) — ingatan user "$8-9/hari jika win" = hari berjalan, bukan rata-rata
+- Net fee ~0.2%/siklus → expectancy NET ≈ +0.03% ≈ breakeven; proyeksi realistis ~15 siklus/hari ≈ $50/bulan GROSS
+- Temuan teknis: maxTradesPerDay = NULL di semua row produksi (belum pernah di-Simpan via form) → cap efektif fallback preset 8 order/hari; fix T36 aman utk NULL (fallback preset)
+
+Stage Summary:
+- Edge net saat ini ≈ NOL (gross +0.23%/siklus dig fee 0.2%); sampel 28 siklus/2 hari terlalu kecil utk kesimpulan (CI95 WR [38%,75%])
+- Rekomendasi: jalankan paper 30 hari; NEAR dragging (WR 38%, −$3.57); pertimbangkan BGB utk fee 0.08%/sisi; belum layak naik live dgn edge net nol
+- Token turso ro sebaiknya di-revoke user; file script bersih, aman commit
