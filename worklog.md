@@ -1594,3 +1594,22 @@ Work Log:
 
 Stage Summary:
 - User menemukan bug dead-setting maxTradesPerDay lewat observasi; fix A (+opsional B) ditawarkan, menunggu keputusan; jangan deploy tanpa approve
+
+---
+Task ID: 36 (BUG FIX — maxTradesPerDay dead setting, approve "perbaikan bug saja")
+Agent: main (Super Z)
+Task: Terapkan Fix A dari T35 — engine & tile memakai setelan user maxTradesPerDay (fallback preset), tanpa mengubah strategi/semantik counter
+
+Work Log:
+- Patch tickOne (engine.ts 884-891): const maxTrades = cfg.maxTradesPerDay valid 1..20 ? cfg : preset.maxTradesPerDay — pola override sama dgn TP/SL user-override
+- 3 titik gate diganti ke maxTrades: limitEntryTick (1015), livePendingEntryTick (1058), market gate + reason HOLD "max N trades/day" (1069-1071)
+- route.ts GET summary (87-91): tile "Trades hari ini X / N" memakai aturan sama (mirror engine); sebelumnya selalu tampil preset 4/8
+- Verifikasi: tsc --noEmit → 0 error baru (4 error src/ pre-existing, dikonfirmasi via git stash diff — error engine hanya geser line +8); eslint 2 file bersih; ignoreBuildErrors:true di next.config
+- Commit lokal 75b45c7 "fix(bot): honor user-saved maxTradesPerDay in engine gates and dashboard tile" (2 file, +21/-5)
+- TIDAK push: local main kini 13 commit di depan origin/main (12 commit sesi sebelumnya juga unpushed); deploy produksi dikelola di luar workspace — menunggu keputusan user
+- Fix B dari T34 (counter hanya BUY) TIDAK diterapkan — di luar scope "perbaikan bug saja"
+
+Stage Summary:
+- Bug dead-setting maxTradesPerDay FIXED: setelan 1..20 yang di-Simpan kini benar-benar jadi batas harian efektif di semua jalur entry (market + limit paper + limit live) dan tampil di tile dashboard
+- Semantik counter TETAP per-order (1 siklus = 2 slot) — utk 5 siklus penuh/hari setel 10; utk 10 siklus setel 20
+- Berlaku di produksi hanya setelah push/deploy; 12 commit lama ikut terbawa bila push
