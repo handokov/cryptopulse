@@ -1613,3 +1613,24 @@ Stage Summary:
 - Bug dead-setting maxTradesPerDay FIXED: setelan 1..20 yang di-Simpan kini benar-benar jadi batas harian efektif di semua jalur entry (market + limit paper + limit live) dan tampil di tile dashboard
 - Semantik counter TETAP per-order (1 siklus = 2 slot) — utk 5 siklus penuh/hari setel 10; utk 10 siklus setel 20
 - Berlaku di produksi hanya setelah push/deploy; 12 commit lama ikut terbawa bila push
+
+---
+Task ID: 37 (PUSH ke GitHub — 14 commit termasuk fix maxTradesPerDay)
+Agent: main (Super Z)
+Task: Push seluruh commit unpushed ke origin/main atas instruksi user ("langsung push")
+
+Work Log:
+- Push pertama gagal: PAT #1 (fine-grained) ditolak 403 — Contents masih Read-only (API menunjukkan push:true milik user, bukan token)
+- PAT #2 valid tapi ditolak GITHUB PUSH PROTECTION: PAT lama Task 30 ter-hardcode di scripts/ga-scan.sh:6 pada commit 3d36a4d (belum direwrite)
+- Verifikasi: PAT lama sudah revoke ("Bad credentials"); token hanya di 1 file; working tree bersih
+- History rewrite: git filter-branch --tree-filter sed mengganti PAT lama → GITHUB_PAT_REDACTED pada origin/main..main; token hilang dari seluruh history (git log -S bersih utk range baru)
+- Pre-push secret scan diff origin/main..main: bersih (ghp_/gho_/github_pat_/AKIA/private key/JWT eyj semua nihil)
+- Push SUKSES c80911c..3ed6990 main → main; origin/main...main = 0 0 (sinkron)
+- Catatan: hash commit berubah akibat rewrite (fix maxTradesPerDay kini 9ed54eb, sebelumnya 75b45c7); worklog.md ternyata tracked & di-commit otomatis workspace (fb5f625 lama → ikut rewrite)
+- Token tidak pernah tersimpan: remote URL di-scrub kembali setelah tiap percobaan push
+
+Stage Summary:
+- 14 commit ter-publish (termasuk fix maxTradesPerDay + 12 fitur sebelumnya); Vercel akan deploy otomatis dari GitHub
+- PAT #2 (aktif, dipakai push) HARUS di-revoke user sekarang
+- PAT lama Task 30 terkonfirmasi mati; history bersih
+- Clone lokal lain (bila ada) perlu git fetch + git reset --hard origin/main karena hash berubah
