@@ -192,7 +192,7 @@ async function signedRequest<T>(
   if (!res.ok) {
     /* Bitget ALWAYS returns a JSON body with the real reason (code+msg) even
        on HTTP 400/401/403 — e.g. 40104 "API key permission denied" (read-only
-       key), 40003 "timestamp recvWindow expired" (clock skew), 40761
+       key), 40003 "timestamp recvWindow out of range" (clock skew), 40761
        "order value below minimum". Discarding it turned every failure into an
        undiagnosable "bitget HTTP 400". Surface code+msg (trimmed). */
     const raw = await res.text().catch(() => "");

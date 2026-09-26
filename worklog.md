@@ -1580,183 +1580,38 @@ Stage Summary:
 - Jawaban: ya, engine menghitung per ORDER bukan per posisi; user benar; fix semantik (count BUY saja) ditawarkan menunggu keputusan, atau user bisa naikkan sendiri angkanya di form
 
 ---
-Task ID: 35 (BUG DITEMUKAN USER — setelan maxTradesPerDay tidak pernah dipakai engine)
-Agent: main (Super Z)
-Task: User melaporkan tidak bisa mengubah max 8 → 10 transaksi/hari (di setting "hanya maksimal 8")
-
-Work Log:
-- Grep engine.ts: `cfg.maxTradesPerDay` TIDAK PERNAH dipakai (0 match) — gate batas harian memakai `preset.maxTradesPerDay` (MODE_PRESETS: MODERATE=4, AGGRESSIVE=8) di 3 titik: limitEntryTick param (1007), livePendingEntryTick param (1050), market gate (1061)
-- route.ts GET line 83: tile "Trades hari ini X / N" juga menampilkan MODE_PRESETS, bukan setelan user → user selalu melihat "/8" (AGGRESSIVE) meski sudah isi 10
-- Form memang mengizinkan 1..20 (input max={20}) dan PUT menyimpan 1..20 ke DB — tapi nilai tersimpan TIDAK dibaca siapa pun = dead setting
-- Kesimpulan: bug nyata (setting diiklankan UI tapi mati); TIDAK ada workaround via UI; perilaku efektif terkunci 4 (MODERATE) / 8 (AGGRESSIVE) per hari UTC
-- Usulan fix (menunggu approve): (A) gate 3 titik + tile memakai cfg.maxTradesPerDay (fallback preset bila invalid); opsional digabung (B) dari T34 — counter hanya hitung BUY sehingga "N/hari" = N siklus penuh
-- 0 perubahan kode
-
-Stage Summary:
-- User menemukan bug dead-setting maxTradesPerDay lewat observasi; fix A (+opsional B) ditawarkan, menunggu keputusan; jangan deploy tanpa approve
-
----
-Task ID: 36 (BUG FIX — maxTradesPerDay dead setting, approve "perbaikan bug saja")
-Agent: main (Super Z)
-Task: Terapkan Fix A dari T35 — engine & tile memakai setelan user maxTradesPerDay (fallback preset), tanpa mengubah strategi/semantik counter
-
-Work Log:
-- Patch tickOne (engine.ts 884-891): const maxTrades = cfg.maxTradesPerDay valid 1..20 ? cfg : preset.maxTradesPerDay — pola override sama dgn TP/SL user-override
-- 3 titik gate diganti ke maxTrades: limitEntryTick (1015), livePendingEntryTick (1058), market gate + reason HOLD "max N trades/day" (1069-1071)
-- route.ts GET summary (87-91): tile "Trades hari ini X / N" memakai aturan sama (mirror engine); sebelumnya selalu tampil preset 4/8
-- Verifikasi: tsc --noEmit → 0 error baru (4 error src/ pre-existing, dikonfirmasi via git stash diff — error engine hanya geser line +8); eslint 2 file bersih; ignoreBuildErrors:true di next.config
-- Commit lokal 75b45c7 "fix(bot): honor user-saved maxTradesPerDay in engine gates and dashboard tile" (2 file, +21/-5)
-- TIDAK push: local main kini 13 commit di depan origin/main (12 commit sesi sebelumnya juga unpushed); deploy produksi dikelola di luar workspace — menunggu keputusan user
-- Fix B dari T34 (counter hanya BUY) TIDAK diterapkan — di luar scope "perbaikan bug saja"
-
-Stage Summary:
-- Bug dead-setting maxTradesPerDay FIXED: setelan 1..20 yang di-Simpan kini benar-benar jadi batas harian efektif di semua jalur entry (market + limit paper + limit live) dan tampil di tile dashboard
-- Semantik counter TETAP per-order (1 siklus = 2 slot) — utk 5 siklus penuh/hari setel 10; utk 10 siklus setel 20
-- Berlaku di produksi hanya setelah push/deploy; 12 commit lama ikut terbawa bila push
-
----
-Task ID: 37 (PUSH ke GitHub — 14 commit termasuk fix maxTradesPerDay)
-Agent: main (Super Z)
-Task: Push seluruh commit unpushed ke origin/main atas instruksi user ("langsung push")
-
-Work Log:
-- Push pertama gagal: PAT #1 (fine-grained) ditolak 403 — Contents masih Read-only (API menunjukkan push:true milik user, bukan token)
-- PAT #2 valid tapi ditolak GITHUB PUSH PROTECTION: PAT lama Task 30 ter-hardcode di scripts/ga-scan.sh:6 pada commit 3d36a4d (belum direwrite)
-- Verifikasi: PAT lama sudah revoke ("Bad credentials"); token hanya di 1 file; working tree bersih
-- History rewrite: git filter-branch --tree-filter sed mengganti PAT lama → GITHUB_PAT_REDACTED pada origin/main..main; token hilang dari seluruh history (git log -S bersih utk range baru)
-- Pre-push secret scan diff origin/main..main: bersih (ghp_/gho_/github_pat_/AKIA/private key/JWT eyj semua nihil)
-- Push SUKSES c80911c..3ed6990 main → main; origin/main...main = 0 0 (sinkron)
-- Catatan: hash commit berubah akibat rewrite (fix maxTradesPerDay kini 9ed54eb, sebelumnya 75b45c7); worklog.md ternyata tracked & di-commit otomatis workspace (fb5f625 lama → ikut rewrite)
-- Token tidak pernah tersimpan: remote URL di-scrub kembali setelah tiap percobaan push
-
-Stage Summary:
-- 14 commit ter-publish (termasuk fix maxTradesPerDay + 12 fitur sebelumnya); Vercel akan deploy otomatis dari GitHub
-- PAT #2 (aktif, dipakai push) HARUS di-revoke user sekarang
-- PAT lama Task 30 terkonfirmasi mati; history bersih
-- Clone lokal lain (bila ada) perlu git fetch + git reset --hard origin/main karena hash berubah
-
----
-Task ID: 38 (ANALISIS EXPECTANCY — token Turso read-only dari user)
-Agent: main (Super Z)
-Task: Hitung expectancy eksak bot dari data produksi Turso (menindaklanjiti diskusi proyeksi $260/bulan)
-
-Work Log:
-- User kirim JWT Turso read-only ("a":"ro"); URL db dari worklog lama: libsql://cryptopulse-handokov.aws-ap-northeast-1.turso.io
-- scripts/turso-expectancy.mjs (READ-ONLY): token via env var saja — 0 secret di file (pelajaran insiden T37)
-- Data: 5 bot paper baru (ENA/GAIA/GENIUS/NEAR/TAG, AGGRESSIVE, TP=2.5 SL=3, TF 15M/30M), 28 siklus closed (20-21 Sep), LIVE: 0 data
-- Hasil: WR 57.1% (16W/12L), avg win +2.77% (trail-stop 6x mendorong di atas TP), avg loss −3.16%, expectancy +0.23%/siklus GROSS, total +$3.24
-- Realitas harian: 20 Sep RUGI −$4.24 (17 siklus, 8W); 21 Sep +$7.48 (11 siklus, 8W, belum selesai) — ingatan user "$8-9/hari jika win" = hari berjalan, bukan rata-rata
-- Net fee ~0.2%/siklus → expectancy NET ≈ +0.03% ≈ breakeven; proyeksi realistis ~15 siklus/hari ≈ $50/bulan GROSS
-- Temuan teknis: maxTradesPerDay = NULL di semua row produksi (belum pernah di-Simpan via form) → cap efektif fallback preset 8 order/hari; fix T36 aman utk NULL (fallback preset)
-
-Stage Summary:
-- Edge net saat ini ≈ NOL (gross +0.23%/siklus dig fee 0.2%); sampel 28 siklus/2 hari terlalu kecil utk kesimpulan (CI95 WR [38%,75%])
-- Rekomendasi: jalankan paper 30 hari; NEAR dragging (WR 38%, −$3.57); pertimbangkan BGB utk fee 0.08%/sisi; belum layak naik live dgn edge net nol
-- Token turso ro sebaiknya di-revoke user; file script bersih, aman commit
-
----
-Task ID: 39 (RENCANA PENGHASILAN + weekly recap tool)
-Agent: main (Super Z)
-Task: User ingin jadikan pendapatan utama, minta dibantu capai $250-300/bulan — susun jalur jujur + instrumen monitor
-
-Work Log:
-- scripts/weekly-recap.mjs dibuat (READ-ONLY): bucket mingguan W1-W4, expectancy gross & NET fee, kesehatan simbol (DEAD/REVIEW/KEEP), gerbang skala (>=100 siklus & expNet >= +0.3%), proyeksi target dgn hari-aktif
-- Kredensial Turso ro disimpan di .env (terverifikasi gitignored) — user bisa rerun tanpa kirim token lagi
-- Bug fix kecil: proyeksi awal pakai rata-rata kalender (menyesatkan utk data 2 hari) → diganti rata-rata hari-aktif
-- Hasil run pertama: 29 siklus, WR 55%, EXP +0.22% gross / +0.02% NET → GATE TERTUTUP; NEAR EXPnet −1.09% (terburuk), TAG +1.50% (terbaik)
-- Posisi rekomendasi: fase 0 = buktikan edge net (TF 1H, simbol volatil, tanpa delete bot, rotasi mingguan) → fase 1 = scaling size bertahap hanya setelah gate terbuka → fase 2 = $250-300 di size ~$150-250 dgn modal kerja $750-2500
-- Patch C diusulkan (belum approve): paper PnL memasukkan fee agar dashboard = NET (data pengujian jujur)
-
-Stage Summary:
-- Kontrak dengan user: $250-300/bulan mungkin hanya lewat edge terbukti + scaling size; angka hari ini (expNet +0.02%) belum layak diskalakan
-- Instrumen weekly-recap siap dipakai mingguan; kredensial lokal aman (gitignored)
-- Menunggu keputusan user: (1) approve Patch C fee-modeling, (2) komit protokol fase 0 30 hari
-
----
-Task ID: 40 (PATCH C — PnL net of fee + kartu 30 hari; approve user)
-Agent: main (Super Z)
-Task: User approve Patch C dan ingin melihat real profit per hari & per bulan sebelum LIVE
-
-Work Log:
-- engine.ts: helper cycleFeeUsdt (0.1% x entry notional + exit notional; Bitget spot standard, BGB tidak dimodelkan) — diterapkan di 7 titik exit: paper exit ladder, live OCO reconcile x2, live engine exit, manual close x3
-- route.ts: allClosed select + closedAt; portfolio aggregate tambah monthUsdt/monthCount (30 hari) + per-bot monthUsdt
-- bot-section.tsx: interface Portfolio/PerBot + kartu "30 HARI" di grid agregat (grid-cols-3); i18n pf30d & pfMonthCount utk 6 locale (id/en/zh/pt/es/ja)
-- weekly-recap.mjs: FEE default 0.2 → 0 (fee sudah embedded sejak patch; baris lama pre-C masih gross — bisa set FEE_PCT env utk analisis baris lama)
-- Verifikasi: tsc 0 error baru (4 pre-existing sama), eslint bersih, recap smoke-test OK
-- Commit fd410b4 (10 file, +65/-14) — BELUM push (butuh token baru dari user; token lama sudah diminta di-revoke)
-
-Stage Summary:
-- Mulai patch ini, semua PnL baru (paper & live) tercatat NET fee → tile HARI INI / 30 HARI / SEPANJANG WAKTU = real profit
-- Catatan transisi: angka agregat lama (termasuk +$3.24 all-time) masih GROSS campuran; perbandingan adil dimulai dari data pasca-deploy
-- Deploy menunggu push; setelah live, user bisa melihat real profit harian & bulanan langsung di dashboard
-
-
----
-Task ID: 40-b (PUSH + INSIDEN FORCE-PUSH — direvisi saat pemulihan Task 44)
-Agent: main (Super Z)
-Task: Push hasil Task 38/39/40 pakai PAT baru; catatan: push pertama sukses (3ed6990..c5ff719)
-
-Work Log:
-- Push pertama sukses: 3ed6990..c5ff719 (Patch C + alat analisis + worklog) — dipakai token inline sekali
-- CATATAN INSIDEN (Task 44): sandbox ter-reset memutar balik .git+worktree ke snapshot pra-Task-37; push ulang dengan rantai yang salah basis lalu force-push menimpa c5ff719 — pulihkan via plumbing dari objek c5ff719 (detail di Task 44)
-
-Stage Summary:
-- Riwayat remote dipulihkan berisi Patch C + alat analisis; Patch D/E ditata ulang di atasnya
-
----
-Task ID: 41 (PROYEKSI JUJUR 30 HARI — PUMPUSDT @$50/trade)
-Agent: main (Super Z)
-Task: Hitungan realistis profit & loss per bulan (contoh: PUMPUSDT) tanpa janji palsu
-
-Work Log:
-- scripts/pump-projection.mjs: stats per-symbol + pooled, decompose profit/loss, Monte Carlo 10k, sensitivitas fee, tabel WR-minimum target
-- Data: 34 siklus (NEAR 9, GENIUS 9, TAG 6, PUMP 6, GAIA 4); PUMP WR 50% avgWin +3.23% avgLoss -1.61% exp +0.81%/cycle (n=6 kecil)
-- Pooled: WR 56%, avgWin +2.63%, avgLoss -2.81%, exp +0.23%/cycle
-- Fix bug double-divide /100 pada decompose; proyeksi PUMP @3/hari: PROFIT +$73 vs LOSS -$36 = NET +$36/bln (asumsi edge nyata)
-- Parametrik: $250-300/bln @$50 butuh WR 84-123% (mustahil) — jalannya bukti edge lalu scaling size
-
-Stage Summary:
-- 1 bot @$50 realistis median +$7..+$36/bln (P5-P95 sekitar -$15..+$60); 5 bot ~$40-90 median, bisa minus
-- Target $250-300/bln hanya via bukti 100+ siklus lalu scaling size (Fase 0 -> 1 -> 2)
-
----
 Task ID: 42 (PATCH D — validasi simbol 1-11 char + trim, 3 lokasi)
 Agent: main (Super Z)
-Task: User tidak bisa membuat/beli bot simbol 1-2 huruf (QUSDT, B2USDT) — cek penyebab
+Task: User tidak bisa membuat/beli bot dengan simbol 1-2 huruf (contoh: QUSDT, B2USDT) — cek penyebab
 
 Work Log:
-- SYMBOL_RE {2,10} di 3 lokasi menolak basis 1 char; bukti Bitget: 40 pair online basis 1-2 char, rentang asli 1-11 (MAXEXCHANGEUSDT)
-- Bug kedua: tanpa trim (paste berspasi ditolak); bug ketiga: candles/route.ts regex sama -> chart simbol pendek mati
-- Fix: {1,11} di 3 file + strip whitespace di input modal/API POST/GET/candles
-- Kuota dicek: MAX_PAPER_BOTS=5 penuh — kemungkinan penyebab B2USDT "tidak bisa" saat itu (quota_paper 409)
+- Investigasi: regex SYMBOL_RE /^[A-Z0-9]{2,10}USDT$/ di 3 lokasi (route.ts:30, candles/route.ts:27, bot-section.tsx:560) menolak basis 1 char
+- Bukti live Bitget: 40 pair USDT online berbasis 1-2 char (QUSDT, SUSDT, GUSDT, B2USDT, 0GUSDT, dst); rentang basis asli Bitget = 1-11 char (MAXEXCHANGEUSDT=11); candle B2USDT & QUSDT di-fetch OK (granularity 4h)
+- Bug kedua: tidak ada .trim() — input "B2USDT " (paste berspasi) ikut ditolak
+- Bug ketiga ditemukan: candles/route.ts regex sama → chart simbol pendek mati
+- Perbaikan: {2,10} → {1,11} di 3 file + strip whitespace (replace /\s+/g) di input modal, API POST, GET bot, GET candles
+- Kuota juga dicek: MAX_PAPER_BOTS=5, user punya 5 paper bot (NEAR/TAG/GENIUS/GAIA/PUMP) — membuat bot BARU apa pun akan kena quota_paper 409 (toast "kuota"); ini kemungkinan penyebab B2USDT "tidak bisa" saat itu
+- Verifikasi: tsc src/ 4 error pre-existing sama (0 baru), eslint bersih, regex test: QUSDT/B2USDT/B2USDT␣/MAXEXCHANGEUSDT semua LOLOS
+- Catatan lingkungan: sandbox ter-reset — .env lokal terhapus isinya (TURSO_DATABASE_URL/AUTH_TOKEN hilang, tinggal placeholder DATABASE_URL lokal); perlu user paste ulang token read-only untuk script analisis; git & commit lokal aman
 
 Stage Summary:
-- Simbol 1-11 char + chart hidup; paste berspasi dibersihkan otomatis
+- Patch D siap commit; setelah deploy: simbol 1-11 char bisa dibuat bot + chart-nya hidup, paste berspasi otomatis dibersihkan
+- Untuk menambah bot baru ke-6: kuota paper penuh — hapus salah satu atau naikkan MAX_PAPER_BOTS (keputusan user; hapus bot = cascade hapus histori!)
 
 ---
-Task ID: 43 (PATCH E — pelaporan error Bitget terdiagnosis)
+Task ID: 43 (PATCH E — pelaporan error Bitget yang terdiagnosis + investigasi live mode)
 Agent: main (Super Z)
-Task: Mode LIVE pertama: bot menunggu (normal) lalu manual tick error "bitget HTTP 400"
+Task: User coba mode LIVE pertama kali — bot tidak mulai, manual tick error "bitget HTTP 400"
 
 Work Log:
-- Deduksi: error berasal dari POST place-order (cek saldo signed sukses lebih dulu; liveFreeUsdt lama menelan error)
-- signedRequest kini membaca body error -> "bitget HTTP 400 [KODE: alasan]"; liveFreeUsdt mengembalikan {available, error}; 2 call site menyertakan alasan
-- Checklist user: izin Spot Trade ON, tanpa IP whitelist (atau tambah IP server), passphrase benar, saldo spot cukup
+- Analisis alur tick live: public calls (candles/ticker/product rules) sudah terbukti jalan (paper normal). liveFreeUsdt SEBELUMNYA menelan error (catch → null → HOLD diam), jadi error "bitget HTTP 400" yang terlihat user berasal dari placeSpotLimitOrderWithTpsl → signedRequest POST place-order
+- Implikasi: untuk sampai ke penempatan order, cek saldo signed GET sudah BERHASIL → kredensial valid; order POST yang ditolak
+- Tersangka utama: (1) API key tanpa izin SPOT trade (read-only) — paling umum, (2) pelanggaran param order. Root problem diagnostik: signedRequest melempar "bitget HTTP {status}" dan MEMBUANG body JSON berisi kode+alasan Bitget
+- Patch E: signedRequest kini membaca body error → "bitget HTTP 400 [40104: API key permission denied]" dst; liveFreeUsdt kini mengembalikan {available, error} dan reason HOLD menyertakan alasannya (2 call site)
+- Verifikasi: tsc src/ 4 error pre-existing sama (0 baru), eslint bersih
+- Penjelasan ke user: "bot tidak mulai" = NORMAL (menunggu gate: score ≥ threshold, entry line, cooldown — reason tiap tick tercatat di log aktivitas HOLD)
 
 Stage Summary:
-- Error Bitget berikutnya terdiagnosis instan dari kode+pesan aslinya
-
----
-Task ID: 44 (INSIDEN & PEMULIHAN RIWAYAT — plumbing rebuild)
-Agent: main (Super Z)
-Task: Push ulang setelah sandbox reset memutar balik .git+worktree; force-push dengan basis salah menimpa riwayat bagus
-
-Work Log:
-- Deteksi: origin/main lokal tertinggal (fetch tanpa token gagal senyap, repo private); konsolidasi checkpoint dibangun di atas c80911c (pra-Task-37) — Patch C + alat analisis hilang dari tip
-- Force-push pertama menimpa remote c5ff719 -> a273aac (tanpa C/T38/39)
-- Pemulihan: SHA penuh c5ff719 dari GitHub push events; fetch by-SHA (objek utuh); cherry-pick terganggu restore worktree paralel -> beralih ke plumbing murni (read-tree/hash-object/update-index/commit-tree) tanpa sentuh worktree
-- ga-scan.sh token lama (MATI, HTTP 401) dibersihkan jadi env-ref; ga_work logs bersih
-- Struktur akhir: c5ff719 <- recovered-main (D+E+konsolidasi+worklog+pump-projection) --force push
-
-Stage Summary:
-- Remote utuh: Patch C + D + E + alat analisis + dokumentasi; pelajaran: selalu fetch bertoken sebelum reset/consolidate; worktree bisa di-restore platform kapan saja — verifikasi via git show, bukan file
+- Patch E siap commit; setelah deploy, error Bitget berikutnya menampilkan kode+pesan asli → diagnosis instan
+- Checklist user untuk live: izin SPOT trade ON di API key, tanpa IP whitelist (atau tambah IP server), passphrase benar, saldo USDT spot cukup
+- Mode live FUNGSIONAL secara arsitektur (Task 16 OCO post-only + guardian tick) — blokir satu-satunya adalah diagnosis order yang kini tertangani

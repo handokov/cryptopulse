@@ -610,8 +610,6 @@ const en = {
     pfAllTime: "All-time",
     pfTodayCount: "{count} trades today",
     pfClosedCount: "{count} closed trades",
-    pf30d: "Last 30 days",
-    pfMonthCount: "{count} cycles in 30 days",
     pfBotsActive: "{active}/{total} bots active",
     pfJumpTo: "Click to open this bot",
     walletTitle: "Paper wallet",

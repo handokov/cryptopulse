@@ -729,8 +729,7 @@ async function liveEngineExit(
       // nothing to sell — the OCO probably fired already; reconcile instead
       const fill = await findOcoExitFill(creds, cfg, pos);
       if (fill) {
-        const grossPnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-        const pnl = grossPnl - cycleFeeUsdt(pos.sizeUsdt, fill.qty, fill.price);
+        const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
         await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled from OCO fill)`);
         await logTrade(cfg, {
           action: "SELL",
@@ -750,7 +749,7 @@ async function liveEngineExit(
     const fill = await fetchOrderFill(creds, cfg.symbol, placed.orderId);
     const exitPrice = fill.priceAvg ?? fallbackPrice;
     const exitQty = fill.baseVolume ?? Number(qtyStr);
-    const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt - cycleFeeUsdt(pos.sizeUsdt, exitQty, exitPrice);
+    const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
     await closePosition(pos.id, exitPrice, livePnl, exitReason);
     await logTrade(cfg, {
       action: "SELL",
@@ -805,8 +804,7 @@ async function liveOcoReconcile(
       reason: `${exitKind} crossed but OCO fill not visible yet — position kept, reconcile retries next tick`,
     };
   }
-  const grossPnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-  const pnl = grossPnl - cycleFeeUsdt(pos.sizeUsdt, fill.qty, fill.price);
+  const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
   await closePosition(pos.id, fill.price, pnl, `${exitReason} (via OCO)`);
   await logTrade(cfg, {
     action: "SELL",
@@ -885,14 +883,6 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   /* Exit ladder: user overrides win when set (>0), otherwise the mode preset. */
   const tpPct = cfg.takeProfitPct && cfg.takeProfitPct > 0 ? cfg.takeProfitPct : preset.takeProfitPct;
   const slPct = cfg.stopLossPct && cfg.stopLossPct > 0 ? cfg.stopLossPct : preset.stopLossPct;
-  /* Daily trade cap — same override rule: the user's saved setting wins when
-     sane (1..20, the exact bound the PUT route enforces), the mode preset is
-     only a fallback for legacy/invalid rows. Before this, the saved value was
-     never read and the effective cap was silently locked to 4/8. */
-  const maxTrades =
-    Number.isInteger(cfg.maxTradesPerDay) && cfg.maxTradesPerDay >= 1 && cfg.maxTradesPerDay <= 20
-      ? cfg.maxTradesPerDay
-      : preset.maxTradesPerDay;
   /* Maker-entry offset (Task 15 paper / Task 16 live): >0 = arm limits
      BELOW market; 0 = legacy market BUY. Live runs the SAME rule as paper —
      a real post-only limit with attached TP/SL (OCO). */
@@ -965,7 +955,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     const exitReason = isTrail
       ? `trail-stop: locked ≥ ${(((trailStopPrice - pos.entryPrice) / pos.entryPrice) * 100).toFixed(2)}% (peak ${newHighest.toPrecision(6)}, trail ${vol!.trailPct.toFixed(2)}%)`
       : `${exitKind}: ${reason}`;
-    const pnl = ((price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt - cycleFeeUsdt(pos.sizeUsdt, pos.qty, price);
+    const pnl = ((price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
     if (cfg.paper) {
       await closePosition(pos.id, price, pnl, exitReason);
       await logTrade(cfg, {
@@ -1016,7 +1006,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         score: signal.score,
       };
     }
-    const out = await limitEntryTick(cfg, signal, price, effSlPct, effTpPct, tf, entryOffset, minUsdt, maxTrades);
+    const out = await limitEntryTick(cfg, signal, price, effSlPct, effTpPct, tf, entryOffset, minUsdt, preset.maxTradesPerDay);
     await touchConfig(cfg.id, price);
     return out;
   }
@@ -1059,7 +1049,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         score: signal.score,
       };
     }
-    const out = await livePendingEntryTick(cfg, creds!, signal, price, effSlPct, effTpPct, minUsdt, rules.quantityPrecision, rules.pricePrecision, maxTrades);
+    const out = await livePendingEntryTick(cfg, creds!, signal, price, effSlPct, effTpPct, minUsdt, rules.quantityPrecision, rules.pricePrecision, preset.maxTradesPerDay);
     await touchConfig(cfg.id, price);
     return out;
   }
@@ -1070,9 +1060,9 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     where: { configId: cfg.id, createdAt: { gte: dayStart }, action: { in: ["BUY", "SELL"] }, status: { in: ["PAPER", "SUBMITTED"] }, paper: cfg.paper },
     orderBy: { createdAt: "desc" },
   });
-  if (todayTrades.length >= maxTrades) {
+  if (todayTrades.length >= preset.maxTradesPerDay) {
     await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: cfg.paper, action: "HOLD", reason: `max ${maxTrades} trades/day`, score: signal.score };
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: cfg.paper, action: "HOLD", reason: `max ${preset.maxTradesPerDay} trades/day`, score: signal.score };
   }
   const realizedToday = todayTrades.reduce((acc, tr) => acc + (tr.pnlUsdt ?? 0), 0);
   if (realizedToday <= -Math.abs(cfg.dailyLossLimitUsdt)) {
@@ -1324,19 +1314,6 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   }
 }
 
-/* ---- Patch C: recorded PnL is NET of modeled exchange fees ----
-   Bitget spot standard = 0.1% per side (maker = taker; the BGB discount is
-   NOT modeled here). The bot's entry is a maker limit; TP/OCO-limit exits
-   are maker while SL/trail/flip/manual sells are taker — both sides cost
-   the same 0.1%, so the round trip is (entry notional + exit notional) ×
-   0.1%. Modeling the fee makes realized PnL the REAL profit the user
-   keeps — in paper AND live — instead of a gross price delta. */
-const CYCLE_FEE_RATE = 0.001;
-function cycleFeeUsdt(sizeUsdt: number, qty: number | null, exitPrice: number): number {
-  const exitNotional = qty && qty > 0 ? qty * exitPrice : sizeUsdt;
-  return (sizeUsdt + exitNotional) * CYCLE_FEE_RATE;
-}
-
 async function closePosition(id: string, exitPrice: number, pnlUsdt: number, exitReason: string) {
   await db.botPosition.update({
     where: { id },
@@ -1393,8 +1370,7 @@ export async function manualClosePositions(
         out.results.push({ positionId: pos.id, price: null, pnlUsdt: null, error: "ticker unavailable" });
         continue;
       }
-      const grossPnl = ((ticker - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-      const pnl = grossPnl - cycleFeeUsdt(pos.sizeUsdt, pos.qty, ticker);
+      const pnl = ((ticker - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
       await closePosition(pos.id, ticker, pnl, reason);
       await logTrade(cfg, {
         action: "SELL",
@@ -1429,8 +1405,7 @@ export async function manualClosePositions(
       if (!qtyStr || Number(qtyStr) <= 0) {
         const fill = await findOcoExitFill(creds!, cfg, pos);
         if (fill) {
-          const grossPnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-          const livePnl = grossPnl - cycleFeeUsdt(pos.sizeUsdt, fill.qty, fill.price);
+          const livePnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
           await closePosition(pos.id, fill.price, livePnl, `${reason} (OCO fill reconciled)`);
           await logTrade(cfg, {
             action: "SELL",
@@ -1456,7 +1431,7 @@ export async function manualClosePositions(
       const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
       const exitPrice = fill.priceAvg ?? ticker ?? pos.entryPrice;
       const exitQty = fill.baseVolume ?? Number(qtyStr);
-      const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt - cycleFeeUsdt(pos.sizeUsdt, exitQty, exitPrice);
+      const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
       await closePosition(pos.id, exitPrice, livePnl, reason);
       await logTrade(cfg, {
         action: "SELL",

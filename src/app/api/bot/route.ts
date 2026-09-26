@@ -80,15 +80,7 @@ export async function GET(req: NextRequest) {
   const summary = {
     tradesToday: relevant.length,
     realizedTodayUsdt: relevant.reduce((acc, t) => acc + (t.pnlUsdt ?? 0), 0),
-    /* Effective daily cap: the user's saved setting (1..20) when sane, preset
-       only as fallback — must mirror the engine gate, which reads the same
-       value. Before this fix the tile always showed the preset (4/8) even
-       after the user saved a different number. */
-    maxTradesPerDay: config
-      ? Number.isInteger(config.maxTradesPerDay) && config.maxTradesPerDay >= 1 && config.maxTradesPerDay <= 20
-        ? config.maxTradesPerDay
-        : MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay
-      : null,
+    maxTradesPerDay: config ? MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay : null,
     cooldownMin: config ? cooldownMinFor((config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE", config.timeframe ?? "4H") : null,
     timeframe: config?.timeframe ?? null,
     presets: MODE_PRESETS,
@@ -205,9 +197,9 @@ export async function GET(req: NextRequest) {
     allIds.length
       ? db.botPosition.findMany({
           where: { configId: { in: allIds }, status: "CLOSED" },
-          select: { configId: true, realizedPnlUsdt: true, closedAt: true },
+          select: { configId: true, realizedPnlUsdt: true },
         })
-      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null; closedAt: Date | null }[]),
+      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null }[]),
     allIds.length
       ? db.botTrade.findMany({
           where: { configId: { in: allIds }, createdAt: { gte: dayStart }, action: "SELL", status: { in: ["PAPER", "SUBMITTED"] } },
@@ -215,13 +207,10 @@ export async function GET(req: NextRequest) {
         })
       : Promise.resolve([] as { configId: string; pnlUsdt: number | null }[]),
   ]);
-  const perBotMap = new Map<string, { symbol: string; totalUsdt: number; todayUsdt: number; monthUsdt: number; closed: number }>();
-  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, totalUsdt: 0, todayUsdt: 0, monthUsdt: 0, closed: 0 });
+  const perBotMap = new Map<string, { symbol: string; totalUsdt: number; todayUsdt: number; closed: number }>();
+  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, totalUsdt: 0, todayUsdt: 0, closed: 0 });
   let pfTotal = 0;
   let pfToday = 0;
-  let pfMonth = 0;
-  let pfMonthCount = 0;
-  const monthStart = Date.now() - 30 * 86_400_000;
   for (const p of allClosed) {
     const amt = p.realizedPnlUsdt ?? 0;
     pfTotal += amt;
@@ -229,11 +218,6 @@ export async function GET(req: NextRequest) {
     if (row) {
       row.totalUsdt += amt;
       row.closed += 1;
-    }
-    if (p.closedAt && new Date(p.closedAt).getTime() >= monthStart) {
-      pfMonth += amt;
-      pfMonthCount += 1;
-      if (row) row.monthUsdt += amt;
     }
   }
   for (const tr of allTodaySells) {
@@ -247,8 +231,6 @@ export async function GET(req: NextRequest) {
     botsActive: configs.filter((c) => c.enabled).length,
     totalUsdt: pfTotal,
     todayUsdt: pfToday,
-    monthUsdt: pfMonth,
-    monthCount: pfMonthCount,
     closedCount: allClosed.length,
     todayCount: allTodaySells.length,
     perBot: [...perBotMap.values()].sort((a, b) => b.totalUsdt - a.totalUsdt),
