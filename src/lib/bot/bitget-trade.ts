@@ -4,7 +4,7 @@
  * Public (unsigned): candles, ticker, product rules (min order).
  * Signed (HMAC, same scheme as src/lib/exchanges/bitget.ts):
  *   POST /api/v2/spot/trade/place-order      — market / limit (post-only)
- *                                                + attached TP/SL (tpslType)
+ *                                                + attached TP/SL (preset*Price)
  *   POST /api/v2/spot/trade/cancel-order     — cancel by orderId
  *   GET  /api/v2/spot/trade/orderInfo        — order status + fill price
  *   GET  /api/v2/spot/trade/fills            — executed fills (OCO reconcile)
@@ -16,6 +16,16 @@
  * orders take `size` (NOT the retired `quantity`); attached TP/SL is the
  * spot OCO mechanism — when the entry fills, Bitget arms both triggers and
  * cancels the sibling automatically after one fires.
+ *
+ * Patch F (Task 45) — live-order 400 root cause: `tpslType: "tpsl"` was sent
+ * on entry orders. Per Bitget v2 docs that flag turns the order ITSELF into
+ * a "SPOT TP/SL order" (a trigger order) which REQUIRES `triggerPrice` (we
+ * never send one → Bitget defaults it to 0 → HTTP 400 [40020: Parameter
+ * triggerPrice : 0 error]) and — worse — makes the presetTakeProfitPrice /
+ * presetStopLossPrice params INVALID ("It's invalid when tpslType is tpsl").
+ * On a NORMAL order (tpslType unset = default "normal") the two preset*
+ * prices are exactly the attached TP/SL pair that arms after the fill. Fix:
+ * never send tpslType; keep only the preset prices, validated > 0 first.
  *
  * Signing: base64(HMAC-SHA256(timestamp + METHOD + requestPath + body, secret)).
  * For POST the requestPath has no query; for signed GETs the query IS part of
@@ -221,8 +231,9 @@ export interface PlacedOrder {
  * Market order on spot.
  * BUY  → size is the QUOTE amount (USDT to spend), per Bitget v2 rules.
  * SELL → size is the BASE amount (coin to sell).
- * Optional attached TP/SL (tpslType) — the spot OCO mechanism; when both
- * triggers are given, Bitget arms them as soon as the order fills.
+ * Optional attached TP/SL (presetTakeProfitPrice + presetStopLossPrice on a
+ * NORMAL order, tpslType unset) — the spot OCO mechanism; when both triggers
+ * are given, Bitget arms them as soon as the order fills.
  * Param is `size` — the retired `quantity` name is no longer in the v2
  * contract (verified against the official SDK types, Task 16).
  */
@@ -239,8 +250,7 @@ export async function placeSpotMarketOrder(
     size: opts.quantity,
     clientOid,
   };
-  if (opts.takeProfitTrigger && opts.stopLossTrigger) {
-    body.tpslType = "tpsl";
+  if (validTriggerPair(opts.takeProfitTrigger, opts.stopLossTrigger)) {
     body.presetTakeProfitPrice = opts.takeProfitTrigger;
     body.presetStopLossPrice = opts.stopLossTrigger;
   }
@@ -261,9 +271,11 @@ export async function placeSpotMarketOrder(
  * - `force: "post_only"` → the order can only rest on the book as maker; if
  *   it would cross immediately Bitget rejects it — the anti-buy-the-top
  *   guarantee, identical to the paper simulation's "below market" level.
- * - `tpslType: "tpsl"` + preset trigger prices → when the entry fills,
- *   Bitget arms BOTH triggers and auto-cancels the sibling after one fires
- *   (true OCO). If the entry never fills, nothing is ever armed.
+ * - presetTakeProfitPrice + presetStopLossPrice on a NORMAL order (tpslType
+ *   unset — Patch F: sending "tpsl" wrongly reclassified the order as a
+ *   trigger order and demanded triggerPrice) → when the entry fills, Bitget
+ *   arms BOTH triggers and auto-cancels the sibling after one fires (true
+ *   OCO). If the entry never fills, nothing is ever armed.
  * - Execution after a trigger defaults to market when execute* is omitted.
  * - Limit `size` is the BASE amount; `price` must respect pricePrecision.
  */
@@ -288,8 +300,7 @@ export async function placeSpotLimitOrderWithTpsl(
     size: opts.size,
     clientOid,
   };
-  if (opts.takeProfitTrigger && opts.stopLossTrigger) {
-    body.tpslType = "tpsl";
+  if (validTriggerPair(opts.takeProfitTrigger, opts.stopLossTrigger)) {
     body.presetTakeProfitPrice = opts.takeProfitTrigger;
     body.presetStopLossPrice = opts.stopLossTrigger;
   }
@@ -302,6 +313,19 @@ export async function placeSpotLimitOrderWithTpsl(
   const orderId = typeof data?.orderId === "string" ? data.orderId : "";
   if (!orderId) throw new Error("bitget: no orderId in response");
   return { orderId, clientOid };
+}
+
+/**
+ * A preset TP/SL pair is only attached when BOTH triggers are positive,
+ * finite numbers. Bitget rejects zero/negative triggers with HTTP 400
+ * [40020: Parameter triggerPrice : 0 error] — better to send a clean
+ * order without TP/SL (the engine's guardian tick still exits manually)
+ * than a rejected one. all-or-nothing by design.
+ */
+function validTriggerPair(tp?: string, sl?: string): boolean {
+  const ntp = Number(tp);
+  const nsl = Number(sl);
+  return Boolean(tp && sl) && Number.isFinite(ntp) && ntp > 0 && Number.isFinite(nsl) && nsl > 0;
 }
 
 /** Cancel an order (entry limit or any resting order) by orderId. */
