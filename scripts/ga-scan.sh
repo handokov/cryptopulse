@@ -3,7 +3,7 @@
 # Downloads every bot-tick.yml run log and extracts the tick JSON line.
 # No code changes, no writes to production — log fetch only.
 set -u
-PAT="GITHUB_PAT_REDACTED"
+PAT="${GITHUB_PAT:-}" # inline via env — never hardcode (insiden Task 30/37)
 REPO="handokov/cryptopulse"
 WORK=/home/z/my-project/scripts/ga_work
 RUNS="$WORK/runs.tsv"

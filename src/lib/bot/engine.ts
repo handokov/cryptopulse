@@ -357,12 +357,14 @@ async function loadCreds(userId: string) {
 type BitgetCreds = NonNullable<Awaited<ReturnType<typeof loadCreds>>>;
 
 /** USDT actually available on the user's spot account (frozen excluded). */
-async function liveFreeUsdt(creds: BitgetCreds): Promise<number | null> {
+async function liveFreeUsdt(creds: BitgetCreds): Promise<{ available: number | null; error?: string }> {
   try {
     const bal = await fetchSpotBalance(creds, "USDT");
-    return bal ? bal.available : null;
-  } catch {
-    return null;
+    return { available: bal ? bal.available : null, error: bal ? undefined : "empty balance payload" };
+  } catch (err) {
+    /* Was silently swallowed — a broken Bitget connection then looked like an
+       ordinary HOLD forever. Surface the reason (e.g. "bitget HTTP 401 [...]"). */
+    return { available: null, error: err instanceof Error ? err.message.slice(0, 160) : "unknown balance error" };
   }
 }
 
@@ -577,8 +579,8 @@ async function livePendingEntryTick(
 
     if (entryOffsetOf(cfg) > 0 && shouldEnter(signal, mode)) {
       try {
-        const available = await liveFreeUsdt(creds);
-        if (available == null) throw new Error("spot balance unavailable");
+        const { available, error: balErr } = await liveFreeUsdt(creds);
+        if (available == null) throw new Error(`spot balance unavailable${balErr ? `: ${balErr}` : ""}`);
         const armed = await armLiveLimit({
           cfg,
           creds,
@@ -1204,10 +1206,10 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
      post-only limit below the market with ATTACHED TP/SL (true OCO armed
      atomically at fill). offset = 0: legacy market BUY, but it also carries
      the attached TP/SL so no live position is ever unprotected. */
-  const available = await liveFreeUsdt(creds!);
+  const { available, error: balErr } = await liveFreeUsdt(creds!);
   if (available == null) {
     await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "HOLD", reason: "spot USDT balance unavailable — entry skipped this tick", score: signal.score };
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "HOLD", reason: `spot USDT balance unavailable${balErr ? ` — ${balErr}` : ""} — entry skipped this tick`, score: signal.score };
   }
   const minBuy = minUsdt > 0 ? minUsdt : FALLBACK_MIN_USDT;
 

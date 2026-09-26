@@ -24,7 +24,7 @@ import { ensureBotColumns } from "@/lib/bot/migrate";
 
 export const dynamic = "force-dynamic";
 
-const SYMBOL_RE = /^[A-Z0-9]{2,10}USDT$/;
+const SYMBOL_RE = /^[A-Z0-9]{1,11}USDT$/;
 
 interface CacheRow {
   at: number;
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   await ensureBotColumns();
 
   const url = new URL(req.url);
-  const symbol = (url.searchParams.get("symbol") ?? "").toUpperCase();
+  const symbol = (url.searchParams.get("symbol") ?? "").replace(/\s+/g, "").toUpperCase();
   if (!SYMBOL_RE.test(symbol)) {
     return NextResponse.json({ error: "validation", message: "symbol must look like BTCUSDT" }, { status: 400 });
   }

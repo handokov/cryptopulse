@@ -1689,3 +1689,74 @@ Stage Summary:
 - Mulai patch ini, semua PnL baru (paper & live) tercatat NET fee → tile HARI INI / 30 HARI / SEPANJANG WAKTU = real profit
 - Catatan transisi: angka agregat lama (termasuk +$3.24 all-time) masih GROSS campuran; perbandingan adil dimulai dari data pasca-deploy
 - Deploy menunggu push; setelah live, user bisa melihat real profit harian & bulanan langsung di dashboard
+
+
+---
+Task ID: 40-b (PUSH + INSIDEN FORCE-PUSH — direvisi saat pemulihan Task 44)
+Agent: main (Super Z)
+Task: Push hasil Task 38/39/40 pakai PAT baru; catatan: push pertama sukses (3ed6990..c5ff719)
+
+Work Log:
+- Push pertama sukses: 3ed6990..c5ff719 (Patch C + alat analisis + worklog) — dipakai token inline sekali
+- CATATAN INSIDEN (Task 44): sandbox ter-reset memutar balik .git+worktree ke snapshot pra-Task-37; push ulang dengan rantai yang salah basis lalu force-push menimpa c5ff719 — pulihkan via plumbing dari objek c5ff719 (detail di Task 44)
+
+Stage Summary:
+- Riwayat remote dipulihkan berisi Patch C + alat analisis; Patch D/E ditata ulang di atasnya
+
+---
+Task ID: 41 (PROYEKSI JUJUR 30 HARI — PUMPUSDT @$50/trade)
+Agent: main (Super Z)
+Task: Hitungan realistis profit & loss per bulan (contoh: PUMPUSDT) tanpa janji palsu
+
+Work Log:
+- scripts/pump-projection.mjs: stats per-symbol + pooled, decompose profit/loss, Monte Carlo 10k, sensitivitas fee, tabel WR-minimum target
+- Data: 34 siklus (NEAR 9, GENIUS 9, TAG 6, PUMP 6, GAIA 4); PUMP WR 50% avgWin +3.23% avgLoss -1.61% exp +0.81%/cycle (n=6 kecil)
+- Pooled: WR 56%, avgWin +2.63%, avgLoss -2.81%, exp +0.23%/cycle
+- Fix bug double-divide /100 pada decompose; proyeksi PUMP @3/hari: PROFIT +$73 vs LOSS -$36 = NET +$36/bln (asumsi edge nyata)
+- Parametrik: $250-300/bln @$50 butuh WR 84-123% (mustahil) — jalannya bukti edge lalu scaling size
+
+Stage Summary:
+- 1 bot @$50 realistis median +$7..+$36/bln (P5-P95 sekitar -$15..+$60); 5 bot ~$40-90 median, bisa minus
+- Target $250-300/bln hanya via bukti 100+ siklus lalu scaling size (Fase 0 -> 1 -> 2)
+
+---
+Task ID: 42 (PATCH D — validasi simbol 1-11 char + trim, 3 lokasi)
+Agent: main (Super Z)
+Task: User tidak bisa membuat/beli bot simbol 1-2 huruf (QUSDT, B2USDT) — cek penyebab
+
+Work Log:
+- SYMBOL_RE {2,10} di 3 lokasi menolak basis 1 char; bukti Bitget: 40 pair online basis 1-2 char, rentang asli 1-11 (MAXEXCHANGEUSDT)
+- Bug kedua: tanpa trim (paste berspasi ditolak); bug ketiga: candles/route.ts regex sama -> chart simbol pendek mati
+- Fix: {1,11} di 3 file + strip whitespace di input modal/API POST/GET/candles
+- Kuota dicek: MAX_PAPER_BOTS=5 penuh — kemungkinan penyebab B2USDT "tidak bisa" saat itu (quota_paper 409)
+
+Stage Summary:
+- Simbol 1-11 char + chart hidup; paste berspasi dibersihkan otomatis
+
+---
+Task ID: 43 (PATCH E — pelaporan error Bitget terdiagnosis)
+Agent: main (Super Z)
+Task: Mode LIVE pertama: bot menunggu (normal) lalu manual tick error "bitget HTTP 400"
+
+Work Log:
+- Deduksi: error berasal dari POST place-order (cek saldo signed sukses lebih dulu; liveFreeUsdt lama menelan error)
+- signedRequest kini membaca body error -> "bitget HTTP 400 [KODE: alasan]"; liveFreeUsdt mengembalikan {available, error}; 2 call site menyertakan alasan
+- Checklist user: izin Spot Trade ON, tanpa IP whitelist (atau tambah IP server), passphrase benar, saldo spot cukup
+
+Stage Summary:
+- Error Bitget berikutnya terdiagnosis instan dari kode+pesan aslinya
+
+---
+Task ID: 44 (INSIDEN & PEMULIHAN RIWAYAT — plumbing rebuild)
+Agent: main (Super Z)
+Task: Push ulang setelah sandbox reset memutar balik .git+worktree; force-push dengan basis salah menimpa riwayat bagus
+
+Work Log:
+- Deteksi: origin/main lokal tertinggal (fetch tanpa token gagal senyap, repo private); konsolidasi checkpoint dibangun di atas c80911c (pra-Task-37) — Patch C + alat analisis hilang dari tip
+- Force-push pertama menimpa remote c5ff719 -> a273aac (tanpa C/T38/39)
+- Pemulihan: SHA penuh c5ff719 dari GitHub push events; fetch by-SHA (objek utuh); cherry-pick terganggu restore worktree paralel -> beralih ke plumbing murni (read-tree/hash-object/update-index/commit-tree) tanpa sentuh worktree
+- ga-scan.sh token lama (MATI, HTTP 401) dibersihkan jadi env-ref; ga_work logs bersih
+- Struktur akhir: c5ff719 <- recovered-main (D+E+konsolidasi+worklog+pump-projection) --force push
+
+Stage Summary:
+- Remote utuh: Patch C + D + E + alat analisis + dokumentasi; pelajaran: selalu fetch bertoken sebelum reset/consolidate; worktree bisa di-restore platform kapan saja — verifikasi via git show, bukan file

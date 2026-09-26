@@ -560,7 +560,7 @@ export function BotSection() {
   if (!cfg) return null;
 
   const modePreset = preset?.[cfg.mode] ?? null;
-  const symbolValid = /^[A-Z0-9]{2,10}USDT$/.test(cfg.symbol.toUpperCase());
+  const symbolValid = /^[A-Z0-9]{1,11}USDT$/.test(cfg.symbol.replace(/\s+/g, "").toUpperCase());
 
   return (
     <div className="flex flex-col gap-5">
@@ -981,7 +981,7 @@ export function BotSection() {
               id="bot-symbol"
               className="mt-1.5 font-mono uppercase"
               value={cfg.symbol}
-              onChange={(e) => setCfg({ ...cfg, symbol: e.target.value.toUpperCase() })}
+              onChange={(e) => setCfg({ ...cfg, symbol: e.target.value.replace(/\s+/g, "").toUpperCase() })}
               placeholder="BTCUSDT"
             />
             {draft && !symbolValid && cfg.symbol.length > 0 && (

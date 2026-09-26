@@ -27,7 +27,7 @@ import { fetchSpotBalance } from "@/lib/bot/bitget-trade";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const SYMBOL_RE = /^[A-Z0-9]{2,10}USDT$/;
+const SYMBOL_RE = /^[A-Z0-9]{1,11}USDT$/;
 const MAX_PAPER_BOTS = 5;
 const MAX_LIVE_BOTS = 2;
 
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   await ensureBotColumns();
 
-  const wantSymbol = (new URL(req.url).searchParams.get("symbol") ?? "").toUpperCase();
+  const wantSymbol = (new URL(req.url).searchParams.get("symbol") ?? "").replace(/\s+/g, "").toUpperCase();
   const configs = await db.botConfig.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
   const config = configs.find((c) => c.symbol === wantSymbol) ?? configs[0] ?? null;
   const configId = config?.id ?? "";
@@ -441,7 +441,7 @@ export async function PUT(req: NextRequest) {
   if (mode !== "MODERATE" && mode !== "AGGRESSIVE") {
     return NextResponse.json({ error: "validation", message: "mode must be MODERATE or AGGRESSIVE" }, { status: 400 });
   }
-  const symbol = String(body.symbol ?? "").toUpperCase();
+  const symbol = String(body.symbol ?? "").replace(/\s+/g, "").toUpperCase();
   if (!SYMBOL_RE.test(symbol)) {
     return NextResponse.json({ error: "validation", message: "symbol must look like BTCUSDT" }, { status: 400 });
   }

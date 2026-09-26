@@ -189,7 +189,22 @@ async function signedRequest<T>(
     },
     ...(bodyStr ? { body: bodyStr } : {}),
   });
-  if (!res.ok) throw new Error(`bitget HTTP ${res.status}`);
+  if (!res.ok) {
+    /* Bitget ALWAYS returns a JSON body with the real reason (code+msg) even
+       on HTTP 400/401/403 — e.g. 40104 "API key permission denied" (read-only
+       key), 40003 "timestamp recvWindow expired" (clock skew), 40761
+       "order value below minimum". Discarding it turned every failure into an
+       undiagnosable "bitget HTTP 400". Surface code+msg (trimmed). */
+    const raw = await res.text().catch(() => "");
+    let detail = "";
+    try {
+      const j = JSON.parse(raw) as { code?: unknown; msg?: unknown };
+      if (j && (j.code != null || j.msg)) detail = ` [${String(j.code ?? "?")}: ${String(j.msg ?? "")}]`;
+    } catch {
+      if (raw) detail = ` [${raw.slice(0, 140)}]`;
+    }
+    throw new Error(`bitget HTTP ${res.status}${detail}`.slice(0, 300));
+  }
   const data = (await res.json()) as { code?: unknown; msg?: unknown; data?: unknown };
   if (data.code !== "00000") {
     throw new Error(typeof data.msg === "string" && data.msg ? data.msg : `bitget code ${String(data.code)}`);
