@@ -1615,3 +1615,39 @@ Stage Summary:
 - Patch E siap commit; setelah deploy, error Bitget berikutnya menampilkan kode+pesan asli → diagnosis instan
 - Checklist user untuk live: izin SPOT trade ON di API key, tanpa IP whitelist (atau tambah IP server), passphrase benar, saldo USDT spot cukup
 - Mode live FUNGSIONAL secara arsitektur (Task 16 OCO post-only + guardian tick) — blokir satu-satunya adalah diagnosis order yang kini tertangani
+
+---
+Task ID: 45 (PATCH F — akar masalah live 400 ditemukan berkat Patch E)
+Agent: main (Super Z)
+Task: User laporkan error tick live baru: "bitget HTTP 400 [40020: Parameter triggerPrice : 0 error]" — Patch E sukses menyingkap penyebab asli
+
+Work Log:
+- Patch E terbukti bekerja: origin/main = 16ba670 sudah deploy, error Bitget kini tampil utuh -> diagnosis langsung ke sasaran
+- Akar masalah dikonfirmasi 3 sumber independen: (1) pesan error Bitget sendiri, (2) SDK resmi bitget-api v3.2.4 SpotOrderRequestV2 (npm tarball diekstrak), (3) dokumen resmi bitget.com classic-spot-trade
+- Fakta dokumen resmi: tpslType "normal" = spot order (default); "tpsl" = SPOT TP/SL order (order TRIGGER yang WAJIB bawa triggerPrice); presetTakeProfitPrice/presetStopLossPrice "INVALID when tpslType is tpsl"
+- Bug kode (sejak Task 16): body.tpslType="tpsl" dikirim di placeSpotLimitOrderWithTpsl + placeSpotMarketOrder -> order masuk direklasifikasi jadi trigger order -> triggerPrice tidak pernah dikirim -> Bitget default 0 -> 40020; sekaligus membungkam preset TP/SL yang justru benar
+- Patch F (src/lib/bot/bitget-trade.ts): (1) hapus tpslType dari 2 fungsi order — preset*Price pada order NORMAL = pasangan TP/SL attached (OCO) yang di-arm setelah fill; (2) tambah validTriggerPair() all-or-nothing (kedua trigger harus angka > 0 finite) agar trigger 0 tak mungkin terkirim lagi; (3) komentar kontrak diperbaiki
+- Verifikasi: eslint bersih; tsc src/ tetap 4 error pre-existing (close x2, news, engine trailStopPrice) — 0 baru
+- Commit lokal 8da2ead; PUSH GAGAL: PAT dari user ditolak GitHub (HTTP 401 Bad credentials via api.github.com/user — token sudah dipakai push 16ba670 lalu di-revoke sesuai anjuran; string token TIDAK dicatat di sini demi push protection) -> butuh PAT baru dari user
+- Bukti diperiksa: git remote -v tanpa token tersimpan, tanpa credential helper (push memang one-shot URL)
+
+Stage Summary:
+- 400 live mode RESMI TUNTAS penyebabnya: bukan izin API key, bukan saldo, bukan tanda tangan — satu flag payload salah (tpslType). Patch E->F menutup rantai diagnosis
+- Menunggu PAT baru utk push 8da2ead; setelah deploy, tick berikutnya seharusnya order limit post-only + TP/SL OCO diterima Bitget (atau error baru yang berbeda bila ada, dan kini selalu terbaca)
+- Catatan: kalau suatu saat TP/SL invalid, validTriggerPair membuat order tetap jalan TANPA TP/SL (guardian tick engine tetap jadi jaring pengaman exit manual)
+
+---
+Task ID: 45-b (push Patch F — token kedua valid, push protection sempat memblokir lalu dibersihkan)
+Agent: main (Super Z)
+Task: Push 8da2ead (Patch F) dengan PAT baru dari user
+
+Work Log:
+- PAT kedua valid (diverifikasi saat push; string tidak dicatat di worklog — pelajaran dari insiden ini: JANGAN PERNAH menulis literal token di worklog/commit/file apa pun)
+- Push pertama ditolak GitHub PUSH PROTECTION (GH013): platform auto-checkpoint commit ikut memaketkan worklog.md yang masih mengutip token lama (baris 1631) -> dideteksi sebagai "GitHub Personal Access Token" secret
+- Remediasi: redaksi token lama di worklog.md (ganti deskripsi tanpa literal), entry 45-b ditambahkan, lalu git commit --amend pada checkpoint 218949d sehingga secret tidak pernah ada di riwayat yang di-push (commit 1a1e657 & 8da2ead sudah bersih dari awal)
+- Rescan seluruh tree: 0 pola token (ghp_/github_pat_) di 3 commit yang didorong
+
+Stage Summary:
+- Patch F ter-push ke origin/main -> Vercel auto-deploy; user tinggal jalankan tick live lagi
+- Aturan baru ditetapkan: token HANYA lewat one-shot push URL + sed output redaksi; worklog selalu menyebut token secara deskriptif ("PAT pertama/kedua"), tidak pernah literal
+- Setelah push sukses: token kedua sebaiknya langsung di-revoke user
