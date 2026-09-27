@@ -1651,3 +1651,21 @@ Stage Summary:
 - Patch F ter-push ke origin/main -> Vercel auto-deploy; user tinggal jalankan tick live lagi
 - Aturan baru ditetapkan: token HANYA lewat one-shot push URL + sed output redaksi; worklog selalu menyebut token secara deskriptif ("PAT pertama/kedua"), tidak pernah literal
 - Setelah push sukses: token kedua sebaiknya langsung di-revoke user
+
+---
+Task ID: 46 (Q&A — trailing stop & sinyal balik di mode LIVE, posisi live pertama sudah terbuka)
+Agent: main (Super Z)
+Task: User konfirmasi posisi live PERTAMA sudah terpicu (order diterima Bitget, TP/SL ter-armed sesuai angka bot) dan bertanya apakah trailing stop + signal-flip berfungsi di live mode
+
+Work Log:
+- Konfirmasi implisit user: Patch F sukses — order limit post-only + preset TP/SL OCO diterima Bitget (bukti: user melihat TP/SL ter-armed di Bitget)
+- Verifikasi kode exit ladder live (engine.ts:924-987, strategy.ts:174-238):
+  (1) TP/SL statis = milik exchange (OCO di Bitget), jalan 24/7 tanpa server kita; engine hanya merekonsiliasi fill asli (liveOcoReconcile, tidak pernah double-sell)
+  (2) Trail-stop = engine-initiated, aktif HANYA jika exitStyle=VOL (engine.ts:910; default FIXED tanpa trailing); arm saat unrealized >= +1sigma, trail mengikuti highestPrice dgn jarak = band SL; eksekusi live: cancel OCO DULU (gagal -> exit ditunda, proteksi tetap), lalu market-sell (liveEngineExit:708)
+  (3) Signal-flip (score <= -exitScore) = engine-initiated, jalur sama dgn trail-stop, berfungsi di live
+- Batas jujur: trail/flip hanya dieksekusi saat tick jalan (cron ~5 mnt, GA free tier kadang gap); di antara tick proteksi = SL statis Bitget; TP/SL di Bitget TIDAK ikut naik saat trail bergerak (statis sejak entry)
+- 0 perubahan kode (jawaban Q&A)
+
+Stage Summary:
+- Jawaban: YA trailing stop & sinyal balik berfungsi di live (jalur engine-initiated dgn cancel-OCO-then-market-sell), TAPI trail hanya aktif bila Exit Style=VOL; TP/SL Bitget statis tetap jadi jaring pengaman exchange-side
+- Posisi live pertama terbuka = milestone: rantai entry live (gate -> post-only limit -> fill -> OCO armed) terbukti end-to-end
