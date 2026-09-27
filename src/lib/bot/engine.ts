@@ -693,7 +693,14 @@ async function liveSellQty(creds: BitgetCreds, pos: OpenPositionRow): Promise<st
   let available = pos.qty;
   try {
     const bal = await fetchSpotBalance(creds, baseCoinOf(pos.symbol));
-    if (bal && bal.available > 0) available = Math.min(available, bal.available);
+    /* Patch G: when the exchange ANSWERS with the coin row, trust it — clamp
+       even to 0. Right after an OCO cancel Bitget may still report the coins
+       frozen (available 0); the old code skipped the clamp on 0 and sold the
+       full position qty blind, which Bitget rejects with 43012 Insufficient
+       balance every tick. Returning "0" routes both callers to their
+       reconcile/wait branch instead. Fall back to pos.qty only when the read
+       itself fails or the coin row is absent (null). */
+    if (bal) available = Math.min(available, Math.max(bal.available, 0));
   } catch {
     /* balance read failed — fall back to the position qty */
   }
@@ -766,6 +773,27 @@ async function liveEngineExit(
     return { ...base, action: "SELL", reason: exitReason, pnlUsdt: livePnl };
   } catch (err) {
     const msg = err instanceof Error ? err.message.slice(0, 160) : "sell failed";
+    /* Patch G: a rejected sell (e.g. 43012 Insufficient balance) can also mean
+       the exchange already sold the coins — the OCO fired between our cancel
+       attempt and the sell. Reconcile once before giving up: if the OCO exit
+       fill is on the book, close with the exchange's real numbers instead of
+       retrying a doomed sell every tick. */
+    const fill = await findOcoExitFill(creds, cfg, pos).catch(() => null);
+    if (fill) {
+      const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
+      await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled after sell failure)`);
+      await logTrade(cfg, {
+        action: "SELL",
+        status: "SUBMITTED",
+        sizeUsdt: pos.sizeUsdt,
+        qty: fill.qty,
+        price: fill.price,
+        reason: `${exitReason} (OCO fill reconciled after sell rejection)`,
+        pnlUsdt: pnl,
+        detail: detailJson(signal, { exit: exitKind, reconciled: true, sellError: msg }),
+      });
+      return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)`, pnlUsdt: pnl };
+    }
     await logTrade(cfg, { action: "SELL", status: "FAILED", reason: `${exitKind} sell failed: ${msg}`, detail: detailJson(signal, { exit: exitKind }) });
     return { ...base, action: "ERROR", reason: `${exitKind} sell failed: ${msg}` };
   }
