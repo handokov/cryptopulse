@@ -80,7 +80,11 @@ export async function GET(req: NextRequest) {
   const summary = {
     tradesToday: relevant.length,
     realizedTodayUsdt: relevant.reduce((acc, t) => acc + (t.pnlUsdt ?? 0), 0),
-    maxTradesPerDay: config ? MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay : null,
+    maxTradesPerDay: config
+      ? config.maxTradesPerDay >= 1
+        ? config.maxTradesPerDay /* Patch H — show the saved per-bot value, not the mode preset */
+        : MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"].maxTradesPerDay
+      : null,
     cooldownMin: config ? cooldownMinFor((config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE", config.timeframe ?? "4H") : null,
     timeframe: config?.timeframe ?? null,
     presets: MODE_PRESETS,

@@ -908,6 +908,12 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   const tf = isBotTimeframe(cfg.timeframe) ? cfg.timeframe : "4H";
   const bpy = barsPerYearFor(tf);
   const cooldownMin = cooldownMinFor((cfg.mode as BotMode) in MODE_PRESETS ? (cfg.mode as BotMode) : "MODERATE", tf);
+  /* Patch H — honor the user's per-bot "Maks transaksi / hari" (1-20) exactly
+     like TP/SL overrides below: saved value wins when valid, mode preset is
+     only the fallback. Before this patch the engine ignored the saved value
+     and always capped at the preset (MODERATE 4 / AGGRESSIVE 8). */
+  const maxTradesPerDay =
+    cfg.maxTradesPerDay && cfg.maxTradesPerDay >= 1 ? Math.floor(cfg.maxTradesPerDay) : preset.maxTradesPerDay;
   /* Exit ladder: user overrides win when set (>0), otherwise the mode preset. */
   const tpPct = cfg.takeProfitPct && cfg.takeProfitPct > 0 ? cfg.takeProfitPct : preset.takeProfitPct;
   const slPct = cfg.stopLossPct && cfg.stopLossPct > 0 ? cfg.stopLossPct : preset.stopLossPct;
@@ -1034,7 +1040,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         score: signal.score,
       };
     }
-    const out = await limitEntryTick(cfg, signal, price, effSlPct, effTpPct, tf, entryOffset, minUsdt, preset.maxTradesPerDay);
+    const out = await limitEntryTick(cfg, signal, price, effSlPct, effTpPct, tf, entryOffset, minUsdt, maxTradesPerDay);
     await touchConfig(cfg.id, price);
     return out;
   }
@@ -1077,7 +1083,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         score: signal.score,
       };
     }
-    const out = await livePendingEntryTick(cfg, creds!, signal, price, effSlPct, effTpPct, minUsdt, rules.quantityPrecision, rules.pricePrecision, preset.maxTradesPerDay);
+    const out = await livePendingEntryTick(cfg, creds!, signal, price, effSlPct, effTpPct, minUsdt, rules.quantityPrecision, rules.pricePrecision, maxTradesPerDay);
     await touchConfig(cfg.id, price);
     return out;
   }
@@ -1088,9 +1094,9 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     where: { configId: cfg.id, createdAt: { gte: dayStart }, action: { in: ["BUY", "SELL"] }, status: { in: ["PAPER", "SUBMITTED"] }, paper: cfg.paper },
     orderBy: { createdAt: "desc" },
   });
-  if (todayTrades.length >= preset.maxTradesPerDay) {
+  if (todayTrades.length >= maxTradesPerDay) {
     await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: cfg.paper, action: "HOLD", reason: `max ${preset.maxTradesPerDay} trades/day`, score: signal.score };
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: cfg.paper, action: "HOLD", reason: `max ${maxTradesPerDay} trades/day`, score: signal.score };
   }
   const realizedToday = todayTrades.reduce((acc, tr) => acc + (tr.pnlUsdt ?? 0), 0);
   if (realizedToday <= -Math.abs(cfg.dailyLossLimitUsdt)) {
