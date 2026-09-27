@@ -1716,3 +1716,22 @@ Work Log:
 Stage Summary:
 - Patch G resmi di origin/main -> Vercel auto-deploy otomatis; setelah aktif: kasus 43012 (1) freeze-lag -> liveSellQty percaya clamp exchange (0 = skip ke branch reconcile/wait), sell sukses di tick berikutnya tanpa order gagal; (2) OCO SL statis keburu nembak -> reconcile findOcoExitFill menutup posisi dgn fill asli exchange
 - Verifikasi user pasca-deploy: jalankan tick live, log tidak lagi mengulang "trail-stop sell failed: 43012"; bila ada posisi lama yg stuck, akan tertutup otomatis via reconcile
+
+---
+Task ID: 49 (PATCH H — setting "Maks transaksi / hari" tidak pernah dihormati engine)
+Agent: main (Super Z)
+Task: User tanya kenapa bot balik ke 8 transaksi/hari padahal setting 20 (kemarin terlihat 20 transaksi)
+
+Work Log:
+- Root cause (engine.ts:906+): tickOne memakai preset.maxTradesPerDay (MODE_PRESETS: MODERATE 4 / AGGRESSIVE 8) di 4 titik — limitEntryTick (paper), livePendingEntryTick (live), gate harian (1091), dan reason string. cfg.maxTradesPerDay (nilai tersimpan user; PUT validasi 1-20 & menyimpan benar) TIDAK PERNAH dibaca — bug sejak commit bot pertama (faa9085), BUKAN regresi Patch F/G
+- Inkonsistensi pembuktian: TP/SL override user DIHORMATI engine (cfg.takeProfitPct > 0 ? cfg : preset) — maxTradesPerDay satu-satunya setting yang tidak ikut pola itu
+- Bug kedua (route.ts:83): summary GET juga mengembalikan nilai preset, bukan config.maxTradesPerDay -> UI selalu tampil "x / 4" atau "x / 8" walau setting 20
+- Penjelasan "kemarin 20": Patch F baru kemarin membuat order live PERTAMA KALI berhasil (sebelumnya semua entry gagal 40020) -> log transaksi (25 baris terakhir, lintas hari; BUY & SELL masing2 hitung 1) menumpuk +-20 baris; itu bukan bukti cap 20 aktif — cap preset (8, mode AGGRESSIVE) berlaku sejak awal
+- Patch H: (1) engine.ts — const maxTradesPerDay = cfg.maxTradesPerDay >= 1 ? floor(cfg) : preset.maxTradesPerDay, dipakai di 4 titik tsb; (2) route.ts summary — tampilkan config.maxTradesPerDay, preset hanya fallback
+- Semantik hitung TIDAK diubah: 1 baris order (BUY/SELL) = 1 transaksi -> setting 20 +- 10 siklus buy-sell penuh; boundary hari = UTC midnight (07:00 WIB)
+- Verifikasi: eslint 2 file bersih; tsc src/ tetap 4 error pre-existing (0 baru)
+- Commit lokal menunggu PAT keempat (PAT ketiga di-revoke user sesuai anjuran setelah push Task 48)
+
+Stage Summary:
+- Setelah deploy: engine memakai angka dari form (1-20); summary menampilkan "x / 20"; reason HOLD kini "max 20 trades/day" bila benar2 mentok
+- Catatan: cap 20 = batas ATAS, bukan jaminan jumlah siklus — entry tetap harus lolos score gate, entry line, cooldown per timeframe, dan daily loss limit
