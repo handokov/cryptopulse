@@ -1684,3 +1684,19 @@ Work Log:
 
 Stage Summary:
 - Jawaban: YA trail stop berfungsi bila saldo koin ada; "balance kurang" hanya menunda eksekusi 1-2 tick dgn retry otomatis, tidak perlu top-up (sell butuh KOIN posisi, bukan USDT); kegagalan sementara tidak pernah meninggalkan posisi tak terkelola
+
+---
+Task ID: 47 (PATCH G — loop 43012 pada trail-stop live diperbaiki)
+Agent: main (Super Z)
+Task: User kirim log persis: "trail-stop sell failed: bitget HTTP 400 [43012: Insufficient balance]" (Sep 27, 10:33) — konfirmasi diagnosis Task 46-b + ditemukan celah desain lebih serius
+
+Work Log:
+- Celah 1 (liveSellQty, engine.ts:692-708): guard 'bal.available > 0' melewati clamp saat available=0 — koin masih dibekukan OCO (unfreeze telat) -> sell buta dgn qty penuh -> Bitget 43012 -> posisi tetap OPEN -> tiap tick mengulang sell yang sama. Fix: percayai jawaban exchange (clamp meski 0); fallback pos.qty hanya bila read gagal/row absen; hasil "0" mengarahkan caller ke branch reconcile/wait
+- Celah 2 (liveEngineExit catch, engine.ts:774-799): sell ditolak hanya dilog FAILED tanpa reconcile; bila OCO SL statis keburu nembak (koin sudah terjual exchange), engine loop 43012 selamanya (branch reconcile lama = dead code karena liveSellQty tak pernah <= 0). Fix: pada penolakan sell, reconcile sekali via findOcoExitFill -> fill ditemukan = tutup posisi dgn angka asli exchange "(OCO fill reconciled after sell rejection)"; tidak ada = tetap retry tick berikut
+- Manual close (1394-1429) sudah pola benar; kedua jalurnya kini berfungsi dgn liveSellQty terkoreksi
+- Verifikasi: eslint bersih; tsc src/ 4 error pre-existing (0 baru)
+- Commit lokal Patch G (di atas Patch F 8da2ead); menunggu PAT baru utk push (PAT kedua sudah di-revoke sesuai anjuran)
+
+Stage Summary:
+- Efek setelah deploy: kasus freeze-lag -> tak ada lagi error 43012, trail sell sukses di tick berikutnya; kasus OCO sudah nembak -> posisi otomatis direkonsiliasi & tertutup dgn fill asli (bereskan juga posisi yang saat ini mengulang 43012)
+- Patch E terus terbukti: kode 43012 kini terbaca dan bisa ditindaklai
