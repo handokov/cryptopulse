@@ -1669,3 +1669,18 @@ Work Log:
 Stage Summary:
 - Jawaban: YA trailing stop & sinyal balik berfungsi di live (jalur engine-initiated dgn cancel-OCO-then-market-sell), TAPI trail hanya aktif bila Exit Style=VOL; TP/SL Bitget statis tetap jadi jaring pengaman exchange-side
 - Posisi live pertama terbuka = milestone: rantai entry live (gate -> post-only limit -> fill -> OCO armed) terbukti end-to-end
+
+---
+Task ID: 46-b (Q&A lanjutan — "usaha trail stop tapi balance Bitget kurang")
+Agent: main (Super Z)
+Task: User melihat upaya trail-stop di log tapi saldo kurang; tanya apakah trail berfungsi bila saldo ada. (Screenshot sekali lagi TIDAK sampai ke server upload — andalkan deskripsi teks)
+
+Work Log:
+- Traced liveEngineExit chain utk trail-stop: (1) cancelOcoPlansFor dulu — coin base yang dibekukan OCO jadi bebas; (2) liveSellQty = min(pos.qty, available); (3) market-sell
+- Edge ditemukan di liveSellQty (engine.ts:692-700): bila available = 0 (coin masih dibekukan OCO — unfreeze Bitget telat beberapa detik setelah cancel), clamp dilewati (available>0 guard) -> fallback pos.qty penuh -> Bitget tolak dgn insufficient balance -> log "trail-stop sell failed: bitget HTTP 400 [..]" -> posisi tetap OPEN
+- Sifatnya TRANSIENT & self-healing: kondisi exit (harga <= trail stop) persisten -> tick berikutnya balance sudah cair -> sell sukses. Alternatifnya OCO SL statis sudah keburu nembak (saldo benar-benar terjual) -> path reconcile fill OCO
+- Semua jalur gagal trail aman: cancel gagal -> HOLD retry (proteksi dipertahankan); saldo 0 -> reconcile/wait; sell ditolak -> ERROR log, posisi tetap terbuka, retry otomatis
+- 0 perubahan kode; opsi Patch G (smooth edge: available=0 & OCO baru dicancel -> skip sell tick ini) ditawarkan menunggu keputusan user
+
+Stage Summary:
+- Jawaban: YA trail stop berfungsi bila saldo koin ada; "balance kurang" hanya menunda eksekusi 1-2 tick dgn retry otomatis, tidak perlu top-up (sell butuh KOIN posisi, bukan USDT); kegagalan sementara tidak pernah meninggalkan posisi tak terkelola
