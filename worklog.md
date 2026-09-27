@@ -1735,3 +1735,18 @@ Work Log:
 Stage Summary:
 - Setelah deploy: engine memakai angka dari form (1-20); summary menampilkan "x / 20"; reason HOLD kini "max 20 trades/day" bila benar2 mentok
 - Catatan: cap 20 = batas ATAS, bukan jaminan jumlah siklus — entry tetap harus lolos score gate, entry line, cooldown per timeframe, dan daily loss limit
+
+---
+Task ID: 49-b (push Patch H — PAT keempat valid, push sukses)
+Agent: main (Super Z)
+Task: Push b671bc2 (Patch H) + 17378e8 (worklog Task 49) ke origin/main
+
+Work Log:
+- PAT keempat valid (api.github.com/user HTTP 200; string TIDAK dicatat di mana pun — aturan Task 45-b)
+- Pre-push checklist: status bersih; secret scan diff c740248..HEAD = nihil; full tree HEAD = nihil
+- Push one-shot sukses: c740248..17378e8 HEAD -> main, fast-forward, push protection nihil
+- Sisa PAT keempat: user diingatkan revoke setelah sesi ini
+
+Stage Summary:
+- Patch H resmi di origin/main -> Vercel auto-deploy; pasca-deploy engine memakai "Maks transaksi / hari" dari form (1-20), summary tampil "x / 20", reason HOLD "max 20 trades/day"
+- Verifikasi user: buka form edit bot -> pastikan angka 20 tersimpan; tunggu tick -> bila skor/coldown lolos, entry tidak lagi mentok di 8
