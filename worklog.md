@@ -1700,3 +1700,19 @@ Work Log:
 Stage Summary:
 - Efek setelah deploy: kasus freeze-lag -> tak ada lagi error 43012, trail sell sukses di tick berikutnya; kasus OCO sudah nembak -> posisi otomatis direkonsiliasi & tertutup dgn fill asli (bereskan juga posisi yang saat ini mengulang 43012)
 - Patch E terus terbukti: kode 43012 kini terbaca dan bisa ditindaklai
+
+---
+Task ID: 48 (push Patch G — PAT ketiga valid, push sukses)
+Agent: main (Super Z)
+Task: Push bef25dc (Patch G) + 23d0b40 (worklog Task 46/46-b/47) ke origin/main dengan PAT baru dari user
+
+Work Log:
+- PAT ketiga valid (cek api.github.com/user HTTP 200, login handokov; string TIDAK dicatat di mana pun — aturan Task 45-b)
+- Pre-push checklist: git status bersih di 23d0b40; secret scan `git grep` full tree HEAD = nihil; diff origin/main..HEAD hanya 2 hit prosa worklog (kalimat deskripsi pola scan, bukan literal token) -> aman dari push protection
+- origin/main lokal ternyata stale: push one-shot URL tidak meng-update tracking ref; ls-remote konfirmasi remote main = 086fe47 (Patch F + 1 checkpoint memang sudah di remote) -> yang benar2 belum terpush: 467367c, bee3425, bef25dc (Patch G), 23d0b40 (worklog)
+- Push one-shot sukses: 086fe47..23d0b40 HEAD -> main, fast-forward linear, push protection nihil
+- Commit worklog Task 48 ini ikut push kedua dalam sesi sama; setelah sesi selesai user diingatkan revoke PAT ketiga
+
+Stage Summary:
+- Patch G resmi di origin/main -> Vercel auto-deploy otomatis; setelah aktif: kasus 43012 (1) freeze-lag -> liveSellQty percaya clamp exchange (0 = skip ke branch reconcile/wait), sell sukses di tick berikutnya tanpa order gagal; (2) OCO SL statis keburu nembak -> reconcile findOcoExitFill menutup posisi dgn fill asli exchange
+- Verifikasi user pasca-deploy: jalankan tick live, log tidak lagi mengulang "trail-stop sell failed: 43012"; bila ada posisi lama yg stuck, akan tertutup otomatis via reconcile
