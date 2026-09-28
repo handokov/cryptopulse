@@ -1769,3 +1769,19 @@ Work Log:
 Stage Summary:
 - Setelah deploy: fill telat tetap terdeteksi via fills (tidak ada lagi "menunggu garis" selamanya); posisi yang Bitget sudah TP-sell direkonsiliasi otomatis dgn harga fill asli di tick berikutnya — posisi BTWUSDT yang stuck ikut beres sendiri
 - Sisa risiko: kadens cron (infra), bukan logika engine
+
+---
+Task ID: 50-b (push Patch I — PAT kelima valid, push sukses)
+Agent: main (Super Z)
+Task: Push e0c9acb (Patch I) ke origin/main
+
+Work Log:
+- PAT kelima valid (api.github.com/user HTTP 200; login handokov; string TIDAK dicatat di mana pun — aturan Task 45-b)
+- Pre-push checklist: status bersih di e0c9acb; secret scan diff ba43886..e0c9acb = NIHIL; full tree HEAD = 1 hit prosa worklog lama (kalimat deskripsi pola scan, bukan literal token — pola sama sudah pernah lolos push protection)
+- ls-remote sebelum: remote main = ba43886 (lokal TIDAK stale kali ini — hanya 1 commit di depan)
+- Push one-shot sukses: ba43886..e0c9acb HEAD -> main, fast-forward linear, push protection nihil
+- Sisa PAT kelima: user diingatkan revoke setelah sesi ini
+
+Stage Summary:
+- Patch I resmi di origin/main -> Vercel auto-deploy; pasca-deploy: (1) entry limit yang sudah fill di Bitget tidak lagi membiarkan web "menunggu garis" — deteksi konklusif via orderInfo + fallback fills by orderId; (2) posisi yang Bitget sudah TP/SL-sell direkonsiliasi otomatis di tick berikutnya dgn fill asli (kasus BTWUSDT ikut beres sendiri); (3) arc BUY->TP yang selesai antar 2 tick tercatat sekaligus di tick yang sama
+- Verifikasi user pasca-deploy: posisi BTWUSDT yang masih open di web akan tertutup otomatis via reconcile pada tick live pertama setelah deploy aktif; cek log transaksi — SELL muncul dgn harga TP asli Bitget
