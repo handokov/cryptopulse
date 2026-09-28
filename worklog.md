@@ -1750,3 +1750,22 @@ Work Log:
 Stage Summary:
 - Patch H resmi di origin/main -> Vercel auto-deploy; pasca-deploy engine memakai "Maks transaksi / hari" dari form (1-20), summary tampil "x / 20", reason HOLD "max 20 trades/day"
 - Verifikasi user: buka form edit bot -> pastikan angka 20 tersimpan; tunggu tick -> bila skor/coldown lolos, entry tidak lagi mentok di 8
+
+---
+Task ID: 50 (PATCH I — deteksi fill live limit telat/tersembunyi + reconcile exit di tick yang sama)
+Agent: main (Super Z)
+Task: User test BTWUSDT (volatil cepat): Bitget sudah fill entry, web masih "menunggu harga menyentuh garis"; Bitget sudah TP-sell, web masih pending; siklus kedua terdeteksi telat dan kini posisi open di web padahal Bitget sudah jual via TP
+
+Work Log:
+- Akar 1 (fetchOrderFill, bitget-trade.ts:529): SEMUA error API ditelan -> status "unknown" -> classify UNKNOWN -> engine "keep waiting" diam-diam; baris kosong membaca sama; orderInfo buta = pending tersangkut selamanya
+- Akar 2: tidak ada fallback ke fills — rekaman eksekusi nyata (fetchRecentFills; respons memuat orderId) tidak pernah dicek jalur pending
+- Akar 3 (TTL path): cancel pada order yang SUDAH filled = error dari Bitget -> catch -> "retry next tick" -> deadlock permanen; re-read pasca-cancel hanya jalan bila cancel sukses
+- Akar 4 (struktural): tidak ada jalur reconcile "pending ternyata sudah fill + OCO sudah jual" — findOcoExitFill/liveOcoReconcile butuh posisi OPEN di DB
+- Patch I (engine.ts): (1) detectLiveEntryFill — orderInfo FILLED menang dgn angka persis; state lain (UNKNOWN/OPEN/CANCELLED) dicek silang ke fills by orderId (weighted-avg price, sum qty); PARTIAL tetap jalur TTL; (2) openLivePositionAndReconcileExit — clear pending, buka posisi, log BUY, lalu liveOcoReconcile INLINE di tick sama (arc entry->TP selesai antar 2 tick: BUY+SELL tercatat sekaligus dgn fill asli); (3) TTL race-check & TTL cancel-FAILED pakai deteksi konklusif (cancel gagal = gejala order filled); (4) CANCELLED dicek fill-race dulu
+- Catatan arsitektur: dana tetap terlindungi exchange-side sepanjang kejadian (attached OCO arm otomatis saat fill di Bitget) — lag web hanya tampilan + exit engine-initiated; latensi deteksi dibatasi kadens tick (cron ~5 mnt, free tier gap 2-7 jam), bukan logika
+- Verifikasi: eslint engine.ts bersih; tsc src/ tetap 4 error pre-existing (0 baru)
+- Commit lokal menunggu PAT kelima
+
+Stage Summary:
+- Setelah deploy: fill telat tetap terdeteksi via fills (tidak ada lagi "menunggu garis" selamanya); posisi yang Bitget sudah TP-sell direkonsiliasi otomatis dgn harga fill asli di tick berikutnya — posisi BTWUSDT yang stuck ikut beres sendiri
+- Sisa risiko: kadens cron (infra), bukan logika engine

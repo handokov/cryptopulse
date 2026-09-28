@@ -479,11 +479,105 @@ async function openLivePosition(args: {
 }
 
 /**
+ * Patch I — conclusive entry-fill detection for an armed LIVE limit.
+ * orderInfo can be blind exactly when it matters most: a transient API error
+ * is swallowed into status "unknown", an empty row reads the same, and a
+ * cancel can race a fill — the engine then says "keep waiting" forever while
+ * the exchange already bought (and on a fast token, already TP-sold). The
+ * fills record is the ground truth: look up OUR orderId there before ever
+ * believing "still waiting".
+ */
+async function detectLiveEntryFill(
+  creds: BitgetCreds,
+  symbol: string,
+  orderId: string,
+  placedAtMs: number,
+  info?: Awaited<ReturnType<typeof fetchOrderFill>>
+): Promise<{ price: number; qty: number; source: "orderInfo" | "fills" } | null> {
+  if (
+    info &&
+    classifyOrderStatus(info.status) === "FILLED" &&
+    (info.baseVolume ?? 0) > 0 &&
+    (info.priceAvg ?? 0) > 0
+  ) {
+    return { price: info.priceAvg as number, qty: info.baseVolume as number, source: "orderInfo" };
+  }
+  const rows = await fetchRecentFills(creds, symbol, Math.max(0, placedAtMs - 60_000));
+  const mine = rows.filter((f) => f.orderId === orderId && f.side === "buy");
+  if (mine.length === 0) return null;
+  const qty = mine.reduce((a, f) => a + f.size, 0);
+  const quote = mine.reduce((a, f) => a + f.price * f.size, 0);
+  return qty > 0 && quote > 0 ? { price: quote / qty, qty, source: "fills" } : null;
+}
+
+/**
+ * Patch I — open the position for a detected (possibly late) entry fill and,
+ * within the SAME tick, check whether the exchange OCO already exited: on a
+ * fast token the whole entry→TP arc can complete between two of our ticks,
+ * so "position opened" and "position closed by the exchange" must be able to
+ * land in one pass. Clears the pending state first; the BUY row always lands
+ * in the audit trail; a same-tick OCO exit adds its SELL row on top.
+ */
+async function openLivePositionAndReconcileExit(args: {
+  cfg: BotConfigRow;
+  creds: BitgetCreds;
+  signal: ReturnType<typeof computeBotSignal>;
+  price: number;
+  entryPrice: number;
+  qty: number;
+  effSlPct: number;
+  effTpPct: number;
+  orderId: string;
+  entryReason: string;
+  entryDetail: Record<string, unknown>;
+}): Promise<TickOutcome> {
+  const { cfg, creds, signal, price, entryPrice, qty, effSlPct, effTpPct, orderId, entryReason, entryDetail } = args;
+  const sizeUsdt = qty * entryPrice;
+  await db.botConfig.update({
+    where: { id: cfg.id },
+    data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null, pendingEntryOrderId: null },
+  });
+  await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct });
+  await logTrade(cfg, {
+    action: "BUY",
+    status: "SUBMITTED",
+    sizeUsdt,
+    qty,
+    price: entryPrice,
+    orderId,
+    reason: entryReason,
+    detail: detailJson(signal, entryDetail),
+  });
+  const pos = await db.botPosition.findFirst({
+    where: { configId: cfg.id, status: "OPEN", paper: false },
+    orderBy: { openedAt: "desc" },
+  });
+  if (!pos) {
+    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "BUY", reason: entryReason, score: signal.score };
+  }
+  const exitOutcome = await liveOcoReconcile(
+    cfg,
+    creds,
+    pos,
+    signal,
+    price,
+    "exchange OCO after late-reconciled entry",
+    "tp-or-sl"
+  );
+  if (exitOutcome.action === "SELL") return exitOutcome;
+  return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "BUY", reason: entryReason, score: signal.score };
+}
+
+/**
  * Lifecycle of an armed LIVE limit, evaluated once per tick (reached only
  * when NO position is open — the exit ladder returns earlier):
- *   1. orderInfo FILLED → position + the exchange already armed the OCO;
- *   2. CANCELLED externally (user cancelled on Bitget) → clear, wait;
- *   3. TTL elapsed → cancel → race-check (may have filled mid-cancel) →
+ *   1. FILLED (orderInfo, else Patch I fills ground truth) → position + the
+ *      exchange already armed the OCO; if the OCO already exited too, the
+ *      same tick closes the position with the real sell fill;
+ *   2. CANCELLED externally (user cancelled on Bitget) → fill-race checked
+ *      via fills, then clear, wait;
+ *   3. TTL elapsed → cancel → race-check (may have filled mid-cancel; a
+ *      FAILED cancel is itself a filled-order symptom — Patch I) →
  *      re-price while the signal holds, else cancel (free anti-buy-the-top);
  *   4. otherwise keep waiting.
  */
@@ -510,32 +604,44 @@ async function livePendingEntryTick(
   const fill = await fetchOrderFill(creds, cfg.symbol, orderId);
   const state = classifyOrderStatus(fill.status);
 
-  /* 1. Filled → open the position; OCO protection already lives on the exchange. */
-  if (state === "FILLED") {
-    const entryPrice = fill.priceAvg ?? level;
-    const qty = fill.baseVolume ?? 0;
-    if (qty <= 0 || entryPrice <= 0) {
-      // fill info not usable — wait for a better read, never guess
-      return { ...base, action: "HOLD", reason: `live limit filled but fill data incomplete (${fill.status}), retrying` };
-    }
-    const sizeUsdt = qty * entryPrice;
-    await db.botConfig.update({ where: { id: cfg.id }, data: clear });
-    await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct });
-    const reason = `live limit filled @ ${entryPrice.toPrecision(6)} — OCO TP/SL armed by exchange`;
-    await logTrade(cfg, {
-      action: "BUY",
-      status: "SUBMITTED",
-      sizeUsdt,
-      qty,
-      price: entryPrice,
+  /* Patch I — one conclusive detection pass: orderInfo FILLED wins with its
+     exact numbers; every other state (UNKNOWN from swallowed API errors,
+     stale reads, CANCELLED that raced a fill) is cross-checked against the
+     real fills record by orderId. "Still waiting" may only be believed when
+     neither source shows a fill. PARTIAL stays on the TTL path: the order
+     is still live and cancel/re-arm handles the remaining size. */
+  const detected =
+    state === "PARTIAL"
+      ? null
+      : await detectLiveEntryFill(creds, cfg.symbol, orderId, placedAt, fill).catch(() => null);
+
+  /* 1. Filled → open the position; OCO protection already lives on the
+        exchange. Patch I: if the OCO already exited too (fast token — the
+        whole entry→TP arc between two ticks), close it in the same pass. */
+  if (detected && detected.qty > 0 && detected.price > 0) {
+    return openLivePositionAndReconcileExit({
+      cfg,
+      creds,
+      signal,
+      price,
+      entryPrice: detected.price,
+      qty: detected.qty,
+      effSlPct,
+      effTpPct,
       orderId,
-      reason,
-      detail: detailJson(signal, { limitEntry: true, live: true, armedLevel: level }),
+      entryReason: `live limit filled @ ${detected.price.toPrecision(6)} — OCO TP/SL armed by exchange (fill via ${detected.source})`,
+      entryDetail: { limitEntry: true, live: true, armedLevel: level, fillSource: detected.source },
     });
-    return { ...base, action: "BUY", reason };
   }
 
-  /* 2. Cancelled outside the engine (user pressed cancel on Bitget). */
+  /* 1b. Status positively says filled but no usable numbers anywhere —
+         never guess the entry; wait for a better read. */
+  if (state === "FILLED") {
+    return { ...base, action: "HOLD", reason: `live limit filled but fill data incomplete (${fill.status}), retrying` };
+  }
+
+  /* 2. Cancelled outside the engine (user pressed cancel on Bitget) — with
+        no fill hiding underneath (checked above via the fills record). */
   if (state === "CANCELLED") {
     await db.botConfig.update({ where: { id: cfg.id }, data: clear });
     await logTrade(cfg, {
@@ -550,29 +656,50 @@ async function livePendingEntryTick(
   if (placedAt > 0 && Date.now() - placedAt >= ttlMs) {
     try {
       await cancelSpotOrder(creds, { symbol: cfg.symbol, orderId });
-      // cancel raced with a fill? re-read the order once
+      // cancel raced with a fill? Patch I: conclusive detection (orderInfo +
+      // fills ground truth), then open + same-tick OCO reconcile
       const after = await fetchOrderFill(creds, cfg.symbol, orderId);
-      const afterState = classifyOrderStatus(after.status);
-      if (afterState === "FILLED" && (after.baseVolume ?? 0) > 0) {
-        const entryPrice = after.priceAvg ?? level;
-        const qty = after.baseVolume as number;
-        const sizeUsdt = qty * entryPrice;
-        await db.botConfig.update({ where: { id: cfg.id }, data: clear });
-        await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct });
-        const reason = `live limit filled during TTL cancel @ ${entryPrice.toPrecision(6)} — OCO armed`;
-        await logTrade(cfg, {
-          action: "BUY",
-          status: "SUBMITTED",
-          sizeUsdt,
-          qty,
-          price: entryPrice,
+      const raced = await detectLiveEntryFill(creds, cfg.symbol, orderId, placedAt, after).catch(() => null);
+      if (raced && raced.qty > 0 && raced.price > 0) {
+        return openLivePositionAndReconcileExit({
+          cfg,
+          creds,
+          signal,
+          price,
+          entryPrice: raced.price,
+          qty: raced.qty,
+          effSlPct,
+          effTpPct,
           orderId,
-          reason,
-          detail: detailJson(signal, { limitEntry: true, live: true, armedLevel: level }),
+          entryReason: `live limit filled during TTL cancel @ ${raced.price.toPrecision(6)} — OCO armed (fill via ${raced.source})`,
+          entryDetail: { limitEntry: true, live: true, armedLevel: level, fillSource: raced.source, raced: "ttl-cancel" },
         });
-        return { ...base, action: "BUY", reason };
       }
     } catch {
+      /* Patch I: cancelling an ALREADY-FILLED order is itself an error —
+         this catch is exactly where a fill hides. Detect before "retry next
+         tick" or the pending state deadlocks here forever. */
+      const after = await fetchOrderFill(creds, cfg.symbol, orderId).catch(() => ({
+        status: "unknown",
+        priceAvg: null,
+        baseVolume: null,
+      }));
+      const raced = await detectLiveEntryFill(creds, cfg.symbol, orderId, placedAt, after).catch(() => null);
+      if (raced && raced.qty > 0 && raced.price > 0) {
+        return openLivePositionAndReconcileExit({
+          cfg,
+          creds,
+          signal,
+          price,
+          entryPrice: raced.price,
+          qty: raced.qty,
+          effSlPct,
+          effTpPct,
+          orderId,
+          entryReason: `live limit filled during TTL cancel @ ${raced.price.toPrecision(6)} — OCO armed (fill via ${raced.source})`,
+          entryDetail: { limitEntry: true, live: true, armedLevel: level, fillSource: raced.source, raced: "ttl-cancel-failed" },
+        });
+      }
       // cancel failed (network/exchange) — the order may still be live; wait a tick
       return { ...base, action: "HOLD", reason: `TTL hit but cancel failed — limit ${level.toPrecision(6)} left on the book, retry next tick` };
     }
