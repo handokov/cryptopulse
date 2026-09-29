@@ -1785,3 +1785,22 @@ Work Log:
 Stage Summary:
 - Patch I resmi di origin/main -> Vercel auto-deploy; pasca-deploy: (1) entry limit yang sudah fill di Bitget tidak lagi membiarkan web "menunggu garis" — deteksi konklusif via orderInfo + fallback fills by orderId; (2) posisi yang Bitget sudah TP/SL-sell direkonsiliasi otomatis di tick berikutnya dgn fill asli (kasus BTWUSDT ikut beres sendiri); (3) arc BUY->TP yang selesai antar 2 tick tercatat sekaligus di tick yang sama
 - Verifikasi user pasca-deploy: posisi BTWUSDT yang masih open di web akan tertutup otomatis via reconcile pada tick live pertama setelah deploy aktif; cek log transaksi — SELL muncul dgn harga TP asli Bitget
+
+---
+Task ID: 51 (PATCH K — posisi live duplikat: OPNUSDT ×2 baris identik, harusnya 1)
+Agent: main (Super Z)
+Task: User lihat 2 posisi buy OPNUSDT identik (entry $0.0543, TP/SL/size sama) — harusnya 1
+
+Work Log:
+- Konteks sesi: kasus "portofolio & bot tidak nyambung" sebelumnya = masalah SESI login (sign out/in memperbaiki) — API key Bitget SEHAT; sempat terdiagnosis salah arah karena simptom; tanggal beli portofolio hilang = koneksi pernah dihapus→re-add (DELETE connection menghapus holding import-nya, baris 25 route [id]) — sync re-import mereset purchasePrice/purchaseDate (Patch J "memori cost-basis" ditawarkan, belum diminta)
+- Akar duplikat OPNUSDT (engine.ts): TIDAK ada serialisasi tick — cron GitHub + heartbeat halaman (atau manual "Run now" di tengah cron) bisa menjalankan tickOne bot yang sama BERSAMAAN; keduanya membaca openPositions = kosong, lolos semua gate, keduanya menaruh entry → 2 order/baris identik. Guard 4-menit hanya cek lastTickAt yang baru di-update di AKHIR tick (touchConfig) — window race = seluruh durasi tick
+- Patch K (3 lapis independen): (1) tickOne admission = CAS lastTickAt (updateMany WHERE lastTickAt = nilai saat dibaca; kalah → SKIP "tick race lost") — hanya 1 tick per bot pada satu waktu; (2) armLiveLimit meng-claim slot pending SECARA ATOMIK sebelum panggil exchange (fresh entry: slot kosong; TTL re-arm: orderId sendiri yg baru dicancel; placement gagal → slot dilepas) — 2 order nyata di level sama tidak mungkin lagi, order pertama tidak jadi yatim di book; (3) BotPosition.entryOrderId TEXT + UNIQUE (migrasi ensureBotColumns idempotent: ADD COLUMN + CREATE UNIQUE INDEX; NULL ganda legal di SQLite utk row paper/legacy) = mutex fill: fill yang direkonsilasi 2 tick → create P2002, yang kalah return tanpa BUY ganda
+- Urutan openLivePositionAndReconcileExit dibalik: create posisi DULU (unique index = mutex sejati), baru clear pending — twin yang kalah P2002 tidak menyentuh apa pun; jalur market BUY ikut di-guard entryOrderId
+- Sisa (tidak diubah): loop exit tickOne tetap return di posisi pertama — invarian ≤1 posisi open per config kini ditegakkan Patch K; duplikat lama ditutup manual oleh user
+- Verifikasi: eslint engine.ts+migrate.ts bersih; tsc src/ 0 error baru (prisma generate dijalankan utk tipe entryOrderId)
+- Commit lokal eb2be07 MENUNGGU PAT keenam (PAT kelima dipakai push Patch I Task 50-b, harusnya sudah di-revoke user)
+
+Stage Summary:
+- Setelah deploy: duplikat posisi live tidak mungkin terjadi lagi — admission CAS menyatukan tick, slot CAS mencegah 2 order nyata, UNIQUE(entryOrderId) mencegah 2 baris dari 1 fill
+- Cleanup kasus berjalan: user cek riwayat order Bitget (OPNUSDT) — 1 vs 2 buy fill menentukan apakah baris kedua phantom atau nyata; tombol "Tutup posisi" menutup SEMUA posisi open bot itu (manualClosePositions), baris phantom self-heal via reconcile Patch G
+- Patch J (memori cost-basis portofolio) diusulkan, belum diminta user
