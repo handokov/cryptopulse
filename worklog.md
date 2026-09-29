@@ -1821,3 +1821,22 @@ Stage Summary:
 - Pasca-deploy: tick pertama bot OPNUSDT menggabungkan baris kembar otomatis — tabel "Posisi terbuka" kembali 1 baris; log aktivitas mencatat "cleanup: 1 baris posisi duplikat OPNUSDT digabung otomatis"
 - Invarian ≤1 posisi open per config kini ditegakkan penuh: pencegahan (3 lapis Patch K) + penyembuhan (cleanup pass)
 - PAT keenam: validasi + push 3 commit (eb2be07, 2c5fb7f, c33a8a2) — string TIDAK dicatat di file mana pun (aturan Task 45-b)
+
+---
+Task ID: 52 (PATCH L — TP ketinggalan: trailing stop menjual di bawah TP yang sudah tertembus + PnL kotor tanpa komisi)
+Agent: main (Super Z)
+Task: User keluhan: harga OPN sudah di atas garis TP, harusnya untung di TP, tapi bot jual via trailing stop di ~0 keuntungan, malah rugi setelah komisi Bitget; 2 trade terakhir (0.0543→0.0545 dan 0.0549→0.0553) keduanya "trailing stop"
+
+Work Log:
+- BUKTI data (scripts/opn_kline_check.py, candle Bitget publik): trade A high 0.0564 @ 14:35 UTC vs TP 0.055998 (TERTEMBUS); trade B high 0.0558 @ 16:10 UTC vs TP 0.055386 (TERTEMBUS, +0.7% di atas trigger ≥30 mnt) — kedua posisi tetap exit trailing di bawah TP → OCO TP exchange tidak pernah menembak; exit tercatat = market sell engine (balance masih ada)
+- Akar 1: trail/flip = engine-initiated yang MENG-CANCEL OCO TP lalu jual pasar — engine selalu bisa menjual lebih buruk dari TP-nya sendiri; spike terjadi ANTARA dua tick (cron 5 mnt–7 jam), engine tak pernah sampling harga ≥ TP, lalu trail menembak saat harga turun
+- Akar 2: OCO hilang + tidak ada fill + band tertembus → HOLD selamanya ("reconcile retries next tick") — posisi telanjang menggantung
+- Akar 3: PnL terekam KOTOR (gross) padahal Bitget potong ~0.1%/sisi → +0.37% gross tampil +0.00 USDT, aktual minus setelah komisi
+- Patch L: (1) ocoSellLegArmed (fail-safe = armed) — selama sell leg OCO masih aktif, exit engine-initiated (trail/flip) DITAHAN: exit milik exchange, proteksi tak pernah dibatalkan demi harga lebih buruk; (2) liveOcoReconcile AMBIL ALIH (market sell) saat OCO hilang + harga menembus band (balance clamp tetap pengaman bila OCO ternyata sudah menembak — saldo 0/frozen → retry); (3) PnL bersih komisi di SEMUA jalur close live: SpotFill/OrderFill kini mem-parsing fee/feeCoin (fillFee fallback), BotPosition.entryFeeUsdt tersimpan saat open (kolom + migrasi), netPnlOf = gross − entryFee − exitFee (fallback estimasi taker 0.1%/sisi, dilabeli "≈"); detail JSON memuat grossPnl + feeUsdt; paper tetap bebas komisi
+- Verifikasi: eslint engine/bitget-trade/migrate 0 error; tsc 0 error baru (1 diperbaiki: inline OrderFill catch TTL + fee; raced TTL-cancel kini meneruskan entryFeeUsdt); prisma generate dijalankan
+- Commit 6983bb0; push bersama worklog ke origin/main via PAT keenam
+
+Stage Summary:
+- Pasca-deploy: harga menembus TP → OCO exchange menembak (atau engine ambil alih di band) → web merekonsiliasi di harga TP asli (~+2% bruto) — trailing TIDAK LAGI membatalkan TP yang lebih baik; posisi telanjang (OCO hilang) kini ada jalur keluar; PnL tampil BERSIH komisi dgn rincian di log
+- Trade-off disadari: trailing stop engine menjadi iner untuk posisi live ber-OCO (paper tetap trail penuh) — konsisten dengan filosofi "proteksi exchange-side"; eksplisit di alasan HOLD "exit milik exchange"
+- PAT keenam dipakai lagi (sesi sama), diingatkan revoke setelah ini
