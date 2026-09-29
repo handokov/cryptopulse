@@ -145,6 +145,10 @@ model BotPosition {
   // UNIQUE = the fill mutex: a fill reconciled by two concurrent ticks can
   // only ever create ONE row. null on paper and legacy rows.
   entryOrderId   String?
+  // Patch L — actual commission (USDT) Bitget charged on the ENTRY fill.
+  // null on paper and legacy rows — the close path then estimates it at the
+  // base-tier taker rate. Realized PnL is recorded NET of entry + exit fees.
+  entryFeeUsdt   Float?
   // "OPEN" | "CLOSED"
   status         String    @default("OPEN")
   exitPrice      Float?

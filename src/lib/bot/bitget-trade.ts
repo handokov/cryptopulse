@@ -417,6 +417,10 @@ export interface SpotFill {
   size: number;
   quoteUsdt: number;
   ts: number;
+  /* Patch L — commission charged on this fill (feeCoin: USDT on sells,
+     base coin on buys). 0/"" when the API row omits them. */
+  fee: number;
+  feeCoin: string;
 }
 
 /**
@@ -446,6 +450,8 @@ export async function fetchRecentFills(
         size: toNum(r.size),
         quoteUsdt: toNum(r.amount),
         ts: toNum(r.uTime) || toNum(r.cTime),
+        fee: toNum(r.fee),
+        feeCoin: String(r.feeCoin ?? ""),
       }))
       .filter((f) => f.price > 0 && f.size > 0);
   } catch {
@@ -523,25 +529,33 @@ export interface OrderFill {
   status: string;
   priceAvg: number | null;
   baseVolume: number | null;
+  /* Patch L — commission on the filled portion (fillFee/fillFeeCoin on v2
+     orderInfo; fee/feeCoin fallback). null = API did not report it. */
+  fee: number | null;
+  feeCoin: string | null;
 }
 
 /** Best-effort fill info for a placed order (used to refine entry price). */
 export async function fetchOrderFill(creds: ExchangeCredentials, symbol: string, orderId: string): Promise<OrderFill> {
   const path = `/api/v2/spot/trade/orderInfo?symbol=${encodeURIComponent(symbol)}&orderId=${encodeURIComponent(orderId)}`;
   try {
-    const data = await signedRequest<{ status?: unknown; priceAvg?: unknown; baseVolume?: unknown }[]>(
+    const data = await signedRequest<Record<string, unknown>[]>(
       creds,
       "GET",
       path
     );
     const row = Array.isArray(data) ? data[0] : undefined;
-    if (!row) return { status: "unknown", priceAvg: null, baseVolume: null };
+    if (!row) return { status: "unknown", priceAvg: null, baseVolume: null, fee: null, feeCoin: null };
+    const fee = toNum(row.fillFee) > 0 ? toNum(row.fillFee) : toNum(row.fee) > 0 ? toNum(row.fee) : null;
+    const feeCoin = String(row.fillFeeCoin ?? row.feeCoin ?? "") || null;
     return {
       status: typeof row.status === "string" ? row.status : "unknown",
       priceAvg: toNum(row.priceAvg) > 0 ? toNum(row.priceAvg) : null,
       baseVolume: toNum(row.baseVolume) > 0 ? toNum(row.baseVolume) : null,
+      fee,
+      feeCoin,
     };
   } catch {
-    return { status: "unknown", priceAvg: null, baseVolume: null };
+    return { status: "unknown", priceAvg: null, baseVolume: null, fee: null, feeCoin: null };
   }
 }

@@ -280,6 +280,18 @@ async function run(): Promise<boolean> {
     ok = false;
     console.error("[bot-migrate] UNIQUE(BotPosition.entryOrderId) failed:", err instanceof Error ? err.message : err);
   }
+  /* Patch L — BotPosition.entryFeeUsdt: actual commission (USDT) charged on
+     the entry fill. null on paper/legacy rows → the close path estimates it
+     at the base taker rate. Realized PnL = gross − entryFee − exitFee. */
+  try {
+    if (!(await columnExists("BotPosition", "entryFeeUsdt"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotPosition" ADD COLUMN "entryFeeUsdt" REAL`);
+      console.log("[bot-migrate] BotPosition.entryFeeUsdt added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotPosition.entryFeeUsdt failed:", err instanceof Error ? err.message : err);
+  }
   return ok;
 }
 

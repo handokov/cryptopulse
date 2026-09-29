@@ -112,6 +112,7 @@ interface OpenPositionRow {
   targetPrice: number;
   highestPrice: number | null;
   tpslArmed: boolean;
+  entryFeeUsdt: number | null;
   openedAt: Date;
 }
 
@@ -502,6 +503,7 @@ async function openLivePosition(args: {
   effSlPct: number;
   effTpPct: number;
   orderId: string;
+  entryFeeUsdt?: number;
 }): Promise<boolean> {
   const { cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct, orderId } = args;
   try {
@@ -520,6 +522,7 @@ async function openLivePosition(args: {
         highestPrice: entryPrice,
         tpslArmed: true, // attached OCO on the entry order protects this position
         entryOrderId: orderId,
+        entryFeeUsdt: args.entryFeeUsdt != null && args.entryFeeUsdt > 0 ? args.entryFeeUsdt : null,
         status: "OPEN",
       },
     });
@@ -545,21 +548,27 @@ async function detectLiveEntryFill(
   orderId: string,
   placedAtMs: number,
   info?: Awaited<ReturnType<typeof fetchOrderFill>>
-): Promise<{ price: number; qty: number; source: "orderInfo" | "fills" } | null> {
+): Promise<{ price: number; qty: number; feeUsdt: number; source: "orderInfo" | "fills" } | null> {
   if (
     info &&
     classifyOrderStatus(info.status) === "FILLED" &&
     (info.baseVolume ?? 0) > 0 &&
     (info.priceAvg ?? 0) > 0
   ) {
-    return { price: info.priceAvg as number, qty: info.baseVolume as number, source: "orderInfo" };
+    return {
+      price: info.priceAvg as number,
+      qty: info.baseVolume as number,
+      feeUsdt: feeToUsdt(info.fee, info.feeCoin, info.priceAvg),
+      source: "orderInfo",
+    };
   }
   const rows = await fetchRecentFills(creds, symbol, Math.max(0, placedAtMs - 60_000));
   const mine = rows.filter((f) => f.orderId === orderId && f.side === "buy");
   if (mine.length === 0) return null;
   const qty = mine.reduce((a, f) => a + f.size, 0);
   const quote = mine.reduce((a, f) => a + f.price * f.size, 0);
-  return qty > 0 && quote > 0 ? { price: quote / qty, qty, source: "fills" } : null;
+  const feeUsdt = mine.reduce((a, f) => a + feeToUsdt(f.fee, f.feeCoin, f.price), 0);
+  return qty > 0 && quote > 0 ? { price: quote / qty, qty, feeUsdt, source: "fills" } : null;
 }
 
 /**
@@ -582,13 +591,14 @@ async function openLivePositionAndReconcileExit(args: {
   orderId: string;
   entryReason: string;
   entryDetail: Record<string, unknown>;
+  entryFeeUsdt?: number;
 }): Promise<TickOutcome> {
   const { cfg, creds, signal, price, entryPrice, qty, effSlPct, effTpPct, orderId, entryReason, entryDetail } = args;
   const sizeUsdt = qty * entryPrice;
   /* Patch K — create FIRST: the entryOrderId unique index is the mutex, so a
      concurrent tick reconciling the same fill can never open a second row.
      Pending state is cleared only after we know we own the fill. */
-  const opened = await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct, orderId });
+  const opened = await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct, orderId, entryFeeUsdt: args.entryFeeUsdt });
   if (!opened) {
     return {
       userId: cfg.userId,
@@ -696,6 +706,7 @@ async function livePendingEntryTick(
       orderId,
       entryReason: `live limit filled @ ${detected.price.toPrecision(6)} — OCO TP/SL armed by exchange (fill via ${detected.source})`,
       entryDetail: { limitEntry: true, live: true, armedLevel: level, fillSource: detected.source },
+      entryFeeUsdt: detected.feeUsdt,
     });
   }
 
@@ -738,6 +749,7 @@ async function livePendingEntryTick(
           orderId,
           entryReason: `live limit filled during TTL cancel @ ${raced.price.toPrecision(6)} — OCO armed (fill via ${raced.source})`,
           entryDetail: { limitEntry: true, live: true, armedLevel: level, fillSource: raced.source, raced: "ttl-cancel" },
+          entryFeeUsdt: raced.feeUsdt,
         });
       }
     } catch {
@@ -748,6 +760,8 @@ async function livePendingEntryTick(
         status: "unknown",
         priceAvg: null,
         baseVolume: null,
+        fee: null,
+        feeCoin: null,
       }));
       const raced = await detectLiveEntryFill(creds, cfg.symbol, orderId, placedAt, after).catch(() => null);
       if (raced && raced.qty > 0 && raced.price > 0) {
@@ -864,7 +878,7 @@ async function findOcoExitFill(
   creds: BitgetCreds,
   cfg: TradeLogConfig,
   pos: OpenPositionRow
-): Promise<{ price: number; qty: number } | null> {
+): Promise<{ price: number; qty: number; feeUsdt: number } | null> {
   const [rows, sold] = await Promise.all([
     fetchRecentFills(creds, pos.symbol, pos.openedAt.getTime() - 60_000),
     engineSoldOrderIds(cfg.id),
@@ -874,7 +888,7 @@ async function findOcoExitFill(
     .filter((f) => Math.abs(f.size - pos.qty) / pos.qty <= 0.35)
     .sort((a, b) => b.ts - a.ts);
   const hit = candidates[0];
-  return hit ? { price: hit.price, qty: hit.size } : null;
+  return hit ? { price: hit.price, qty: hit.size, feeUsdt: feeToUsdt(hit.fee, hit.feeCoin, hit.price) } : null;
 }
 
 /**
@@ -898,6 +912,20 @@ async function liveSellQty(creds: BitgetCreds, pos: OpenPositionRow): Promise<st
     /* balance read failed — fall back to the position qty */
   }
   return clipToPrecision(available, 8);
+}
+
+/**
+ * Patch L — OCO guardianship probe: is a TP/SL sell leg still armed on the
+ * exchange for this position's size? A read failure counts as ARMED —
+ * never cancel protection on a blind guess.
+ */
+async function ocoSellLegArmed(creds: BitgetCreds, pos: OpenPositionRow): Promise<boolean> {
+  try {
+    const rows = await fetchOcoPlanRows(creds, pos.symbol);
+    return rows.some((r) => r.side === "sell" && r.size > 0 && Math.abs(r.size - pos.qty) / pos.qty <= 0.35);
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -929,19 +957,19 @@ async function liveEngineExit(
       // nothing to sell — the OCO probably fired already; reconcile instead
       const fill = await findOcoExitFill(creds, cfg, pos);
       if (fill) {
-        const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-        await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled from OCO fill)`);
+        const { pnl, fee, note } = netPnlOf(pos, fill.price, fill.feeUsdt);
+        await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled from OCO fill)${note}`);
         await logTrade(cfg, {
           action: "SELL",
           status: "SUBMITTED",
           sizeUsdt: pos.sizeUsdt,
           qty: fill.qty,
           price: fill.price,
-          reason: `${exitReason} (OCO fill reconciled)`,
+          reason: `${exitReason} (OCO fill reconciled)${note}`,
           pnlUsdt: pnl,
-          detail: detailJson(signal, { exit: exitKind, reconciled: true }),
+          detail: detailJson(signal, { exit: exitKind, reconciled: true, grossPnl: Number(((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt: fee }),
         });
-        return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)`, pnlUsdt: pnl };
+        return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)${note}`, pnlUsdt: pnl };
       }
       return { ...base, action: "HOLD", reason: `${exitKind} skipped — no sellable balance and no OCO fill found yet` };
     }
@@ -949,8 +977,8 @@ async function liveEngineExit(
     const fill = await fetchOrderFill(creds, cfg.symbol, placed.orderId);
     const exitPrice = fill.priceAvg ?? fallbackPrice;
     const exitQty = fill.baseVolume ?? Number(qtyStr);
-    const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-    await closePosition(pos.id, exitPrice, livePnl, exitReason);
+    const { pnl: livePnl, fee: feeUsdt, note: feeNote } = netPnlOf(pos, exitPrice, feeToUsdt(fill.fee, fill.feeCoin, fill.priceAvg));
+    await closePosition(pos.id, exitPrice, livePnl, `${exitReason}${feeNote}`);
     await logTrade(cfg, {
       action: "SELL",
       status: "SUBMITTED",
@@ -959,11 +987,11 @@ async function liveEngineExit(
       price: exitPrice,
       orderId: placed.orderId,
       clientOid: placed.clientOid,
-      reason: exitReason,
+      reason: `${exitReason}${feeNote}`,
       pnlUsdt: livePnl,
-      detail: detailJson(signal, { exit: exitKind, ocoCancelled: oco.cancelled, fillStatus: fill.status }),
+      detail: detailJson(signal, { exit: exitKind, ocoCancelled: oco.cancelled, fillStatus: fill.status, grossPnl: Number(((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt }),
     });
-    return { ...base, action: "SELL", reason: exitReason, pnlUsdt: livePnl };
+    return { ...base, action: "SELL", reason: `${exitReason}${feeNote}`, pnlUsdt: livePnl };
   } catch (err) {
     const msg = err instanceof Error ? err.message.slice(0, 160) : "sell failed";
     /* Patch G: a rejected sell (e.g. 43012 Insufficient balance) can also mean
@@ -973,19 +1001,19 @@ async function liveEngineExit(
        retrying a doomed sell every tick. */
     const fill = await findOcoExitFill(creds, cfg, pos).catch(() => null);
     if (fill) {
-      const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-      await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled after sell failure)`);
+      const { pnl, fee, note } = netPnlOf(pos, fill.price, fill.feeUsdt);
+      await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled after sell failure)${note}`);
       await logTrade(cfg, {
         action: "SELL",
         status: "SUBMITTED",
         sizeUsdt: pos.sizeUsdt,
         qty: fill.qty,
         price: fill.price,
-        reason: `${exitReason} (OCO fill reconciled after sell rejection)`,
+        reason: `${exitReason} (OCO fill reconciled after sell rejection)${note}`,
         pnlUsdt: pnl,
-        detail: detailJson(signal, { exit: exitKind, reconciled: true, sellError: msg }),
+        detail: detailJson(signal, { exit: exitKind, reconciled: true, sellError: msg, grossPnl: Number(((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt: fee }),
       });
-      return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)`, pnlUsdt: pnl };
+      return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)${note}`, pnlUsdt: pnl };
     }
     await logTrade(cfg, { action: "SELL", status: "FAILED", reason: `${exitKind} sell failed: ${msg}`, detail: detailJson(signal, { exit: exitKind }) });
     return { ...base, action: "ERROR", reason: `${exitKind} sell failed: ${msg}` };
@@ -1019,25 +1047,45 @@ async function liveOcoReconcile(
   }
   const fill = await findOcoExitFill(creds, cfg, pos);
   if (!fill) {
+    /* Patch L — the OCO is gone and no exit fill exists: either the plans
+       were cancelled (engine/manual) or never armed. Between the bands the
+       position is merely unprotected, not exit-worthy: HOLD and let the
+       engine's own rules manage it (the trail/flip paths now see a missing
+       OCO leg and may act). Once the price crosses a band, TAKE OVER and
+       market-sell — waiting forever is how a naked position strands. The
+       balance clamp keeps the takeover safe when the OCO actually did fire
+       but the fill is not visible yet (frozen/zero balance → no sell →
+       retry next tick). */
+    if (price >= pos.targetPrice || price <= pos.stopPrice) {
+      return liveEngineExit(
+        cfg,
+        creds,
+        pos,
+        signal,
+        price,
+        `${exitReason} (ambil alih — OCO tidak ada di exchange)`,
+        exitKind
+      );
+    }
     return {
       ...base,
       action: "HOLD",
-      reason: `${exitKind} crossed but OCO fill not visible yet — position kept, reconcile retries next tick`,
+      reason: `${exitKind} crossed tetapi OCO tidak ditemukan di exchange dan harga masih di antara band — posisi dipantau engine (tanpa proteksi OCO)`,
     };
   }
-  const pnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-  await closePosition(pos.id, fill.price, pnl, `${exitReason} (via OCO)`);
+  const { pnl, fee, note } = netPnlOf(pos, fill.price, fill.feeUsdt);
+  await closePosition(pos.id, fill.price, pnl, `${exitReason} (via OCO)${note}`);
   await logTrade(cfg, {
     action: "SELL",
     status: "SUBMITTED",
     sizeUsdt: pos.sizeUsdt,
     qty: fill.qty,
     price: fill.price,
-    reason: `${exitReason} (via OCO)`,
+    reason: `${exitReason} (via OCO)${note}`,
     pnlUsdt: pnl,
-    detail: detailJson(signal, { exit: exitKind, oco: true }),
+    detail: detailJson(signal, { exit: exitKind, oco: true, grossPnl: Number(((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt: fee }),
   });
-  return { ...base, action: "SELL", reason: `${exitReason} (via OCO)`, pnlUsdt: pnl };
+  return { ...base, action: "SELL", reason: `${exitReason} (via OCO)${note}`, pnlUsdt: pnl };
 }
 
 
@@ -1221,16 +1269,41 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
       await touchConfig(cfg.id, price);
       return { userId: cfg.userId, symbol: cfg.symbol, paper: true, action: "SELL", reason: exitReason, pnlUsdt: pnl, score: signal.score };
     }
-    /* live exits — OCO-aware routing (Task 16):
+    /* live exits — OCO-aware routing (Task 16, Patch L):
        · take-profit / original stop-loss on an OCO-armed position belong to
          the EXCHANGE — reconcile its real fill, never double-sell;
-       · trail-stop and signal-flip are engine-initiated: cancel the armed
-         OCO first, then market-sell (protection kept if cancel fails);
+       · trail-stop and signal-flip on an OCO-armed position are BLOCKED while
+         the exchange sell leg is still armed — cancelling protection to sell
+         at a worse price is what cost the OPNUSDT trades their TP; with the
+         leg gone the engine exits normally (takeover);
        · legacy positions without OCO behave exactly as before. */
     if (pos.tpslArmed && (exit === "take-profit" || (exit === "stop-loss" && !isTrail))) {
       const out = await liveOcoReconcile(cfg, creds!, pos, signal, price, exitReason, exitKind);
       await touchConfig(cfg.id, price);
       return out;
+    }
+    if (pos.tpslArmed) {
+      /* Patch L — OCO guardianship: trail-stop and signal-flip are
+         engine-initiated exits that used to CANCEL the exchange's TP/SL and
+         market-sell. Measured result on OPNUSDT: the price crossed the TP
+         between two ticks (high 0.0558 vs trigger 0.055386), the engine
+         then trailed out at +0.37% and the +2% TP was never paid. While a
+         sell leg is still armed, the EXCHANGE owns the exit: HOLD — never
+         cancel protection to sell at a worse price. With the leg gone, the
+         exit proceeds normally (the cancel is a harmless no-op). */
+      const legArmed = await ocoSellLegArmed(creds!, pos);
+      if (legArmed) {
+        await db.botPosition.update({ where: { id: pos.id }, data: { highestPrice: newHighest } }).catch(() => {});
+        await touchConfig(cfg.id, price);
+        return {
+          userId: cfg.userId,
+          symbol: cfg.symbol,
+          paper: false,
+          action: "HOLD",
+          reason: `${exitKind} ditunda — OCO TP/SL masih aktif di exchange (TP ${pos.targetPrice.toPrecision(6)}); exit milik exchange, engine tidak membatalkan proteksi`,
+          score: signal.score,
+        };
+      }
     }
     const out = await liveEngineExit(cfg, creds!, pos, signal, price, exitReason, exitKind);
     await touchConfig(cfg.id, price);
@@ -1527,6 +1600,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
     const entryPrice = fill.priceAvg ?? price;
     const qty = fill.baseVolume ?? sizeUsdt / entryPrice;
+    const entryFeeUsdt = feeToUsdt(fill.fee, fill.feeCoin, fill.priceAvg);
     /* Patch K — entryOrderId fills the same unique mutex here: a market BUY
        can only ever produce one position row, whatever the ticks do. */
     let opened = true;
@@ -1546,6 +1620,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
           highestPrice: entryPrice,
           tpslArmed: true,
           entryOrderId: placed.orderId,
+          entryFeeUsdt: entryFeeUsdt > 0 ? entryFeeUsdt : null,
           status: "OPEN",
         },
       });
@@ -1588,6 +1663,42 @@ async function closePosition(id: string, exitPrice: number, pnlUsdt: number, exi
     where: { id },
     data: { status: "CLOSED", exitPrice, realizedPnlUsdt: pnlUsdt, exitReason, closedAt: new Date() },
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Patch L — commission-aware realized PnL                              */
+/*                                                                      */
+/* The engine used to record GROSS PnL (exit vs entry), while Bitget    */
+/* charges ~0.1% per side — measured result: a +0.37% trail exit on     */
+/* OPNUSDT showed +0.00 USDT while the account actually netted a small  */
+/* LOSS after commission. Live closes now record PnL NET of the entry   */
+/* and exit fees, using the exchange's real fee figures when the fill   */
+/* reports them and the base-tier taker rate (0.1%/side) as the labeled */
+/* estimate otherwise. Paper trading stays fee-free by design.          */
+/* ------------------------------------------------------------------ */
+const TAKER_FEE_RATE = 0.001;
+
+/** Normalize a fill's fee to USDT: feeCoin USDT → as-is; base coin → × price. */
+function feeToUsdt(fee: unknown, feeCoin: unknown, price: unknown): number {
+  const f = Number(fee);
+  if (!Number.isFinite(f) || f <= 0) return 0;
+  const coin = String(feeCoin ?? "").toUpperCase();
+  if (coin === "USDT") return f;
+  const p = Number(price);
+  return Number.isFinite(p) && p > 0 ? f * p : 0;
+}
+
+/**
+ * Net realized PnL for a LIVE close: gross move minus entry + exit fees.
+ * Unreadable fill fees degrade to the base-tier taker estimate per side —
+ * the reason string labels the sum with "≈" so estimates stay honest.
+ */
+function netPnlOf(pos: OpenPositionRow, exitPrice: number, exitFeeUsdt: number): { pnl: number; fee: number; note: string } {
+  const gross = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
+  const entryFee = pos.entryFeeUsdt != null && pos.entryFeeUsdt >= 0 ? pos.entryFeeUsdt : pos.sizeUsdt * TAKER_FEE_RATE;
+  const exitFee = exitFeeUsdt > 0 ? exitFeeUsdt : pos.sizeUsdt * TAKER_FEE_RATE;
+  const fee = entryFee + exitFee;
+  return { pnl: gross - fee, fee, note: ` (komisi ≈ ${fee.toFixed(4)} USDT)` };
 }
 
 /* Patch K cleanup — collapse legacy duplicate OPEN rows. Before the admission
@@ -1719,17 +1830,17 @@ export async function manualClosePositions(
       if (!qtyStr || Number(qtyStr) <= 0) {
         const fill = await findOcoExitFill(creds!, cfg, pos);
         if (fill) {
-          const livePnl = ((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-          await closePosition(pos.id, fill.price, livePnl, `${reason} (OCO fill reconciled)`);
+          const { pnl: livePnl, fee, note } = netPnlOf(pos, fill.price, fill.feeUsdt);
+          await closePosition(pos.id, fill.price, livePnl, `${reason} (OCO fill reconciled)${note}`);
           await logTrade(cfg, {
             action: "SELL",
             status: "SUBMITTED",
             sizeUsdt: pos.sizeUsdt,
             qty: fill.qty,
             price: fill.price,
-            reason: `${reason} (OCO fill reconciled)`,
+            reason: `${reason} (OCO fill reconciled)${note}`,
             pnlUsdt: livePnl,
-            detail: JSON.stringify({ manual: true, reconciled: true }),
+            detail: JSON.stringify({ manual: true, reconciled: true, grossPnl: Number(((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt: fee }),
           });
           out.closed += 1;
           out.results.push({ positionId: pos.id, price: fill.price, pnlUsdt: livePnl });
@@ -1745,8 +1856,8 @@ export async function manualClosePositions(
       const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
       const exitPrice = fill.priceAvg ?? ticker ?? pos.entryPrice;
       const exitQty = fill.baseVolume ?? Number(qtyStr);
-      const livePnl = ((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt;
-      await closePosition(pos.id, exitPrice, livePnl, reason);
+      const { pnl: livePnl, fee: feeUsdt, note: feeNote } = netPnlOf(pos, exitPrice, feeToUsdt(fill.fee, fill.feeCoin, fill.priceAvg));
+      await closePosition(pos.id, exitPrice, livePnl, `${reason}${feeNote}`);
       await logTrade(cfg, {
         action: "SELL",
         status: "SUBMITTED",
@@ -1755,9 +1866,9 @@ export async function manualClosePositions(
         price: exitPrice,
         orderId: placed.orderId,
         clientOid: placed.clientOid,
-        reason,
+        reason: `${reason}${feeNote}`,
         pnlUsdt: livePnl,
-        detail: JSON.stringify({ manual: true, fillStatus: fill.status }),
+        detail: JSON.stringify({ manual: true, fillStatus: fill.status, grossPnl: Number(((exitPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt }),
       });
       out.closed += 1;
       out.results.push({ positionId: pos.id, price: exitPrice, pnlUsdt: livePnl });
