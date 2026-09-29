@@ -1804,3 +1804,20 @@ Stage Summary:
 - Setelah deploy: duplikat posisi live tidak mungkin terjadi lagi — admission CAS menyatukan tick, slot CAS mencegah 2 order nyata, UNIQUE(entryOrderId) mencegah 2 baris dari 1 fill
 - Cleanup kasus berjalan: user cek riwayat order Bitget (OPNUSDT) — 1 vs 2 buy fill menentukan apakah baris kedua phantom atau nyata; tombol "Tutup posisi" menutup SEMUA posisi open bot itu (manualClosePositions), baris phantom self-heal via reconcile Patch G
 - Patch J (memori cost-basis portofolio) diusulkan, belum diminta user
+
+---
+Task ID: 51-b (PATCH K cleanup — baris duplikat LAMA digabung otomatis; konfirmasi user: Bitget hanya 1 order OPN)
+Agent: main (Super Z)
+Task: User konfirmasi "OPN tercatat di bitget hanya 1 order" (19.35 OPN ≈ 1.07 USDT, BE 0.0548, PnL +0.01, ROI +1.82%) → baris kedua di web = phantom sisa race pra-Patch-K; Patch K (eb2be07) mencegah duplikat BARU tapi belum membersihkan yang lama; PAT keenam diberikan untuk push
+
+Work Log:
+- Konfirmasi akar dari data user: total riil 19.35 OPN ≈ 1.07 USDT = SATU posisi; 2 baris @ 1.05 USDT di web = 1 nyata + 1 phantom (race dua tick membaca openPositions kosong bersamaan)
+- Patch K cleanup (commit c33a8a2): helper collapseDuplicatePositions(cfg, positions) — keep OLDEST, sisanya (fingerprint kembar: entry price DAN qty dalam 0.2% dari kept) di-mark CLOSED exitPrice=entry, PnL 0, exitReason "duplikat dibersihkan otomatis (Patch K)"; TANPA panggil exchange, TANPA SELL palsu di audit trail (log HOLD cleanup saja); OCO asli di Bitget tetap direkonsiliasi via baris kept
+- Wired ke 2 jalur: tickOne (sebelum exit ladder — self-heal otomatis di tick pertama pasca-deploy) dan manualClosePositions (sebelum loop cancel/sell — tombol "Tutup posisi" tak akan cancel/jual dua kali utk 1 order nyata)
+- Verifikasi: eslint engine.ts 0 error; tsc per-file hanya 4 TS2307 alias pre-existing (0 error baru); prisma client sudah berisi tipe entryOrderId (dari sesi Patch K)
+- Commit lokal c33a8a2 di atas 2c5fb7f (Patch K) — menunggu PAT keenam untuk push bersama
+
+Stage Summary:
+- Pasca-deploy: tick pertama bot OPNUSDT menggabungkan baris kembar otomatis — tabel "Posisi terbuka" kembali 1 baris; log aktivitas mencatat "cleanup: 1 baris posisi duplikat OPNUSDT digabung otomatis"
+- Invarian ≤1 posisi open per config kini ditegakkan penuh: pencegahan (3 lapis Patch K) + penyembuhan (cleanup pass)
+- PAT keenam: validasi + push 3 commit (eb2be07, 2c5fb7f, c33a8a2) — string TIDAK dicatat di file mana pun (aturan Task 45-b)
