@@ -141,6 +141,10 @@ model BotPosition {
   // (OCO) — the exchange owns the TP/SL exits and the engine reconciles
   // their fills. Legacy live positions (false) stay engine-monitored.
   tpslArmed      Boolean @default(false)
+  // Patch K — Bitget orderId of the live entry order behind this position.
+  // UNIQUE = the fill mutex: a fill reconciled by two concurrent ticks can
+  // only ever create ONE row. null on paper and legacy rows.
+  entryOrderId   String?
   // "OPEN" | "CLOSED"
   status         String    @default("OPEN")
   exitPrice      Float?
@@ -151,6 +155,7 @@ model BotPosition {
 
   @@index([userId, status])
   @@index([configId, status])
+  @@unique([entryOrderId])
 }
 
 // Every bot action (entry, exit, rejection, failure) — the audit trail.

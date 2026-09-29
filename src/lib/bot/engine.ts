@@ -390,6 +390,10 @@ async function armLiveLimit(args: {
   pricePrecision: number;
   availableUsdt: number;
   walletNote?: string;
+  /* Patch K — the pending-slot state this caller expects, claimed atomically
+     BEFORE the order goes to the exchange: null = fresh entry (slot must be
+     empty); an orderId = TTL re-arm replacing the order just cancelled. */
+  expectPendingOrderId?: string | null;
 }): Promise<{ orderId: string; level: number; notional: number; qty: string }> {
   const { cfg, creds, signal, marketPrice, effSlPct, effTpPct, minUsdt, quantityPrecision, pricePrecision, availableUsdt } = args;
   const levelRaw = armLimitLevel(marketPrice, entryOffsetOf(cfg));
@@ -411,14 +415,48 @@ async function armLiveLimit(args: {
   const tpStr = clipToPrecision(level * (1 + effTpPct / 100), pricePrecision);
   const slStr = clipToPrecision(level * (1 - effSlPct / 100), pricePrecision);
 
-  const placed = await placeSpotLimitOrderWithTpsl(creds, {
-    symbol: cfg.symbol,
-    side: "buy",
-    price: level.toPrecision(12).replace(/0+$/, "").replace(/\.$/, ""),
-    size: sizing.qty,
-    takeProfitTrigger: tpStr,
-    stopLossTrigger: slStr,
+  /* Patch K — atomic claim of the pending slot BEFORE the exchange call.
+     Two concurrent ticks (cron + page heartbeat, or a manual run mid-cron)
+     used to place TWO real orders at the same level, and the second
+     pendingEntryOrderId write orphaned the first order on the book — untracked
+     real money. The conditional update is a compare-and-swap: exactly one
+     claimer proceeds; the loser throws without ever touching Bitget. */
+  const slot = await db.botConfig.updateMany({
+    where: {
+      id: cfg.id,
+      pendingEntryOrderId: args.expectPendingOrderId ?? null,
+    },
+    data: {
+      pendingEntryPrice: level,
+      pendingEntrySize: sizing.notional,
+      pendingEntryAt: new Date(),
+    },
   });
+  if (slot.count === 0) {
+    throw new Error("entry slot busy — another tick is arming an order for this bot");
+  }
+
+  let placed: Awaited<ReturnType<typeof placeSpotLimitOrderWithTpsl>>;
+  try {
+    placed = await placeSpotLimitOrderWithTpsl(creds, {
+      symbol: cfg.symbol,
+      side: "buy",
+      price: level.toPrecision(12).replace(/0+$/, "").replace(/\.$/, ""),
+      size: sizing.qty,
+      takeProfitTrigger: tpStr,
+      stopLossTrigger: slStr,
+    });
+  } catch (err) {
+    /* Patch K — release the slot we claimed: the order never went out, so
+       the next tick must be free to arm again. */
+    await db.botConfig
+      .update({
+        where: { id: cfg.id },
+        data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null, pendingEntryOrderId: null },
+      })
+      .catch(() => {});
+    throw err;
+  }
 
   await db.botConfig.update({
     where: { id: cfg.id },
@@ -449,7 +487,13 @@ function entryOffsetOf(cfg: Pick<BotConfigRow, "entryOffsetPct">): number {
     : 0;
 }
 
-/** Create the live position row after a confirmed entry fill. */
+/**
+ * Create the live position row after a confirmed entry fill.
+ * Patch K — the UNIQUE(entryOrderId) index is the fill mutex: a fill
+ * reconciled by two concurrent ticks races this create and exactly one wins;
+ * the loser gets P2002 and must not log a second BUY. Returns false when the
+ * position already exists (created by the concurrent twin).
+ */
 async function openLivePosition(args: {
   cfg: BotConfigRow;
   entryPrice: number;
@@ -457,25 +501,33 @@ async function openLivePosition(args: {
   sizeUsdt: number;
   effSlPct: number;
   effTpPct: number;
-}): Promise<void> {
-  const { cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct } = args;
-  await db.botPosition.create({
-    data: {
-      userId: cfg.userId,
-      configId: cfg.id,
-      symbol: cfg.symbol,
-      side: "LONG",
-      entryPrice,
-      qty,
-      sizeUsdt,
-      paper: false,
-      stopPrice: entryPrice * (1 - effSlPct / 100),
-      targetPrice: entryPrice * (1 + effTpPct / 100),
-      highestPrice: entryPrice,
-      tpslArmed: true, // attached OCO on the entry order protects this position
-      status: "OPEN",
-    },
-  });
+  orderId: string;
+}): Promise<boolean> {
+  const { cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct, orderId } = args;
+  try {
+    await db.botPosition.create({
+      data: {
+        userId: cfg.userId,
+        configId: cfg.id,
+        symbol: cfg.symbol,
+        side: "LONG",
+        entryPrice,
+        qty,
+        sizeUsdt,
+        paper: false,
+        stopPrice: entryPrice * (1 - effSlPct / 100),
+        targetPrice: entryPrice * (1 + effTpPct / 100),
+        highestPrice: entryPrice,
+        tpslArmed: true, // attached OCO on the entry order protects this position
+        entryOrderId: orderId,
+        status: "OPEN",
+      },
+    });
+    return true;
+  } catch (err) {
+    if ((err as { code?: string })?.code === "P2002") return false;
+    throw err;
+  }
 }
 
 /**
@@ -533,11 +585,24 @@ async function openLivePositionAndReconcileExit(args: {
 }): Promise<TickOutcome> {
   const { cfg, creds, signal, price, entryPrice, qty, effSlPct, effTpPct, orderId, entryReason, entryDetail } = args;
   const sizeUsdt = qty * entryPrice;
+  /* Patch K — create FIRST: the entryOrderId unique index is the mutex, so a
+     concurrent tick reconciling the same fill can never open a second row.
+     Pending state is cleared only after we know we own the fill. */
+  const opened = await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct, orderId });
+  if (!opened) {
+    return {
+      userId: cfg.userId,
+      symbol: cfg.symbol,
+      paper: false,
+      action: "BUY",
+      reason: `${entryReason} — already reconciled by a concurrent tick`,
+      score: signal.score,
+    };
+  }
   await db.botConfig.update({
     where: { id: cfg.id },
     data: { pendingEntryPrice: null, pendingEntrySize: null, pendingEntryAt: null, pendingEntryOrderId: null },
   });
-  await openLivePosition({ cfg, entryPrice, qty, sizeUsdt, effSlPct, effTpPct });
   await logTrade(cfg, {
     action: "BUY",
     status: "SUBMITTED",
@@ -720,6 +785,7 @@ async function livePendingEntryTick(
           pricePrecision,
           availableUsdt: available,
           walletNote: " (re-priced after TTL)",
+          expectPendingOrderId: orderId, // Patch K — re-arm replaces OUR cancelled order
         });
         // level/orderId were refreshed by armLiveLimit
         return {
@@ -1030,6 +1096,25 @@ export async function runBotTicks(opts: { userId?: string; force?: boolean } = {
 }
 
 async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> {
+  /* Patch K — tick admission is a compare-and-swap on lastTickAt. Cron and
+     the page heartbeat (or a manual "Run now" landing mid-cron) used to be
+     able to run tickOne for the same bot CONCURRENTLY: both read
+     openPositions as empty, both passed every gate, both placed an entry —
+     the duplicate live position (OPNUSDT ×2, identical rows). The conditional
+     update lets exactly one caller through; the loser skips this round. */
+  const claim = await db.botConfig.updateMany({
+    where: { id: cfg.id, lastTickAt: cfg.lastTickAt },
+    data: { lastTickAt: new Date() },
+  });
+  if (claim.count === 0) {
+    return {
+      userId: cfg.userId,
+      symbol: cfg.symbol,
+      paper: cfg.paper,
+      action: "SKIP",
+      reason: "tick race lost — another tick is running this bot",
+    };
+  }
   const preset = MODE_PRESETS[(cfg.mode as BotMode) in MODE_PRESETS ? (cfg.mode as BotMode) : "MODERATE"];
   /* v2 phase 2 — signal timeframe (4H default = legacy behavior, zero regression). */
   const tf = isBotTimeframe(cfg.timeframe) ? cfg.timeframe : "4H";
@@ -1388,6 +1473,7 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
         quantityPrecision: rules.quantityPrecision,
         pricePrecision: rules.pricePrecision,
         availableUsdt: available,
+        expectPendingOrderId: null, // Patch K — fresh entry claims an empty slot
       });
       await touchConfig(cfg.id, price);
       return {
@@ -1437,36 +1523,54 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
     const fill = await fetchOrderFill(creds!, cfg.symbol, placed.orderId);
     const entryPrice = fill.priceAvg ?? price;
     const qty = fill.baseVolume ?? sizeUsdt / entryPrice;
-    await db.botPosition.create({
-      data: {
-        userId: cfg.userId,
-        configId: cfg.id,
-        symbol: cfg.symbol,
-        side: "LONG",
-        entryPrice,
-        qty,
+    /* Patch K — entryOrderId fills the same unique mutex here: a market BUY
+       can only ever produce one position row, whatever the ticks do. */
+    let opened = true;
+    try {
+      await db.botPosition.create({
+        data: {
+          userId: cfg.userId,
+          configId: cfg.id,
+          symbol: cfg.symbol,
+          side: "LONG",
+          entryPrice,
+          qty,
+          sizeUsdt,
+          paper: false,
+          stopPrice: entryPrice * (1 - effSlPct / 100),
+          targetPrice: entryPrice * (1 + effTpPct / 100),
+          highestPrice: entryPrice,
+          tpslArmed: true,
+          entryOrderId: placed.orderId,
+          status: "OPEN",
+        },
+      });
+    } catch (err) {
+      if ((err as { code?: string })?.code !== "P2002") throw err;
+      opened = false; // a concurrent tick already recorded this entry
+    }
+    if (opened) {
+      await logTrade(cfg, {
+        action: "BUY",
+        status: "SUBMITTED",
         sizeUsdt,
-        paper: false,
-        stopPrice: entryPrice * (1 - effSlPct / 100),
-        targetPrice: entryPrice * (1 + effTpPct / 100),
-        highestPrice: entryPrice,
-        tpslArmed: true,
-        status: "OPEN",
-      },
-    });
-    await logTrade(cfg, {
-      action: "BUY",
-      status: "SUBMITTED",
-      sizeUsdt,
-      qty,
-      price: entryPrice,
-      orderId: placed.orderId,
-      clientOid: placed.clientOid,
-      reason: `${entryReason} — OCO TP ${tpStr} / SL ${slStr}`,
-      detail: detailJson(signal, { fillStatus: fill.status, oco: true }),
-    });
+        qty,
+        price: entryPrice,
+        orderId: placed.orderId,
+        clientOid: placed.clientOid,
+        reason: `${entryReason} — OCO TP ${tpStr} / SL ${slStr}`,
+        detail: detailJson(signal, { fillStatus: fill.status, oco: true }),
+      });
+    }
     await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: false, action: "BUY", reason: `${entryReason} — OCO TP/SL armed`, score: signal.score };
+    return {
+      userId: cfg.userId,
+      symbol: cfg.symbol,
+      paper: false,
+      action: "BUY",
+      reason: `${entryReason} — OCO TP/SL armed${opened ? "" : " (already opened by a concurrent tick)"}`,
+      score: signal.score,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "buy failed";
     await logTrade(cfg, { action: "BUY", status: "FAILED", sizeUsdt, reason: msg, detail: detailJson(signal) });

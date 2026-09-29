@@ -255,6 +255,31 @@ async function run(): Promise<boolean> {
     ok = false;
     console.error("[bot-migrate] multi-bot rebuild failed:", err instanceof Error ? err.message : err);
   }
+  /* Patch K — position-level fill mutex: BotPosition.entryOrderId + UNIQUE.
+     One entry order can only ever produce ONE position row, however the
+     ticks race (cron vs page heartbeat vs manual run). SQLite allows many
+     NULLs in a UNIQUE index, so paper and legacy rows coexist safely. */
+  try {
+    if (!(await columnExists("BotPosition", "entryOrderId"))) {
+      await db.$executeRawUnsafe(`ALTER TABLE "BotPosition" ADD COLUMN "entryOrderId" TEXT`);
+      console.log("[bot-migrate] BotPosition.entryOrderId added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] BotPosition.entryOrderId failed:", err instanceof Error ? err.message : err);
+  }
+  try {
+    const idx = await db.$queryRawUnsafe<{ name: string }[]>(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'BotPosition_entryOrderId_key'`
+    );
+    if (!idx || idx.length === 0) {
+      await db.$executeRawUnsafe(`CREATE UNIQUE INDEX "BotPosition_entryOrderId_key" ON "BotPosition"("entryOrderId")`);
+      console.log("[bot-migrate] UNIQUE(BotPosition.entryOrderId) added");
+    }
+  } catch (err) {
+    ok = false;
+    console.error("[bot-migrate] UNIQUE(BotPosition.entryOrderId) failed:", err instanceof Error ? err.message : err);
+  }
   return ok;
 }
 
