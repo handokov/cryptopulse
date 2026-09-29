@@ -1162,10 +1162,14 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   const effTpPct = vol && !(cfg.takeProfitPct && cfg.takeProfitPct > 0) ? vol.tpPct : tpPct;
   const effSlPct = vol && !(cfg.stopLossPct && cfg.stopLossPct > 0) ? vol.slPct : slPct;
 
-  const openPositions = await db.botPosition.findMany({
+  let openPositions = await db.botPosition.findMany({
     where: { configId: cfg.id, status: "OPEN" },
     orderBy: { openedAt: "asc" },
   });
+  /* Patch K cleanup — pre-Patch-K twin rows (e.g. OPNUSDT ×2) collapse here
+     on the first tick after deploy; the exit ladder below then manages
+     exactly one survivor, keeping the ≤1-open-position invariant true. */
+  openPositions = await collapseDuplicatePositions(cfg, openPositions);
 
   /* ---- 1. Exits first ---- */
   for (const pos of openPositions) {
@@ -1586,6 +1590,48 @@ async function closePosition(id: string, exitPrice: number, pnlUsdt: number, exi
   });
 }
 
+/* Patch K cleanup — collapse legacy duplicate OPEN rows. Before the admission
+   CAS existed, two concurrent ticks could both open the same position
+   (OPNUSDT ×2: identical entry/TP/SL/size rows, one real Bitget order).
+   The engine invariant is ≤1 open position per config, so a twin set is by
+   definition a pre-Patch-K race leftover: keep the OLDEST row, mark the rest
+   CLOSED with zero PnL — no exchange call, no fake SELL in the audit trail.
+   The real order's OCO lives on the exchange and keeps being reconciled via
+   the kept row. Twin fingerprint: entry price AND qty within 0.2% of the
+   kept row (race twins are exact copies; genuinely different positions never
+   match both). Runs oldest-first on the caller's ordering. */
+async function collapseDuplicatePositions<T extends { id: string; entryPrice: number; qty: number }>(
+  cfg: TradeLogConfig,
+  positions: T[]
+): Promise<T[]> {
+  if (positions.length <= 1) return positions;
+  const [keep, ...rest] = positions;
+  const twins = rest.filter(
+    (d) =>
+      Math.abs(d.entryPrice - keep.entryPrice) / keep.entryPrice <= 0.002 &&
+      Math.abs(d.qty - keep.qty) / keep.qty <= 0.002
+  );
+  if (twins.length === 0) return positions;
+  await db.botPosition.updateMany({
+    where: { id: { in: twins.map((d) => d.id) } },
+    data: {
+      status: "CLOSED",
+      exitPrice: keep.entryPrice,
+      realizedPnlUsdt: 0,
+      exitReason: `duplikat dibersihkan otomatis (Patch K) — baris kembar digabung ke posisi ${keep.id}`,
+      closedAt: new Date(),
+    },
+  });
+  await logTrade(cfg, {
+    action: "HOLD",
+    status: "SUBMITTED",
+    reason: `cleanup: ${twins.length} baris posisi duplikat ${cfg.symbol} digabung otomatis (tanpa order, posisi asli dipertahankan)`,
+    detail: JSON.stringify({ dedup: true, kept: keep.id, removed: twins.map((d) => d.id) }),
+  });
+  const twinIds = new Set(twins.map((d) => d.id));
+  return [keep, ...rest.filter((d) => !twinIds.has(d.id))];
+}
+
 export interface ManualCloseResult {
   ok: boolean;
   closed: number;
@@ -1602,10 +1648,13 @@ export async function manualClosePositions(
   cfg: TradeLogConfig,
   reason = "manual close (stop & sell)"
 ): Promise<ManualCloseResult> {
-  const positions = await db.botPosition.findMany({
+  let positions = await db.botPosition.findMany({
     where: { configId: cfg.id, status: "OPEN" },
     orderBy: { openedAt: "asc" },
   });
+  /* Patch K cleanup — collapse twin rows first so a manual close never
+     cancels the OCO / market-sells twice for one real exchange order. */
+  positions = await collapseDuplicatePositions(cfg, positions);
   const out: ManualCloseResult = { ok: true, closed: 0, results: [] };
   if (positions.length === 0) return out;
 
