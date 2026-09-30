@@ -1933,3 +1933,19 @@ Work Log:
 Stage Summary:
 - Pasca-deploy Patch P: chart bot menampilkan garis BUY/TP/SL dari order pending (dashed, ≈ dari harga order; final mengikuti harga isi) bahkan saat garis entry tidak dipasang; semua label harga sub-cent terbaca penuh
 - Catatan state produksi: OCO Bitget "Tertunda" = entry ROBO 122.6 sudah terisi di exchange; bila web belum menampilkan baris di "Posisi terbuka" setelah tick, fill belum ter-reconcile — user diminta tekan "Tick sekarang" dan laporkan alasan di log bila masih kosong
+
+---
+Task ID: 57 (push Patch P + analisis "kok mode live rugi terus")
+Agent: main (Super Z)
+Task: User kirim PAT (kedelapan) + tanya "ini gimana.....kok saya pakai mode live rugi terus...."
+
+Work Log:
+- Temuan kunci dari screenshot Bitget Task 56: rasio TP/SL identik di ROBO & ARX (0.009193/0.008291 dan 0.276/0.24894 = 1.1087) — reverse-engineering: entry ROBO ≈0.0090126, ARX ≈0.270588 → TP = entry×1.02 (+2%), SL = entry×0.92 (−8%) PERSIS keduanya → config override user TP 2% / SL 8%, BUKAN preset (MODERATE 1.8/1.2, AGGRESSIVE 2.6/1.8)
+- Matematika expectancy: net TP ≈ +1.5% (fee taker 0.1%×2 sisi + spread micro-cap), net SL ≈ −8.4% → win rate breakeven ≈ 85%; dgn exit mix dominan trailing (pra-Patch-L) + win rate realistis 40-60%, long-run pasti positif-bleed → inilah akar utama "rugi terus", bukan bug engine
+- Faktor sekunder (dari analisis Task 52/54): komisi 0.1%/sisi memakan exit trailing kecil; spread/slippage micro-cap (ROBO/ARX/OPN/UAI); kadens cron 2-7 jam (heartbeat 5 mnt membantu saat halaman terbuka); pra-Patch-L trailing membatalkan OCO TP yang lebih baik (sudah diperbaiki guardianship)
+- Rekomendasi ke user: (1) perbaiki asimetri SL — kosongkan override agar pakai preset, atau set SL ≤ TP (mis. 2.6/1.8); (2) exitStyle FIXED utk bot live (exit murni OCO exchange, Patch L membuat ini aman); (3) pantau Rekap dana live (Patch N) ≥20 trade utk expectancy nyata; (4) hindari pairing ter-illiquid
+- Push: checklist pra-push (tree bersih, scan token 0, ls-remote origin = f1d68e7); push 3 commit (f2fb84a Patch P + a93612d wl 56 + wl 57 ini) via URL one-shot + sed redaksi — token tidak pernah ditulis ke file/commit; user diingatkan revoke segera (token sempat tampil plaintext di chat)
+
+Stage Summary:
+- origin/main = <terisi pasca-push>; Patch P live setelah Vercel deploy; garis BUY/TP/SL pending tampil di chart + presisi harga benar
+- Akar "rugi terus" = konfigurasi TP+2%/SL−8% (breakeven WR ≈85%) — perbaikan ada di tangan user lewat form bot; engine sehat (Patch L/O/P)
