@@ -1947,5 +1947,5 @@ Work Log:
 - Push: checklist pra-push (tree bersih, scan token 0, ls-remote origin = f1d68e7); push 3 commit (f2fb84a Patch P + a93612d wl 56 + wl 57 ini) via URL one-shot + sed redaksi — token tidak pernah ditulis ke file/commit; user diingatkan revoke segera (token sempat tampil plaintext di chat)
 
 Stage Summary:
-- origin/main = <terisi pasca-push>; Patch P live setelah Vercel deploy; garis BUY/TP/SL pending tampil di chart + presisi harga benar
+- origin/main = c4d8b83 (f1d68e7..c4d8b83, 4 commit: Patch P + wl56 + checkpoint mode-file + wl57); Patch P live setelah Vercel deploy; garis BUY/TP/SL pending tampil di chart + presisi harga benar
 - Akar "rugi terus" = konfigurasi TP+2%/SL−8% (breakeven WR ≈85%) — perbaikan ada di tangan user lewat form bot; engine sehat (Patch L/O/P)
