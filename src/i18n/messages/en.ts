@@ -649,6 +649,8 @@ const en = {
     liveConnReadonlyHint: "This API key cannot place orders: on Bitget edit the key and enable the “Trade” permission (spot), then press Sync here to re-verify.",
     liveConnNoneHint: "No Bitget API key is connected. Go to Portfolio → Exchange connections → Connect → Bitget and paste the API key, secret and passphrase — the SAME connection powers balance sync and live trading.",
     pendingOrderId: "order {id}",
+    pendingTpsl: "OCO protection once filled: TP ≈ {tp} (+{tpPct}%) · SL ≈ {sl} (−{slPct}%)",
+    pendingTpslVol: "Dynamic VOL OCO protection — TP/SL bands follow volatility; attached automatically in Bitget when the order fills",
     ocoBadge: "OCO",
     ocoHint: "TP/SL armed on Bitget — the exchange exits automatically (one cancels the other)",
     disabledManagedNote: "Bot is off — no new entries, but open positions keep their take-profit / stop-loss / trailing management.",

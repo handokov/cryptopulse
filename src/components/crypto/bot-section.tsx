@@ -174,6 +174,12 @@ interface PendingEntry {
   expiresAt: string | null;
   orderId?: string | null;
   live?: boolean;
+  /* Patch O — TP/SL the attached OCO will arm on fill; null on VOL style
+     with no override (bands scale with volatility → UI shows a note). */
+  tpPrice?: number | null;
+  slPrice?: number | null;
+  tpPct?: number | null;
+  slPct?: number | null;
 }
 
 /* live wallet — REAL spot USDT balance of the connected Bitget account.
@@ -788,6 +794,18 @@ export function BotSection() {
               {pendingInfo.sizeUsdt != null && (
                 <span className="tnum text-muted-foreground">≈ {pendingInfo.sizeUsdt.toFixed(2)} $</span>
               )}
+              {pendingInfo.tpPrice != null && pendingInfo.slPrice != null ? (
+                <span className="tnum text-muted-foreground">
+                  {t("pendingTpsl", {
+                    tp: pendingInfo.tpPrice.toPrecision(6),
+                    sl: pendingInfo.slPrice.toPrecision(6),
+                    tpPct: pendingInfo.tpPct ?? 0,
+                    slPct: pendingInfo.slPct ?? 0,
+                  })}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">{t("pendingTpslVol")}</span>
+              )}
             </div>
           )}
         </div>
@@ -862,6 +880,18 @@ export function BotSection() {
               </span>
               {pendingInfo.sizeUsdt != null && (
                 <span className="tnum text-muted-foreground">≈ {pendingInfo.sizeUsdt.toFixed(2)} $</span>
+              )}
+              {pendingInfo.tpPrice != null && pendingInfo.slPrice != null ? (
+                <span className="tnum text-muted-foreground">
+                  {t("pendingTpsl", {
+                    tp: pendingInfo.tpPrice.toPrecision(6),
+                    sl: pendingInfo.slPrice.toPrecision(6),
+                    tpPct: pendingInfo.tpPct ?? 0,
+                    slPct: pendingInfo.slPct ?? 0,
+                  })}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">{t("pendingTpslVol")}</span>
               )}
               {pendingInfo.orderId && (
                 <span className="tnum text-[10px] text-muted-foreground">{t("pendingOrderId", { id: String(pendingInfo.orderId).slice(-8) })}</span>

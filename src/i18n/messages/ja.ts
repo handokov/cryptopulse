@@ -647,6 +647,8 @@ const ja: Messages = {
     liveConnReadonlyHint: "この API キーでは注文を出せません：Bitget でキーを編集し「Trade」（スポット）権限を有効にしてから、ここで同期を押して再確認してください。",
     liveConnNoneHint: "Bitget の API キーが未接続です。ポートフォリオ → 取引所接続 → 接続 → Bitget から API キー・シークレット・passphrase を貼り付けてください。残高同期とライブ取引は同じ接続を使います。",
     pendingOrderId: "注文 {id}",
+    pendingTpsl: "約定後のOCO保護：TP ≈ {tp}（+{tpPct}%）・SL ≈ {sl}（−{slPct}%）",
+    pendingTpslVol: "動的VOL OCO保護 — TP/SLバンドはボラティリティに追従し、注文約定時にBitgetへ自動設定されます",
     ocoBadge: "OCO",
     ocoHint: "TP/SL は Bitget 側に設置済み — 取引所が自動で決済します（片方成立でもう片方を取消）",
     disabledManagedNote: "ボットは停止中 — 新規エントリーはありませんが、保有ポジションのTP / SL / トレーリングはエンジンが管理し続けます。",

@@ -645,6 +645,8 @@ const zh: Messages = {
     liveConnReadonlyHint: "这把 API 密钥无法下单：请在 Bitget 编辑该密钥并启用“交易”（现货）权限，然后在此按同步重新验证。",
     liveConnNoneHint: "尚未连接 Bitget API 密钥。前往“投资组合 → 交易所连接 → 连接 → Bitget”，粘贴 API key、secret 和 passphrase——同一个连接同时用于余额同步和实盘交易。",
     pendingOrderId: "订单 {id}",
+    pendingTpsl: "成交后的 OCO 保护：TP ≈ {tp}（+{tpPct}%）· SL ≈ {sl}（−{slPct}%）",
+    pendingTpslVol: "动态 VOL OCO 保护 — TP/SL 区间随波动率调整；订单成交后在 Bitget 自动挂载",
     ocoBadge: "OCO",
     ocoHint: "止盈/止损已挂在 Bitget——由交易所自动执行（一方成交即撤销另一方）",
     disabledManagedNote: "机器人已停用——不再开新仓，但持仓的止盈 / 止损 / 移动止损仍由引擎持续管理。",

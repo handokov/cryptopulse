@@ -649,6 +649,8 @@ const id: Messages = {
     liveConnReadonlyHint: "Kunci API ini tidak dapat memasang order: di Bitget, sunting kunci dan aktifkan izin “Trade” (spot), lalu tekan Sync di sini untuk verifikasi ulang.",
     liveConnNoneHint: "Belum ada kunci API Bitget yang terhubung. Buka Portofolio → Koneksi exchange → Hubungkan → Bitget, lalu tempel API key, secret, dan passphrase — koneksi yang SAMA dipakai untuk sinkron saldo dan trading live.",
     pendingOrderId: "order {id}",
+    pendingTpsl: "Proteksi OCO setelah terisi: TP ≈ {tp} (+{tpPct}%) · SL ≈ {sl} (−{slPct}%)",
+    pendingTpslVol: "Proteksi OCO dinamis (VOL) — band TP/SL mengikuti volatilitas; terpasang otomatis di Bitget saat order terisi",
     ocoBadge: "OCO",
     ocoHint: "TP/SL terpasang di Bitget — bursa yang mengeksekusi otomatis (satu membatalkan yang lain)",
     disabledManagedNote: "Bot nonaktif — posisi baru tidak dibuka, tapi posisi terbuka tetap dijaga take profit / stop loss / trailing oleh engine.",

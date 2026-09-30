@@ -648,6 +648,8 @@ const pt: Messages = {
     liveConnReadonlyHint: "Esta chave de API não pode enviar ordens: na Bitget, edite a chave e ative a permissão “Trade” (spot), depois pressione Sincronizar aqui para reverificar.",
     liveConnNoneHint: "Nenhuma chave de API da Bitget está conectada. Vá a Portfólio → Conexões de exchange → Conectar → Bitget e cole a chave de API, o secret e a passphrase — a MESMA conexão alimenta a sincronização de saldos e o trading ao vivo.",
     pendingOrderId: "ordem {id}",
+    pendingTpsl: "Proteção OCO após execução: TP ≈ {tp} (+{tpPct}%) · SL ≈ {sl} (−{slPct}%)",
+    pendingTpslVol: "Proteção OCO dinâmica (VOL) — as bandas de TP/SL seguem a volatilidade; anexadas automaticamente na Bitget quando a ordem executa",
     ocoBadge: "OCO",
     ocoHint: "TP/SL armado na Bitget — a exchange sai automaticamente (um cancela o outro)",
     disabledManagedNote: "Bot desligado — não abre novas posições, mas as abertas continuam com realização de lucro / stop-loss / trailing.",

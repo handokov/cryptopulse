@@ -317,19 +317,37 @@ export async function GET(req: NextRequest) {
   });
 
   /* active-bot pending limit entry (paper maker-style / live post-only) —
-     UI countdown fuel. `live` tells the client this is a REAL resting order. */
+     UI countdown fuel. `live` tells the client this is a REAL resting order.
+     Patch O — also surface the entry's TP/SL protection: the OCO rides on the
+     order and activates when it fills, but until then the open-position table
+     has no row (targetPrice/stopPrice live on the POSITION row), which read as
+     "the TP/SL lines disappeared" while Bitget clearly showed them. Percentages
+     mirror the engine exactly: user override > mode preset; VOL style with no
+     override scales with volatility, so no honest static number exists (null →
+     the UI shows a dynamic-VOL note instead of a made-up line). */
   const pending =
     config?.pendingEntryPrice != null
-      ? {
-          price: config.pendingEntryPrice,
-          sizeUsdt: config.pendingEntrySize ?? null,
-          placedAt: config.pendingEntryAt?.toISOString() ?? null,
-          expiresAt: config.pendingEntryAt
-            ? new Date(config.pendingEntryAt.getTime() + 3 * tfMsFor(config.timeframe ?? "4H")).toISOString()
-            : null,
-          orderId: (config as { pendingEntryOrderId?: string | null }).pendingEntryOrderId ?? null,
-          live: !paperFlag,
-        }
+      ? (() => {
+          const preset = MODE_PRESETS[(config.mode as BotMode) in MODE_PRESETS ? (config.mode as BotMode) : "MODERATE"];
+          const volMode = (config.exitStyle ?? "FIXED") === "VOL";
+          const tpOverride = config.takeProfitPct && config.takeProfitPct > 0 ? config.takeProfitPct : null;
+          const slOverride = config.stopLossPct && config.stopLossPct > 0 ? config.stopLossPct : null;
+          const base = config.pendingEntryPrice;
+          return {
+            price: base,
+            sizeUsdt: config.pendingEntrySize ?? null,
+            placedAt: config.pendingEntryAt?.toISOString() ?? null,
+            expiresAt: config.pendingEntryAt
+              ? new Date(config.pendingEntryAt.getTime() + 3 * tfMsFor(config.timeframe ?? "4H")).toISOString()
+              : null,
+            orderId: (config as { pendingEntryOrderId?: string | null }).pendingEntryOrderId ?? null,
+            live: !paperFlag,
+            tpPrice: volMode && tpOverride == null ? null : base * (1 + (tpOverride ?? preset.takeProfitPct) / 100),
+            slPrice: volMode && slOverride == null ? null : base * (1 - (slOverride ?? preset.stopLossPct) / 100),
+            tpPct: volMode && tpOverride == null ? null : tpOverride ?? preset.takeProfitPct,
+            slPct: volMode && slOverride == null ? null : slOverride ?? preset.stopLossPct,
+          };
+        })()
       : null;
 
   /* live wallet — the REAL spot USDT balance that funds live entries
