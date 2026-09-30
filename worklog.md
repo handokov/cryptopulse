@@ -1872,3 +1872,18 @@ Work Log:
 Stage Summary:
 - Pasca-deploy: user melihat sendiri di dashboard — berapa USDT masuk order kumulatif, berapa tertanam, realisasi tercatat vs bersih (≈ setelah komisi), komisi ≈, exit mix (berapa kali TP/trailing/SL), W/L, dan pembanding paper bebas komisi — tanpa hitung manual dari log
 - Sesi ini total 2 commit menunggu push: 9319eb7 (Patch M orphan sweep) + f281045 (Patch N recap) + worklog Task 53/54
+
+---
+Task ID: 54-b
+Agent: main (Super Z)
+Task: Push Patch M + Patch N dengan PAT ketujuh (diberikan user sesi berikutnya)
+
+Work Log:
+- Checklist pra-push: HTTP 200 (login handokov), git status bersih, secret scan diff+tree = 2 match yang selidik pun ternyata false positive (prosa protokol "0 pola token (ghp_/github_pat_)" di worklog — bukan token); pola ketat ghp_[A-Za-z0-9]{20,} & github_pat_[A-Za-z0-9_]{30,} = 0; ls-remote origin = 66604d1 sesuai ekspektasi
+- Verifikasi ulang Patch N sebelum push: eslint route.ts + bot-section.tsx 0 error; tsc src/ = 4 error pre-existing (close×2, news, trailStopPrice), 0 baru; i18n id.ts lengkap
+- Push 66604d1..1572516 (4 commit): 9319eb7 (Patch M orphan sweep) + ceece73 (wl Task 53) + f281045 (Patch N recap) + 1572516 (wl Task 54); ls-remote pasca-push = 1572516 = HEAD lokal
+- PAT ketujuh dipakai sekali via URL one-shot + sed redaksi, tidak pernah ditulis ke file/commit; user diingatkan revoke segera
+
+Stage Summary:
+- origin/main = 1572516; Vercel auto-deploy jalan; pasca-deploy: tick pertama sweep phantom OPNUSDT (Patch M) → "Posisi terbuka" bersih + kartu "Rekap dana live (semua bot live)" tampil di dashboard (Patch N)
+- Push berikutnya menunggu PAT kedelapan; commit catatan ini ikut push itu
