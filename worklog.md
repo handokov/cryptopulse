@@ -1887,3 +1887,19 @@ Work Log:
 Stage Summary:
 - origin/main = 1572516; Vercel auto-deploy jalan; pasca-deploy: tick pertama sweep phantom OPNUSDT (Patch M) → "Posisi terbuka" bersih + kartu "Rekap dana live (semua bot live)" tampil di dashboard (Patch N)
 - Push berikutnya menunggu PAT kedelapan; commit catatan ini ikut push itu
+
+---
+Task ID: 55
+Agent: main (Super Z)
+Task: User report — "ROBO & ARX: TP/SL terlihat di pengaturan TP/SL Bitget tapi garis TP/SL hilang di web CryptoPulse" (sementara UAI tidak dikeluhkan); plus kebingungan "posisi ditutup oleh kamu ternyata masih berjalan"
+
+Work Log:
+- Klarifikasi pertama: Patch M TIDAK pernah menutup posisi riil — hanya baris phantom OPNUSDT (bookkeeping-only). ROBO/UAI/ARX tidak tersentuh patch mana pun.
+- Investigasi kode: (1) baris botPosition selalu punya stopPrice/targetPrice (schema NOT NULL; keempat jalur botPosition.create mengisi keduanya) dan tabel "Posisi terbuka" merender keduanya tanpa syarat → baris posisi open mustahil tampil tanpa garis; (2) satu-satunya celah tampilan nyata = kartu PENDING (limit post-only + OCO attached) yang hanya menampilkan harga/ukuran/countdown TANPA TP/SL — padahal di Bitget TP/SL attached terlihat sejak order dipasang (aktif efektif saat terisi).
+- Diagnosis: ROBO & ARX kemungkinan besar masih pending entry (atau fill belum terkonfirmasi engine); UAI sudah fill → baris lengkap. Data produksi tak bisa diperiksa dari lokal (DB produksi tak terjangkau) — diagnosis dari struktur kode, konsisten dengan semua gejala.
+- Patch O (025891d): objek `pending` di GET /api/bot kini membawa tpPrice/slPrice/tpPct/slPct yang meng cermin logika engine persis (override user > preset mode; exitStyle VOL tanpa override → null → UI menampilkan catatan VOL dinamis, bukan angka karangan); kartu pending paper & live merendernya; i18n 6 locale (pendingTpsl, pendingTpslVol).
+- Verifikasi: eslint route.ts + bot-section.tsx + id.ts = 0 error; tsc src/ = 4 error pre-existing pola lama, 0 baru.
+
+Stage Summary:
+- Pasca-deploy Patch O: kartu "menunggu entry" menampilkan garis TP/SL (≈, dihitung dari harga order; final mengikuti harga isi) — kebingungan "garis hilang" tidak terulang.
+- Commit 025891d LOKAL (di atas 442980e) — MENUNGGU PAT kedelapan bersama commit worklog 54-b.
