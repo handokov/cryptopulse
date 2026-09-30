@@ -187,6 +187,27 @@ interface SpotWallet {
   tradePermission: string | null;
 }
 
+/* Patch N — live money recap across ALL live bots of the user: how much real
+   money ever went into orders, how much is planted right now, what closed
+   positions realized (recorded vs net-of-fee ≈) and the exit-kind mix. */
+interface LiveRecap {
+  buysCount: number;
+  investedUsdt: number;
+  openCount: number;
+  openSizeUsdt: number;
+  closedCount: number;
+  winCount: number;
+  lossCount: number;
+  winRate: number | null;
+  recordedUsdt: number;
+  netRealizedUsdt: number;
+  feeEstUsdt: number;
+  exitCounts: Record<string, number>;
+  cleanupCount: number;
+  paperRealizedUsdt: number;
+  spotAvailable: number | null;
+}
+
 interface TickResult {
   action: string;
   reason: string;
@@ -266,6 +287,7 @@ export function BotSection() {
   const [wallet, setWallet] = useState<BotWallet | null>(null);
   const [pendingInfo, setPendingInfo] = useState<PendingEntry | null>(null);
   const [spot, setSpot] = useState<SpotWallet | null>(null);
+  const [liveRecap, setLiveRecap] = useState<LiveRecap | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -316,6 +338,7 @@ export function BotSection() {
         setWallet(data.wallet ?? null);
         setPendingInfo(data.pending ?? null);
         setSpot(data.spot ?? null);
+        setLiveRecap(data.liveRecap ?? null);
         if (data.summary?.presets) setPreset(data.summary.presets);
       }
     } finally {
@@ -845,6 +868,58 @@ export function BotSection() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Patch N — live money recap across ALL live bots (real money) */}
+      {liveRecap && (liveRecap.buysCount > 0 || liveRecap.openCount > 0 || liveRecap.cleanupCount > 0) && (
+        <div className="rounded-xl border border-emerald-500/25 bg-card p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("recapTitle")}</p>
+            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-500">{t("liveBadge")}</span>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("recapInvested")}</p>
+              <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">{liveRecap.investedUsdt.toFixed(2)} $</p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{liveRecap.buysCount}× BUY</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("recapOpen")}</p>
+              <p className="tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl">{liveRecap.openSizeUsdt.toFixed(2)} $</p>
+              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{liveRecap.openCount}×</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("recapRecorded")}</p>
+              <p className={`tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl ${liveRecap.recordedUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                {liveRecap.recordedUsdt >= 0 ? "+" : ""}{liveRecap.recordedUsdt.toFixed(2)} $
+              </p>
+            </div>
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("recapNet")}</p>
+              <p className={`tnum mt-0.5 whitespace-nowrap text-lg font-bold sm:text-xl ${liveRecap.netRealizedUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                {liveRecap.netRealizedUsdt >= 0 ? "+" : ""}{liveRecap.netRealizedUsdt.toFixed(2)} $
+              </p>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 text-[11px] text-muted-foreground">
+            <span className="tnum">{t("recapFee", { v: liveRecap.feeEstUsdt.toFixed(2) })}</span>
+            <span className="tnum">
+              {liveRecap.winCount}W / {liveRecap.lossCount}L{liveRecap.winRate != null ? ` (${Math.round(liveRecap.winRate * 100)}%)` : ""}
+            </span>
+            <span className="tnum">
+              {t("recapExits", {
+                tp: liveRecap.exitCounts["take-profit"] ?? 0,
+                trail: liveRecap.exitCounts["trail-stop"] ?? 0,
+                sl: liveRecap.exitCounts["stop-loss"] ?? 0,
+                manual: (liveRecap.exitCounts["manual"] ?? 0) + (liveRecap.exitCounts["signal-flip"] ?? 0) + (liveRecap.exitCounts["other"] ?? 0),
+              })}
+            </span>
+            {liveRecap.cleanupCount > 0 && <span className="tnum">{t("recapCleanup", { v: liveRecap.cleanupCount })}</span>}
+            <span className="tnum">{t("recapPaper", { v: `${liveRecap.paperRealizedUsdt >= 0 ? "+" : ""}${liveRecap.paperRealizedUsdt.toFixed(2)}` })}</span>
+            {liveRecap.spotAvailable != null && <span className="tnum">{liveRecap.spotAvailable.toFixed(2)} $ {t("liveWalletAvail").toLowerCase()}</span>}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{t("recapNote")}</p>
         </div>
       )}
 

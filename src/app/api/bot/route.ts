@@ -338,14 +338,16 @@ export async function GET(req: NextRequest) {
      (no connection / upstream error) so the UI can say so honestly.
      Task 17: also report the connection itself + its trade-permission
      verdict so the UI can distinguish "not connected" from "read-only key"
-     from "connected". */
+     from "connected". Patch N: also fetched when the user has ANY live bot
+     (even while viewing a paper bot) — the recap card shows real money. */
+  const liveIds = configs.filter((c) => !c.paper).map((c) => c.id);
   let spot: {
     coin: string;
     available: number | null;
     connected: boolean;
     tradePermission: string | null;
   } | null = null;
-  if (config && !paperFlag) {
+  if (config && (!paperFlag || liveIds.length > 0)) {
     const conn = await db.exchangeConnection.findFirst({
       where: { userId: user.id, exchange: "bitget", status: "active" },
       orderBy: { createdAt: "desc" },
@@ -382,6 +384,102 @@ export async function GET(req: NextRequest) {
     };
   }
 
+  /* ---- Patch N — live money recap (all LIVE bots of this user) ----
+     Answers "berapa uang asli yang terpakai untuk order dan untung/rugi
+     berapa" without manual arithmetic over the trade log: cumulative BUY
+     size that ever hit the exchange, what closed positions realized NET of
+     Bitget fees, and the exit-kind mix that explains WHERE the money went.
+     Fee model per closed row: entryFeeUsdt recorded (Patch L open) → the
+     stored realizedPnlUsdt is already NET; legacy rows (opened pre-Patch-L,
+     no entry fee) get the base-tier taker estimate 0.1%/side (0.2% round
+     trip) subtracted and surface to the UI labeled "≈". Cleanup rows
+     (Patch K duplicate / Patch M orphan, PnL 0 at entry price) are NOT
+     trades — zero fees, excluded from the win/loss mix. Paper realized is
+     included as the commission-free comparison the user asks about. */
+  let liveRecap: {
+    buysCount: number;
+    investedUsdt: number;
+    openCount: number;
+    openSizeUsdt: number;
+    closedCount: number;
+    winCount: number;
+    lossCount: number;
+    winRate: number | null;
+    recordedUsdt: number;
+    netRealizedUsdt: number;
+    feeEstUsdt: number;
+    exitCounts: Record<string, number>;
+    cleanupCount: number;
+    paperRealizedUsdt: number;
+    spotAvailable: number | null;
+  } | null = null;
+  if (liveIds.length > 0) {
+    const [liveClosed, liveBuys] = await Promise.all([
+      db.botPosition.findMany({
+        where: { configId: { in: liveIds }, status: "CLOSED", paper: false },
+        select: { sizeUsdt: true, realizedPnlUsdt: true, entryFeeUsdt: true, exitReason: true },
+      }),
+      db.botTrade.findMany({
+        where: { configId: { in: liveIds }, action: "BUY", paper: false, status: "SUBMITTED" },
+        select: { sizeUsdt: true },
+      }),
+    ]);
+    const isCleanup = (r: string | null) => !!r && (r.includes("dibersihkan otomatis") || r.includes("yatim"));
+    let recorded = 0;
+    let net = 0;
+    let fees = 0;
+    let wins = 0;
+    let losses = 0;
+    let cleanup = 0;
+    const exits: Record<string, number> = {};
+    for (const p of liveClosed) {
+      const pnl = p.realizedPnlUsdt ?? 0;
+      const size = p.sizeUsdt ?? 0;
+      recorded += pnl;
+      if (isCleanup(p.exitReason)) {
+        cleanup += 1; /* phantom bookkeeping — never a trade, never a fee */
+        continue;
+      }
+      fees += (p.entryFeeUsdt != null ? p.entryFeeUsdt : size * 0.001) + size * 0.001;
+      net += p.entryFeeUsdt != null ? pnl : pnl - size * 0.002;
+      if (pnl > 0) wins += 1;
+      else if (pnl < 0) losses += 1;
+      const key = p.exitReason?.startsWith("take-profit")
+        ? "take-profit"
+        : p.exitReason?.startsWith("trail-stop")
+          ? "trail-stop"
+          : p.exitReason?.startsWith("stop-loss")
+            ? "stop-loss"
+            : p.exitReason?.includes("manual")
+              ? "manual"
+              : p.exitReason?.startsWith("signal")
+                ? "signal-flip"
+                : "other";
+      exits[key] = (exits[key] ?? 0) + 1;
+    }
+    const liveOpen = allIdsOpen.filter((p) => !p.paper);
+    const paperRealized = allClosed
+      .filter((p) => paperIds.has(p.configId))
+      .reduce((a, p) => a + (p.realizedPnlUsdt ?? 0), 0);
+    liveRecap = {
+      buysCount: liveBuys.length,
+      investedUsdt: liveBuys.reduce((a, t) => a + (t.sizeUsdt ?? 0), 0),
+      openCount: liveOpen.length,
+      openSizeUsdt: liveOpen.reduce((a, p) => a + p.sizeUsdt, 0),
+      closedCount: liveClosed.length - cleanup,
+      winCount: wins,
+      lossCount: losses,
+      winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+      recordedUsdt: recorded,
+      netRealizedUsdt: net,
+      feeEstUsdt: fees,
+      exitCounts: exits,
+      cleanupCount: cleanup,
+      paperRealizedUsdt: paperRealized,
+      spotAvailable: spot?.available ?? null,
+    };
+  }
+
   /* Opportunistic guardian tick — every dashboard load doubles as a heartbeat
      fallback for when the GitHub cron is degraded (measured 2-7 h gaps on the
      free tier). Guarded by the engine's 4-min min-gap, exits always evaluated,
@@ -404,6 +502,7 @@ export async function GET(req: NextRequest) {
     trades,
     summary,
     stats,
+    liveRecap,
     portfolio: { ...portfolio, wallet: portfolioWallet },
     wallet,
     pending,
