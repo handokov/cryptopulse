@@ -1840,3 +1840,19 @@ Stage Summary:
 - Pasca-deploy: harga menembus TP → OCO exchange menembak (atau engine ambil alih di band) → web merekonsiliasi di harga TP asli (~+2% bruto) — trailing TIDAK LAGI membatalkan TP yang lebih baik; posisi telanjang (OCO hilang) kini ada jalur keluar; PnL tampil BERSIH komisi dgn rincian di log
 - Trade-off disadari: trailing stop engine menjadi iner untuk posisi live ber-OCO (paper tetap trail penuh) — konsisten dengan filosofi "proteksi exchange-side"; eksplisit di alasan HOLD "exit milik exchange"
 - PAT keenam dipakai lagi (sesi sama), diingatkan revoke setelah ini
+
+---
+Task ID: 53 (PATCH M — sweep posisi yatim: baris phantom OPNUSDT tetap "LIVE OCO" di web padahal Bitget sudah jual)
+Agent: main (Super Z)
+Task: User bingung — web masih tampil 1 posisi OPNUSDT open (entry 0.0543, TP 0.055386, P/L +0.03, badge LIVE OCO) tapi di Bitget posisi sudah terjual (trailing stop 23:49, 0.0543→0.0545, +0.00/+0.37%); tanya "apakah ini yang kemarin ada 1 order palsu? seharusnya untung, malah rugi setelah komisi"
+
+Work Log:
+- Konfirmasi: YA, baris open itu = phantom kembar sisa race pra-Patch-K (entry/qty/TP/SL identik dgn trade asli yang sudah tertutup 23:49). Kenapa bertahan: Patch K cleanup HANYA menggabungkan bila KEDUA baris kembar masih OPEN — baris asli ditutup duluan oleh trailing stop (sebelum tick pertama pasca-deploy Patch K), phantom jadi yatim tunggal → cleanup no-op selamanya
+- Kenapa tidak bisa exit jalur normal (ditelusuri per jalur): TP cross → liveOcoReconcile → OCO sudah dicancel exit 23:49 → findOcoExitFill NULL (sell asli tercatat engine → dikecualikan engineSoldOrderIds) → Patch L takeover → liveSellQty = "0" (saldo OPN riil habis terjual) → HOLD "no sellable balance and no OCO fill" → retry tiap tick SELAMANYA; antara band → HOLD "dipantau engine (tanpa proteksi OCO)". Zombie murni book-keeping, dana TIDAK berisiko (tak ada sell nyata yang mungkin)
+- Patch M (commit 9319eb7): sweepOrphanPositions — ground truth = SALDO WALLET: saldo base coin < 1% qty baris (baris koin absen di assets = 0; baca gagal = skip tick ini, tidak pernah menebak) DAN tidak ada OCO sell leg ukuran-matching aktif → baris ditutup book-keeping-only (PnL 0, exitPrice = entry, tanpa panggil exchange, tanpa SELL palsu — sama jujur dgn collapse Patch K; PnL trade asli tetap tercatat di barisnya sendiri). Wired di tickOne (setelah collapse, sebelum exit ladder — self-heal tick pertama pasca-deploy) dan manualClosePositions (tombol "Tutup posisi" kini menutup yatim tanpa mencoba sell mustahil)
+- Verifikasi: eslint engine.ts 0 error; tsc src/ = 4 error pre-existing pola lama (close×2, news, trailStopPrice — baris bergeser karena +74 baris), 0 error baru
+- Commit lokal 9319eb7 MENUNGGU PAT ketujuh (PAT keenam sudah dipakai 2× sesi lalu, diingatkan revoke)
+
+Stage Summary:
+- Pasca-deploy: tick pertama menutup baris yatim OPNUSDT otomatis — tabel "Posisi terbuka" kosong, log aktivitas mencatat "cleanup: 1 posisi yatim OPNUSDT ditutup otomatis (saldo riil ≈ 0, tanpa OCO; baris phantom — tanpa order)"; setelah itu bot kembali punya 0 posisi open → entry berikutnya tunduk gate normal (skor/garis entry/cooldown/maks harian)
+- Status keluhan lintas-task: akar "trailing menjual di bawah TP" = Patch L (guardianship + band-cross takeover + PnL bersih komisi, sudah live); sisa tampilan phantom = Patch M ini
