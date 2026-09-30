@@ -975,6 +975,17 @@ export function BotSection() {
                 }
               : null
           }
+          /* Patch P — draw the pending order's BUY/TP/SL levels on the chart
+             too, so protection is visible before the fill is confirmed. */
+          pending={
+            pendingInfo
+              ? {
+                  price: pendingInfo.price ?? null,
+                  tpPrice: pendingInfo.tpPrice ?? null,
+                  slPrice: pendingInfo.slPrice ?? null,
+                }
+              : null
+          }
           refreshKey={chartRefresh}
         />
       )}

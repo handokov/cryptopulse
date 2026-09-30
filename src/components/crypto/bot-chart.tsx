@@ -9,10 +9,25 @@
  *   ENTRY  amber dashed  — draggable. While dragging, TP/SL preview lines
  *                          auto-follow (bands keep their % distance and
  *                          re-anchor to the line, per design item 6).
- *   TP     emerald       — the OPEN position's real target, or the preview
- *                          anchored to the entry line when flat.
- *   SL     red           — the OPEN position's real stop, or the preview.
- *   BUY    muted dashed  — the open position's fill price (context only).
+ *   TP     emerald       — the OPEN position's real target (dotted), or the
+ *                          PENDING order's armed-to-be OCO level (dashed),
+ *                          or the preview anchored to the entry line.
+ *   SL     red           — the OPEN position's real stop (dotted), or the
+ *                          PENDING order's OCO stop (dashed), or the preview.
+ *   BUY    muted dashed  — the open position's fill price, or the pending
+ *                          limit order's resting price (context only).
+ *
+ * Patch P — TP/SL lines no longer require a recorded position or an entry
+ * line: a pending limit entry now draws its BUY/TP/SL levels straight from
+ * the order (the same numbers the pending card shows). Before this, a bot
+ * that entered purely by score (no entry line) showed NO protection lines
+ * at all while Bitget clearly displayed the armed OCO — read as "the TP/SL
+ * lines disappeared".
+ *
+ * Patch P — price-axis precision: the library defaults to 2 decimals, which
+ * renders sub-cent prices as "0.01" on every label (axis, last-price line,
+ * TP/SL lines). After candles load, the series priceFormat is re-pinned to
+ * the magnitude-aware precision used by px() below.
  *
  * Drag semantics: pointer-down within ~14 px of the ENTRY line starts a
  * drag; the chart's own scroll/scale is suspended while dragging; release
@@ -59,12 +74,21 @@ export interface BotChartPosition {
   stopPrice: number;
 }
 
+/** Patch P — pending limit entry: resting price + the OCO levels it arms on fill. */
+export interface BotChartPending {
+  price: number | null;
+  tpPrice: number | null;
+  slPrice: number | null;
+}
+
 interface BotChartProps {
   symbol: string;
   timeframe: string;
   entryLine: number | null;
   onEntryLineChange: (line: number | null) => void;
   position: BotChartPosition | null;
+  /** Patch P — pending entry lines (priority: position > pending > preview). */
+  pending?: BotChartPending | null;
   /** Bump to force a refetch (e.g. after a manual tick). */
   refreshKey?: number;
 }
@@ -88,7 +112,14 @@ function px(n: number): string {
   return n.toFixed(d);
 }
 
-export function BotChart({ symbol, timeframe, entryLine, onEntryLineChange, position, refreshKey = 0 }: BotChartProps) {
+/** Magnitude-aware tick precision — mirrors px(); applied to the series so
+ *  axis + price-line labels stop collapsing sub-cent prices into "0.01". */
+function pricePrecision(n: number): number {
+  const abs = Math.abs(n);
+  return abs >= 100 ? 2 : abs >= 1 ? 3 : 5;
+}
+
+export function BotChart({ symbol, timeframe, entryLine, onEntryLineChange, position, pending = null, refreshKey = 0 }: BotChartProps) {
   const t = useTranslations("bot");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -176,20 +207,36 @@ export function BotChart({ symbol, timeframe, entryLine, onEntryLineChange, posi
     chartRef.current?.timeScale().setVisibleLogicalRange({ from: data.candles.length - 90, to: data.candles.length + 4 });
   }, [data]);
 
+  /* Patch P — re-pin the series priceFormat to a magnitude-aware precision.
+     The library default (2 decimals) labels a 0.00904 close as "0.01" on the
+     axis, the built-in last-price line AND every TP/SL line — for sub-cent
+     symbols that makes all protection lines read identically. */
+  useEffect(() => {
+    const series = seriesRef.current;
+    const last = data?.candles?.[data.candles.length - 1];
+    if (!series || !last || !Number.isFinite(last.close) || last.close <= 0) return;
+    const precision = pricePrecision(last.close);
+    series.applyOptions({ priceFormat: { type: "price", precision, minMove: Number((10 ** -precision).toFixed(precision)) } });
+  }, [data]);
+
   /* ---------------- price lines (entry / TP / SL / BUY) ----------------
+     Priority: OPEN position (real, dotted) > PENDING order (armed-to-be OCO,
+     dashed) > entry-line preview (auto-follows the draggable line).
      TP/SL auto-follow: preview lines re-anchor to the active line value on
      every drag frame; with an open position the REAL levels win instead. */
   const activeLine = dragLine ?? entryLine;
   const tpPrice = useMemo(() => {
     if (position) return position.targetPrice;
+    if (pending?.tpPrice != null) return pending.tpPrice;
     if (activeLine != null && data) return activeLine * (1 + data.bands.tpPct / 100);
     return null;
-  }, [position, activeLine, data]);
+  }, [position, pending, activeLine, data]);
   const slPrice = useMemo(() => {
     if (position) return position.stopPrice;
+    if (pending?.slPrice != null) return pending.slPrice;
     if (activeLine != null && data) return activeLine * (1 - data.bands.slPct / 100);
     return null;
-  }, [position, activeLine, data]);
+  }, [position, pending, activeLine, data]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -205,16 +252,18 @@ export function BotChart({ symbol, timeframe, entryLine, onEntryLineChange, posi
         return;
       }
       if (existing) {
-        existing.applyOptions({ price, title });
+        existing.applyOptions({ price, title, color, lineStyle: style, lineWidth: width });
       } else {
         L[kind] = series.createPriceLine({ price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title });
       }
     };
     put("entry", activeLine, COLORS.entry, LineStyle.Dashed, "ENTRY", 2);
-    put("tp", tpPrice, COLORS.tp, LineStyle.Dotted, "TP");
-    put("sl", slPrice, COLORS.sl, LineStyle.Dotted, "SL");
-    put("buy", position?.entryPrice ?? null, COLORS.buy, LineStyle.Dashed, "BUY");
-  }, [activeLine, tpPrice, slPrice, position]);
+    /* real levels (filled position) = dotted; pending OCO levels = dashed */
+    const protStyle = position ? LineStyle.Dotted : LineStyle.Dashed;
+    put("tp", tpPrice, COLORS.tp, protStyle, "TP");
+    put("sl", slPrice, COLORS.sl, protStyle, "SL");
+    put("buy", position?.entryPrice ?? pending?.price ?? null, COLORS.buy, LineStyle.Dashed, "BUY");
+  }, [activeLine, tpPrice, slPrice, position, pending]);
 
   /* ---------------- drag interaction (any-touch line, design 26-b) ---------------- */
   const suspendPan = (suspended: boolean) => {
@@ -345,7 +394,7 @@ export function BotChart({ symbol, timeframe, entryLine, onEntryLineChange, posi
             {t("chartClearLine")}
           </Button>
         )}
-        {data && !position && activeLine != null && (
+        {data && !position && tpPrice != null && slPrice != null && (
           <span className="tnum text-[10px] text-muted-foreground/80">
             TP {px(tpPrice ?? 0)} · SL {px(slPrice ?? 0)}
           </span>
