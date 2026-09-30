@@ -1218,6 +1218,13 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
      on the first tick after deploy; the exit ladder below then manages
      exactly one survivor, keeping the ≤1-open-position invariant true. */
   openPositions = await collapseDuplicatePositions(cfg, openPositions);
+  /* Patch M sweep — a live row with (nearly) zero wallet backing and no
+     armed OCO cannot exist on the exchange (phantom whose real twin already
+     exited, e.g. the OPNUSDT leftover); close it book-keeping-only so the
+     exit ladder never stalls on a position that isn't there. */
+  if (!cfg.paper && creds) {
+    openPositions = await sweepOrphanPositions(cfg, creds, openPositions);
+  }
 
   /* ---- 1. Exits first ---- */
   for (const pos of openPositions) {
@@ -1743,6 +1750,61 @@ async function collapseDuplicatePositions<T extends { id: string; entryPrice: nu
   return [keep, ...rest.filter((d) => !twinIds.has(d.id))];
 }
 
+/* Patch M — orphan sweep: an OPEN live row whose base coin has (nearly)
+   vanished from the wallet cannot exist on the exchange. Measured case: the
+   OPNUSDT phantom twin whose real sibling was trail-sold first — the Patch K
+   collapse needs BOTH rows open to merge, so the survivor stayed open while
+   every exit path stalled on "no sellable balance and no OCO fill" (the real
+   sell is excluded from reconcile by engineSoldOrderIds). Ground truth is
+   the wallet itself: when the exchange holds < 1% of the row's qty AND no
+   OCO sell leg of matching size is armed, the row is closed
+   book-keeping-only — PnL 0, exit at entry price, no exchange call, no fake
+   SELL in the audit trail (same honest treatment as the Patch K collapse;
+   the real trade's PnL is already recorded on its own row).
+   Fail-safe: a failed balance read or OCO read skips the sweep this tick. */
+async function sweepOrphanPositions<T extends { id: string; entryPrice: number; qty: number }>(
+  cfg: TradeLogConfig,
+  creds: BitgetCreds,
+  positions: T[]
+): Promise<T[]> {
+  if (cfg.paper || positions.length === 0) return positions;
+  const avail = await fetchSpotBalance(creds, baseCoinOf(cfg.symbol))
+    .then((b) => (b ? Math.max(b.available, 0) : 0)) /* coin row absent = wallet holds none → 0 */
+    .catch(() => null);
+  if (avail === null) return positions; /* balance read failed — never guess */
+  const candidates = positions.filter((p) => avail < p.qty * 0.01);
+  if (candidates.length === 0) return positions;
+  /* protection guard: a matching armed OCO sell leg keeps its row on the
+     normal reconcile paths — the sweep only takes provably naked rows. */
+  const legs = await fetchOcoPlanRows(creds, cfg.symbol).catch(() => null);
+  if (legs === null) return positions;
+  const orphans = candidates.filter(
+    (p) => !legs.some((r) => r.side === "sell" && r.size > 0 && Math.abs(r.size - p.qty) / p.qty <= 0.35)
+  );
+  if (orphans.length === 0) return positions;
+  const now = new Date();
+  for (const o of orphans) {
+    await db.botPosition.update({
+      where: { id: o.id },
+      data: {
+        status: "CLOSED",
+        exitPrice: o.entryPrice,
+        realizedPnlUsdt: 0,
+        exitReason: `posisi yatim dibersihkan otomatis (Patch M) — saldo riil ${baseCoinOf(cfg.symbol)} ${avail.toPrecision(4)} (< 1% ukuran posisi) tanpa OCO aktif di exchange; baris tanpa cadangan ditutup tanpa order`,
+        closedAt: now,
+      },
+    });
+  }
+  await logTrade(cfg, {
+    action: "HOLD",
+    status: "SUBMITTED",
+    reason: `cleanup: ${orphans.length} posisi yatim ${cfg.symbol} ditutup otomatis (saldo riil ≈ 0, tanpa OCO; baris phantom — tanpa order)`,
+    detail: JSON.stringify({ orphanSweep: true, balance: avail, removed: orphans.map((o) => o.id) }),
+  });
+  const orphanIds = new Set(orphans.map((o) => o.id));
+  return positions.filter((p) => !orphanIds.has(p.id));
+}
+
 export interface ManualCloseResult {
   ok: boolean;
   closed: number;
@@ -1786,6 +1848,18 @@ export async function manualClosePositions(
         results: positions.map((p) => ({ positionId: p.id, price: null, pnlUsdt: null, error: "no active Bitget connection for live mode" })),
       };
     }
+  }
+
+  /* Patch M — orphan sweep first: a live row with (nearly) zero wallet
+     backing and no armed OCO is closed book-keeping-only instead of
+     attempting a sell that would fail with zero balance every time. */
+  if (!cfg.paper && creds) {
+    const kept = await sweepOrphanPositions(cfg, creds, positions);
+    for (const swept of positions.filter((p) => !kept.includes(p))) {
+      out.closed += 1;
+      out.results.push({ positionId: swept.id, price: swept.entryPrice, pnlUsdt: 0 });
+    }
+    positions = kept;
   }
 
   for (const pos of positions) {
