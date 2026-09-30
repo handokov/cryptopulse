@@ -1917,3 +1917,19 @@ Work Log:
 Stage Summary:
 - origin/main = f1d68e7; Patch M + N + O kini semua live; Vercel auto-deploy; kartu pending ROBO/ARX akan menampilkan garis TP/SL (≈) setelah deploy
 - Token ketujuh tetap aktif atas keputusan user (revoke sendiri saat sudah tidak ada perubahan); push berikutnya bisa memakai token yang sama selama belum di-revoke
+
+---
+Task ID: 56 (PATCH P — garis TP/SL hilang di CHART bot: user kirim 2 screenshot, chart ROBOUSDT polos + Bitget jelas menampilkan OCO ROBO tertunda)
+Agent: main (Super Z)
+Task: User tanya "ini knp tidak ada garis Tp/sl nya?" — chart bot web hanya menampilkan garis merah "0.01", sementara Bitget menampilkan TP ≥0.009193 / SL ≤0.008291 (122.6 ROBO, tag Jual/Prasetel TP/SL/Tertunda, 19:27:22)
+
+Work Log:
+- Diagnosis dari kode (DB produksi tetap tak terjangkau dari lokal): (1) BotChart hanya menggambar TP/SL dari posisi tercatat engine ATAU pratinjau yang mengikuti garis entry — screenshot menunjukkan kedua sumber absen (tombol "Pasang garis entry" + hint "Tanpa garis entry" = positions kosong & entryLine null) → chart polos; (2) TP/SL Bitget = OCO exchange-side yang sejak Patch O hanya tampil sebagai ANGKA di kartu pending, tidak pernah digambar sebagai garis chart — gap UI inilah akar keluhan; (3) garis merah "0.01" BUKAN SL: itu price line harga-terakhir bawaan lightweight-charts v5 (priceLineVisible default true) dengan label salah format — presisi default library 2 desimal membulatkan 0.00904 → "0.01" (terverifikasi di typings: precision defaultValue 2)
+- Patch P (commit f2fb84a): (1) BotChart terima prop pending {price, tpPrice, slPrice} — garis BUY (harga order), TP, SL (dashed) digambar dari order pending saat belum ada posisi; prioritas garis: posisi (dotted) > pending (dashed) > pratinjau garis entry; put() kini applyOptions penuh (transisi color/style/width aman); (2) presisi harga magnitude-aware: series.applyOptions priceFormat (2/3/5 desimal by magnitude, mirroring px()) setelah candle dimuat → label axis, last-price line, dan TP/SL tampil "0.00904" bukan "0.01"; chip teks "TP x · SL y" kini tampil juga di state pending
+- bot-section.tsx: pass pending={pendingInfo → {price, tpPrice, slPrice}}
+- Verifikasi: eslint bot-chart + bot-section = 0 error; tsc src/ = 4 error pre-existing pola lama (close×2, news, trailStopPrice), 0 baru
+- Commit f2fb84a LOKAL — push MENUNGGU PAT (string PAT ketujuh tidak pernah disimpan; ls-remote origin = f1d68e7 sesuai ekspektasi)
+
+Stage Summary:
+- Pasca-deploy Patch P: chart bot menampilkan garis BUY/TP/SL dari order pending (dashed, ≈ dari harga order; final mengikuti harga isi) bahkan saat garis entry tidak dipasang; semua label harga sub-cent terbaca penuh
+- Catatan state produksi: OCO Bitget "Tertunda" = entry ROBO 122.6 sudah terisi di exchange; bila web belum menampilkan baris di "Posisi terbuka" setelah tick, fill belum ter-reconcile — user diminta tekan "Tick sekarang" dan laporkan alasan di log bila masih kosong
