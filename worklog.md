@@ -1856,3 +1856,19 @@ Work Log:
 Stage Summary:
 - Pasca-deploy: tick pertama menutup baris yatim OPNUSDT otomatis — tabel "Posisi terbuka" kosong, log aktivitas mencatat "cleanup: 1 posisi yatim OPNUSDT ditutup otomatis (saldo riil ≈ 0, tanpa OCO; baris phantom — tanpa order)"; setelah itu bot kembali punya 0 posisi open → entry berikutnya tunduk gate normal (skor/garis entry/cooldown/maks harian)
 - Status keluhan lintas-task: akar "trailing menjual di bawah TP" = Patch L (guardianship + band-cross takeover + PnL bersih komisi, sudah live); sisa tampilan phantom = Patch M ini
+
+---
+Task ID: 54 (PATCH N — rekap dana live: user bingung "berapa uang asli terpakai, untung/rugi berapa; kenapa paper profit tapi live sering trailing stop + rugi komisi")
+Agent: main (Super Z)
+Task: User minta kejelasan angka dana riil live (total masuk order, realisasi bersih) & penjelasan gap paper vs live
+
+Work Log:
+- API GET /api/bot kini mengembalikan liveRecap (agregat SEMUA bot live user): investedUsdt/buysCount (kumulatif BUY SUBMITTED), openSizeUsdt/openCount (tertanam sekarang), recordedUsdt (sum realizedPnlUsdt tersimpan), netRealizedUsdt + feeEstUsdt (bersih komisi — baris pasca-Patch-L sudah net via entryFeeUsdt tercatat; baris lama dikoreksi estimasi taker 0,1%/sisi dan dilabeli "≈"), exitCounts (TP/trailing/SL/manual) + W/L, cleanupCount (baris Patch K/M DIKECUALIKAN dari trade & fee), paperRealizedUsdt (pembanding bebas komisi), spotAvailable (fetch spot diperluas ke user ber-bot live walau sedang melihat paper — tetap cache 30s)
+- UI: kartu hijau "Rekap dana live" di bawah kartu dompet live (tampil juga saat melihat bot paper — uang asli selalu relevan); isi: 4 angka utama + baris komisi/W-L/exit-mix/pembanding paper + catatan estimasi; i18n lengkap 6 locale (id/en/es/pt/ja/zh, key recap*)
+- Jawaban konseptual utk user: (1) paper bebas komisi & fill ideal → persentase tidak sebanding; (2) trailing stop = fitur exit VOL — bandingkan exit style paper vs live di form (FIXED vs VOL); (3) pola "kebanyakan trailing stop" pra-Patch-L sudah ditutup guardianship Patch L (trailing tak lagi membatalkan OCO TP; TP antar-tick dibayar via reconcile/ambil alih); (4) kadens cron (gap 2-7 jam) membuat exit engine telat — kini proteksi TP/SL realtime ada di exchange
+- Verifikasi: eslint route.ts + bot-section.tsx 0 error; tsc src/ tetap 4 error pre-existing pola lama, 0 baru
+- Commit lokal f281045 (di atas 9319eb7 Patch M) — keduanya MENUNGGU PAT ketujuh
+
+Stage Summary:
+- Pasca-deploy: user melihat sendiri di dashboard — berapa USDT masuk order kumulatif, berapa tertanam, realisasi tercatat vs bersih (≈ setelah komisi), komisi ≈, exit mix (berapa kali TP/trailing/SL), W/L, dan pembanding paper bebas komisi — tanpa hitung manual dari log
+- Sesi ini total 2 commit menunggu push: 9319eb7 (Patch M orphan sweep) + f281045 (Patch N recap) + worklog Task 53/54
