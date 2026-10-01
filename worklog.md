@@ -1965,5 +1965,6 @@ Work Log:
 - Commit lokal MENUNGGU PAT (kedelapan sudah dipakai push Task 57, disarankan revoke)
 
 Stage Summary:
-- Pasca-deploy Patch Q: posisi baru ber-OCO tak bisa tersapu (frozen dihitung + umur ≥60 mnt + skip saat baca gagal); trailing tidak lagi menembus proteksi saat API gagal (fail-safe Patch L hidup); state OCO tak terbaca selalu HOLD
+- PASCA-DEPLOY Patch Q: posisi baru ber-OCO tak bisa tersapu (frozen dihitung + umur ≥60 mnt + skip saat baca gagal); trailing tidak lagi menembus proteksi saat API gagal (fail-safe Patch L hidup); state OCO tak terbaca selalu HOLD
 - Jawaban "0.00" = bug sapuan (diperbaiki), bukan setting TP/SL; resep FIXED + TP 3-4 / SL 1.5-2 / TF 1H utk gerak lebih lambat
+- Push: PAT kesembilan dari user; checklist (tree bersih, scan token 0, ls-remote origin = c4d8b83); push c4d8b83..122a02d (Patch Q 122a02d + wl57 fill 2c1eba0) via URL one-shot + sed redaksi — token tak pernah ditulis ke file/commit; origin/main = 122a02d; user diingatkan revoke PAT ke-8 & ke-9 (keduanya pernah plaintext di chat); commit worklog ini lokal menunggu PAT berikutnya
