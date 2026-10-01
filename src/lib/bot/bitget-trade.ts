@@ -382,27 +382,31 @@ export interface OcoPlanRow {
  * TP/SL plans (attached TP/SL surface here after the entry fills). The
  * response is `{ nextFlag, idLessThan, orderList }` per the SDK; parsed
  * defensively because older shapes returned a bare array.
+ *
+ * Patch Q — THROWS on API failure instead of returning []. The swallow made
+ * every fail-safe downstream dead code: Patch L's guardianship ("read failure
+ * counts as ARMED") saw [] → "not armed" and let engine exits cancel/sell
+ * through protection; Patch M's sweep guard (null → skip) was unreachable,
+ * so one transient read error made OCO-protected positions look naked and
+ * got them swept at 0 PnL (the ARX 0.00 rows). Callers own the failure
+ * policy: guardianship → armed, sweep → skip this tick, cancel → HOLD.
  */
 export async function fetchOcoPlanRows(creds: ExchangeCredentials, symbol: string): Promise<OcoPlanRow[]> {
   const path = `/api/v2/spot/trade/current-plan-order?symbol=${encodeURIComponent(symbol)}`;
-  try {
-    const data = await signedRequest<unknown>(creds, "GET", path);
-    const list = Array.isArray(data)
-      ? data
-      : Array.isArray((data as { orderList?: unknown[] })?.orderList)
-        ? ((data as { orderList: unknown[] }).orderList)
-        : [];
-    return (list as Record<string, unknown>[]).map((r) => ({
-      orderId: String(r.orderId ?? ""),
-      side: String(r.side ?? "").toLowerCase(),
-      size: toNum(r.size),
-      triggerPrice: toNum(r.triggerPrice),
-      status: String(r.status ?? ""),
-      planType: String(r.planType ?? ""),
-    }));
-  } catch {
-    return []; // query failure must never block an exit decision on its own
-  }
+  const data = await signedRequest<unknown>(creds, "GET", path);
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { orderList?: unknown[] })?.orderList)
+      ? ((data as { orderList: unknown[] }).orderList)
+      : [];
+  return (list as Record<string, unknown>[]).map((r) => ({
+    orderId: String(r.orderId ?? ""),
+    side: String(r.side ?? "").toLowerCase(),
+    size: toNum(r.size),
+    triggerPrice: toNum(r.triggerPrice),
+    status: String(r.status ?? ""),
+    planType: String(r.planType ?? ""),
+  }));
 }
 
 /** POST /api/v2/spot/trade/cancel-plan-order — cancel one armed TP/SL row. */

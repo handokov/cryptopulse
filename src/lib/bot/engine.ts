@@ -843,7 +843,12 @@ async function livePendingEntryTick(
  * current-plan-order after the entry fills).
  */
 async function cancelOcoPlansFor(creds: BitgetCreds, pos: OpenPositionRow): Promise<{ cancelled: number; failed: number }> {
-  const rows = await fetchOcoPlanRows(creds, pos.symbol);
+  /* Patch Q — a failed plan-order read counts as a FAILED cancel: the caller
+     then HOLDs ("protection kept, retry next tick") instead of market-selling
+     while the OCO might still be armed. (The old []-swallow made a read
+     failure look like "nothing to cancel".) */
+  const rows = await fetchOcoPlanRows(creds, pos.symbol).catch(() => null);
+  if (rows === null) return { cancelled: 0, failed: 1 };
   const mine = rows.filter((r) => r.side === "sell" && r.size > 0 && Math.abs(r.size - pos.qty) / pos.qty <= 0.35);
   let cancelled = 0;
   let failed = 0;
@@ -1036,7 +1041,17 @@ async function liveOcoReconcile(
   exitKind: string
 ): Promise<TickOutcome> {
   const base = { userId: cfg.userId, symbol: cfg.symbol, paper: false, score: signal.score };
-  const rows = await fetchOcoPlanRows(creds, pos.symbol);
+  /* Patch Q — unreadable OCO state must HOLD: with the []-swallow gone, a
+     read failure now surfaces here and guessing "naked" (market-selling or
+     a false takeover) is exactly what the reconcile paths must never do. */
+  const rows = await fetchOcoPlanRows(creds, pos.symbol).catch(() => null);
+  if (rows === null) {
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `${exitKind} crossed (${exitReason}) — status OCO tidak terbaca (baca plan order gagal); menunggu tick berikutnya, tidak menebak`,
+    };
+  }
   const stillArmed = rows.some((r) => r.side === "sell" && r.size > 0 && Math.abs(r.size - pos.qty) / pos.qty <= 0.35);
   if (stillArmed) {
     return {
@@ -1762,20 +1777,30 @@ async function collapseDuplicatePositions<T extends { id: string; entryPrice: nu
    SELL in the audit trail (same honest treatment as the Patch K collapse;
    the real trade's PnL is already recorded on its own row).
    Fail-safe: a failed balance read or OCO read skips the sweep this tick. */
-async function sweepOrphanPositions<T extends { id: string; entryPrice: number; qty: number }>(
+async function sweepOrphanPositions<T extends { id: string; entryPrice: number; qty: number; openedAt: Date }>(
   cfg: TradeLogConfig,
   creds: BitgetCreds,
   positions: T[]
 ): Promise<T[]> {
   if (cfg.paper || positions.length === 0) return positions;
+  /* Patch Q — min age 60 min: a freshly opened position is NEVER swept, no
+     matter what the reads say. The ARX case swept OCO-protected rows ~5 min
+     after entry when the plan-order read failed and the (frozen) balance
+     read ~0 — age is the network-free last line of defense. */
+  const MIN_AGE_MS = 60 * 60 * 1000;
+  const nowMs = Date.now();
   const avail = await fetchSpotBalance(creds, baseCoinOf(cfg.symbol))
-    .then((b) => (b ? Math.max(b.available, 0) : 0)) /* coin row absent = wallet holds none → 0 */
+    .then((b) => (b ? Math.max(b.available, 0) + Math.max(b.frozen, 0) : 0)) /* Patch Q — frozen/locked coins (e.g. locked by an armed plan) are still held; absent row = 0 */
     .catch(() => null);
   if (avail === null) return positions; /* balance read failed — never guess */
-  const candidates = positions.filter((p) => avail < p.qty * 0.01);
+  const candidates = positions.filter(
+    (p) => avail < p.qty * 0.01 && nowMs - p.openedAt.getTime() >= MIN_AGE_MS
+  );
   if (candidates.length === 0) return positions;
   /* protection guard: a matching armed OCO sell leg keeps its row on the
-     normal reconcile paths — the sweep only takes provably naked rows. */
+     normal reconcile paths — the sweep only takes provably naked rows.
+     Patch Q — fetchOcoPlanRows now THROWS on failure, so this catch is
+     reachable: a failed OCO read skips the sweep this tick (fail-safe real). */
   const legs = await fetchOcoPlanRows(creds, cfg.symbol).catch(() => null);
   if (legs === null) return positions;
   const orphans = candidates.filter(

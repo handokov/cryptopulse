@@ -1949,3 +1949,21 @@ Work Log:
 Stage Summary:
 - origin/main = c4d8b83 (f1d68e7..c4d8b83, 4 commit: Patch P + wl56 + checkpoint mode-file + wl57); Patch P live setelah Vercel deploy; garis BUY/TP/SL pending tampil di chart + presisi harga benar
 - Akar "rugi terus" = konfigurasi TP+2%/SL−8% (breakeven WR ≈85%) — perbaikan ada di tangan user lewat form bot; engine sehat (Patch L/O/P)
+
+---
+Task ID: 58 (PATCH Q — baris trade "+0.00 (+0.00%)" ARX: posisi ber-OCO tersapu Patch M; + resep setting TP/SL/trailing utk user)
+Agent: main (Super Z)
+Task: User kirim screenshot Riwayat Trade — 5× ARXUSDT LIVE OCO ditutup +0.00 (+0.00%), entry=exit persis, durasi ~5m, alasan "lainnya"; tanya setting TP/SL berapa supaya tidak 0.00, cerita default terlalu cepat nutup → set TP 2%/SL 8% → malah kena trailing stop terus
+
+Work Log:
+- Identifikasi jalur: baris 0.00 = Patch M sweepOrphanPositions (exitPrice=entry, PnL 0, reason panjang → chip "lainnya") — BUKAN hasil TP/SL user
+- AKAR 3 LAPIS: (1) fetchOcoPlanRows menelan error API → return [] — membuat dua fail-safe MATI: Patch L ocoSellLegArmed (catch=true tak pernah kena; baca gagal terbaca "tidak armed" → trailing/flip bisa membatalkan proteksi & jual — menjelaskan "kena trailing stop terus" pasca-Patch-L) dan guard null Patch M (tak terjangkau → satu baca gagal = posisi ber-OCO terlihat telanjang); (2) sweep hanya baca available (fetchSpotBalance punya frozen sejak awal) — koin terkunci di plan TP/SL terbaca ≈0 → kandidat sapu; (3) tidak ada umur minimum — baris baru berumur 5 mnt bisa tersapu di tick pertama (pola durasi 5m di screenshot)
+- Patch Q: (1) fetchOcoPlanRows THROW saat gagal (kontrak berubah; 4 call site disesuaikan: ocoSellLegArmed catch=true kini HIDUP; sweep .catch(null)=skip kini nyata; cancelOcoPlansFor baca gagal = failed:1 → liveEngineExit HOLD "protection kept"; liveOcoReconcile baca gagal = HOLD "tidak menebak"); (2) sweep menghitung available+frozen; (3) sweep butuh umur ≥60 mnt (MIN_AGE_MS, openedAt masuk constraint generik)
+- Verifikasi: eslint engine/bitget-trade 0 error; tsc src/ = 4 error pre-existing pola lama, 0 baru
+- Resep setting utk user (bukan bug): exitStyle FIXED (mematikan trailing sepenuhnya — jalur trail digerbangi volMode), TP override 3-4%, SL override 1.5-2% (SL HARUS < TP; SL 8% butuh WR breakeven ≈85%), atau biarkan preset & naikkan timeframe 15M→1H utk gerak lebih besar
+- Posisi ARX/ROBO yatim HASIL sapuan lama: koin riil + OCO masih di Bitget — akan exit sendiri di exchange tapi PnL tak tercatat web (baris sudah tertutup 0.00); user bisa cancel/sell manual di Bitget
+- Commit lokal MENUNGGU PAT (kedelapan sudah dipakai push Task 57, disarankan revoke)
+
+Stage Summary:
+- Pasca-deploy Patch Q: posisi baru ber-OCO tak bisa tersapu (frozen dihitung + umur ≥60 mnt + skip saat baca gagal); trailing tidak lagi menembus proteksi saat API gagal (fail-safe Patch L hidup); state OCO tak terbaca selalu HOLD
+- Jawaban "0.00" = bug sapuan (diperbaiki), bukan setting TP/SL; resep FIXED + TP 3-4 / SL 1.5-2 / TF 1H utk gerak lebih lambat
