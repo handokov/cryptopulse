@@ -2073,3 +2073,20 @@ Stage Summary:
 - Ambang likuiditas LIVE di 1M USDT/24h (koin 1M-3M buyable lagi, <1M tetap ditolak)
 - Patch T lengkap di produksi: recovery re-entry pasca-crash SL + liquidity guard 1M
 - Pemakaian PAT: ke-11 revoke user sendiri (terverifikasi 401) — pola revoke setelah pakai berjalan baik
+
+---
+Task ID: 65 (analisis data — user: "3M/hari sedikit yg bisa dibeli, hanya di hal 1" + screenshot pasar Bitget)
+Agent: main (Super Z)
+Task: User khawatir ambang volume membuat pilihan koin terlalu sempit (screenshot halaman pasar Bitget)
+
+Work Log:
+- Tarik seluruh ticker spot publik Bitget (api.bitget.com/api/v2/spot/market/tickers → upload/tickers.json, 3.393 pair; 3.323 berakhiran USDT) — field usdtVolume PERSIS yang dibaca engine utk liquidity guard
+- Distribusi (scripts/analyze-bitget-volume.cjs): ≥100M = 1.070 pair; ≥10M = 2.506; ≥3M = 2.739; ≥1M = 2.812 (85%); ≥500K = 2.855; <100K = 331 → kliff sesungguhnya ada di bawah ~500K-1M, ambang 1M vs 3M praktis sama luasnya (selisih 73 pair)
+- Koin user: UAIUSDT 1.44M (LOLOS 1M); ARXUSDT 466K (TERTOLAK); ROBOUSDT 100K (TERTOLAK)
+- Screenshot user menampilkan angka berbeda dari API (kemungkinan kolom volume satuan koin/filter halaman) — API adalah ground truth engine
+- 12 teratas didominasi token saham tokenized "R*" dgn angka miliaran (kemungkinan terinflasi) — catatan, tidak memengaruhi keputusan
+- Kesimpulan utk user: pertahankan 1M (rekomendasi), ATAU turun ke ~400K jika ingin ARX dibeli lagi (ROBO tetap tertolak), ATAU ~90K utk ROBO (praktis tanpa penjaga — tidak disarankan)
+
+Stage Summary:
+- Ambang 1M memberi bot 2.812 pair (85% pasar) — jauh dari "hanya halaman 1"
+- ARX/ROBO keluar dari jangkauan bot di ambang 1M; keputusan turunkan/lanjut di tangan user; tidak ada perubahan kode di putaran ini
