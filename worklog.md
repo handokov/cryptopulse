@@ -2006,3 +2006,19 @@ Work Log:
 Stage Summary:
 - Pasca-deploy Patch S: engine exit tak pernah lagi cancel OCO lalu gagal jual (naked window hilang); proteksi tetap armed selama koin belum sellable; retry tiap tick tanpa order doomed; manual close memberi pesan jelas saat koin masih unfreeze
 - Masih terbuka utk user (approval per masing-masing): recovery re-entry (opsi A), dip-buy limit (B), perubahan sizing/dukungan modal (C)
+
+---
+Task ID: 61 (PATCH S push result — origin/main = 55e8531)
+Agent: main (Super Z)
+Task: User kirim PAT kesebelas → push 3 commit tertunda: wl59 push-result (a86c9e4), Patch S (0a97907), wl60 record (55e8531)
+
+Work Log:
+- Pre-push audit ulang isi Patch S sebelum push: (1) verifikasi routing — liveEngineExit hanya dicap saat leg OCO TIDAK armed (guardianship Patch L HOLD duluan) atau tpslArmed=false, jadi pre-gate saldo tidak memblok exit sah; (2) liveSellQty read-fail → fallback pos.qty (perilaku lama utk saldo unreadable, aman); (3) productRules tak bisa throw (catch → fallback min 1 USDT); (4) manual close ticker null → ?? pos.entryPrice ter-handle
+- Verifikasi: tsc src/ = 4 error pre-existing (trailStopPrice, close×2, news), 0 baru; eslint engine.ts = 0 error
+- Push: PAT kesebelas dari user; git fetch origin refs/heads/main dulu (origin/main 122a02d..f99b6d6); push f99b6d6..55e8531 via URL one-shot + sed redaksi — token tak pernah ditulis ke file/commit; origin/main = 55e8531 (Patch S live di produksi setelah redeploy Vercel)
+- User diingatkan revoke PAT ke-8/9/10/11 (semuanya pernah plaintext di chat)
+
+Stage Summary:
+- Patch S tedeploy di origin/main 55e8531: engine exit + manual close tidak pernah lagi menaruh order jual di bawah minimum exchange; OCO tidak dibatalkan selama koin belum sellable; akhir baris FAILED [45110] berulang tiap 5 menit
+- Efek terlihat user: saat trail-stop menyentuh koin frozen/dust, log berisi HOLD informatif "koin mungkin masih frozen; proteksi tidak dibatalkan" alih-alih SELL FAILED merah 4×
+- Commit worklog ini lokal menunggu PAT berikutnya; opsi A-D (recovery re-entry / dip-buy / sizing / pair likuid) tetap menunggu pilihan user
