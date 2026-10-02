@@ -1987,3 +1987,22 @@ Stage Summary:
 - Pasca-deploy Patch R: kartu rekap menampilkan 2 kolom PAPER vs LIVE terpisah (hari ini + sepanjang waktu + jumlah trade per mode), total gabungan tetap tersedia sebagai baris kecil; tiap simbol di daftar per-bot diberi badge mode
 - Uji langsung pertanyaan user: "sebenarnya profit/loss mode live berapa" sekarang terlihat eksplisit tanpa tercemar riwayat paper
 - Push: PAT kesepuluh dari user; checklist (tree bersih, scan 0, remote = 122a02d); push 122a02d..f99b6d6 (Patch R ea3f63f + wl59 f99b6d6) via URL one-shot + sed redaksi — token tak pernah ditulis ke file/commit; origin/main = f99b6d6; user diingatkan revoke PAT ke-8/9/10 (semuanya pernah plaintext di chat); commit worklog ini lokal menunggu PAT berikutnya
+
+---
+Task ID: 60 (PATCH S — trail-stop sell gagal 4× [45110] "less than the minimum": gate sellability SEBELUM cancel OCO)
+Agent: main (Super Z)
+Task: User kirim screenshot Log transaksi UAI (4× SELL FAILED "trail-stop sell failed: bitget HTTP 400 [45110]" 16:00-16:15, sukses 16:20 @ 0.355740, PnL -0.06$) — "bot menangkap harga akan jatuh tapi status failed". Konsultasi crash UAI -40% (0.388→0.234) + minta rekomendasi; awalnya minta TANPA perubahan web, setelah diagnosis disetujui Patch S ("ya")
+
+Work Log:
+- Rekonstruksi timeline: BUY 0.37411 (1.08$) → peak 0.38568 → trail 2.16% trigger ≈0.3773 → 4 tick gagal 45110 → sukses 0.35574 (-0.06$). Notional posisi penuh selalu ≥1.03$ (di atas minimum) → penolakan BUKAN karena posisi sub-min, melainkan AVAILABLE serpihan: setelah cancelOcoPlansFor, unfreeze ledger Bitget lag beberapa menit saat pasar panik → liveSellQty jual dust → ditolak → retry 5 menit sama → posisi TELANJANG (OCO sudah dibatalkan) persis saat harga jatuh; kenaikan -0.07$ vs fill trigger ideal
+- Akar dari kode: pengecekan minimum order hanya di BUY (planLimitBuySize minNotional); sisi SELL (liveSellQty → placeSpotMarketOrder) TANPA cek min; urutan exit lama: cancel OCO → baca saldo → jual
+- Patch S (0a97907) — liveEngineExit: (1) baca saldo + productRules DULU; hanya jika sellable × harga ≥ minOrderUsdt (fallback 1 USDT) → cancel OCO → jual; (2) saldo 0 → reconcile fill OCO TANPA cancel apa pun (OCO armed tetap armed, exit milik exchange); (3) dust → HOLD "koin mungkin masih frozen; OCO/proteksi tidak dibatalkan, coba tick berikutnya"; (4) re-check pasca-cancel utk race (saldo menyusut) → HOLD tanpa order doomed
+- Patch S — manual close: cancel-first DIPERTAHANKAN (intent eksplisit user exit sekarang) tapi order di bawah minimum di-skip dgn pesan aksi jelas (bukan 45110 misterius)
+- Verifikasi: eslint engine 0 error; tsc src/ = 4 error pre-existing (trailStopPrice cuma geser baris 1276→1321), 0 baru
+- Konsultasi terkait (tanpa kode): prediksi flash crash = mustahil; beli persis di dasar = mustahil; skor <0.40 pasca-crash = chaos filter volAnnPct>400% → skor ×0.5 (by design, pengaman); opsi realistis: recovery re-entry / dip-buy limit / sizing kecil / pair likuid — TIDAK diimplementasi (menunggu user)
+- Catatan modal user: free 1.45$; rencana naikkan order ke 1.101$/bot — disarankan 1 bot @ ~1.4$ (lebih jauh dari tepi minimum; di exit -9% notional menyentuh 1.00 USDT = zona ditolak) tapi keputusan di user; OCO SL market leg juga bisa ditolak exchange utk posisi sub-minimum di crash dalam
+- Known limitation (ditulis di commit): posisi dgn notional PENUH di bawah minimum exchange tidak bisa dijual market oleh siapa pun (engine maupun OCO SL) — HOLD log menyatakannya; resolve manual di exchange
+
+Stage Summary:
+- Pasca-deploy Patch S: engine exit tak pernah lagi cancel OCO lalu gagal jual (naked window hilang); proteksi tetap armed selama koin belum sellable; retry tiap tick tanpa order doomed; manual close memberi pesan jelas saat koin masih unfreeze
+- Masih terbuka utk user (approval per masing-masing): recovery re-entry (opsi A), dip-buy limit (B), perubahan sizing/dukungan modal (C)
