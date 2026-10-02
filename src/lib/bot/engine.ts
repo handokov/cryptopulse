@@ -22,6 +22,7 @@ import {
   fetchCandles,
   fetchCloses,
   fetchTickerPrice,
+  fetchTickerStats,
   fetchSpotProduct,
   placeSpotMarketOrder,
   placeSpotLimitOrderWithTpsl,
@@ -57,6 +58,23 @@ const FALLBACK_MIN_USDT = 1;
 const ENTRY_TTL_BARS = 3;
 /** A just-armed limit cannot fill off the SAME bar's earlier low. */
 const ENTRY_MIN_AGE_MS = 60_000;
+/* Patch T — recovery re-entry after a crash stop-loss. The UAIUSDT flash
+   crash (0.388 → 0.234 in minutes, 2026-10) stopped the bot out, then the
+   chaos filter halved the score for hours — the bot sat out the entire
+   bounce the user drew on the chart. Recovery gives that bounce a
+   controlled way back in: within 24h of a hard SL (≤ −RECOVERY_LOSS_PCT),
+   a FULL-STRENGTH raw score plus structural confirmation (price bounced
+   off the post-crash low, and that low is old enough to be a floor, not a
+   falling knife) may re-enter. Nothing here touches exits, protection, or
+   any other risk gate — all of them still apply verbatim. */
+const RECOVERY_WINDOW_MS = 24 * 3600_000; // how long a hard SL arms recovery
+const RECOVERY_LOSS_PCT = 5;              // SL loss (%) that counts as a crash exit
+const RECOVERY_BOUNCE_PCT = 3;            // price must clear the post-crash low by this much
+const RECOVERY_STABLE_MIN = 15;           // low bar must have closed ≥ this long ago
+/* Patch T — liquidity floor for NEW entries (24h quote turnover, USDT).
+   Thin books are where flash crashes live: majors clear 100M+, mid-caps
+   10M+, true microcaps live below 3M. Fail-open when the ticker errors. */
+const LIQUIDITY_MIN_QUOTE_VOL = 3_000_000;
 
 export interface TickOutcome {
   userId: string;
@@ -1203,6 +1221,82 @@ export async function runBotTicks(opts: { userId?: string; force?: boolean } = {
   return outcomes;
 }
 
+/* Patch T — recovery re-entry probe. Called ONLY when the normal score gate
+   already failed. Returns:
+   · null            — recovery not in play (no recent hard SL / no bullish
+                       raw structure) → caller falls through to the plain HOLD;
+   · { go: false }   — window armed but the bounce has not confirmed yet;
+   · { go: true }    — full conviction + confirmed bounce → enter.
+   The window is DERIVED from the trade log (last mode-matched SELL within
+   24h with pnl ≤ −RECOVERY_LOSS_PCT%), so no schema change is needed and
+   the window expires on its own once a later exit supersedes the crash. */
+async function recoveryEntryCheck(
+  cfg: BotConfigRow,
+  signal: ReturnType<typeof computeBotSignal>,
+  price: number,
+  tf: string,
+  entryScore: number
+): Promise<{ go: boolean; note: string } | null> {
+  /* No full-strength bullish structure → nothing to recover with. The raw
+     score bar equals the mode's normal entry bar — recovery waives only the
+     chaos discount, never the conviction itself. */
+  if (signal.rawScore < entryScore || signal.score <= 0) return null;
+  const since = new Date(Date.now() - RECOVERY_WINDOW_MS);
+  const lastSell = await db.botTrade.findFirst({
+    where: {
+      configId: cfg.id,
+      action: "SELL",
+      paper: cfg.paper,
+      status: { in: ["PAPER", "SUBMITTED"] },
+      pnlUsdt: { not: null },
+      createdAt: { gte: since },
+      /* a manual "Stop & Jual" is the user's own exit decision — never arm
+         an automatic re-entry behind their back */
+      NOT: { reason: { contains: "manual close" } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!lastSell?.pnlUsdt || !lastSell.sizeUsdt || lastSell.sizeUsdt <= 0) return null;
+  const lossPct = (lastSell.pnlUsdt / lastSell.sizeUsdt) * 100;
+  if (lossPct > -RECOVERY_LOSS_PCT) return null; // ordinary exit — normal gates rule
+  const crashAt = lastSell.createdAt.getTime();
+
+  let bars: Awaited<ReturnType<typeof fetchCandles>>;
+  try {
+    bars = await fetchCandles(cfg.symbol, tf, 60, 40);
+  } catch {
+    return { go: false, note: "recovery aktif tapi candle tidak terbaca — menunggu tick berikutnya" };
+  }
+  const post = bars.filter((b) => b.time * 1000 >= crashAt - 60_000);
+  const pool = post.length > 0 ? post : bars.slice(-12);
+  let low = pool[0].low;
+  let lowBar = pool[0];
+  for (const b of pool) {
+    if (b.low < low) {
+      low = b.low;
+      lowBar = b;
+    }
+  }
+  if (!(low > 0) || !(price > 0)) {
+    return { go: false, note: "recovery aktif tapi data harga tidak valid — menunggu tick berikutnya" };
+  }
+  /* Stabilization: the post-crash low must sit in a CLOSED bar and that bar
+     must have been done for a while — a fresh low is a knife still falling. */
+  const lowBarEndMs = lowBar.time * 1000 + tfMsFor(tf);
+  const stable = Date.now() - lowBarEndMs >= RECOVERY_STABLE_MIN * 60_000;
+  const bouncePct = ((price - low) / low) * 100;
+  if (!stable || bouncePct < RECOVERY_BOUNCE_PCT) {
+    return {
+      go: false,
+      note: `recovery menunggu — low pasca-crash ${low.toPrecision(6)}, bounce ${bouncePct >= 0 ? "+" : ""}${bouncePct.toFixed(2)}% (butuh +${RECOVERY_BOUNCE_PCT}%), ${stable ? "bounce belum cukup" : "low masih terlalu baru (pisau belum pasti terbenam)"}`,
+    };
+  }
+  return {
+    go: true,
+    note: `recovery re-entry: crash SL ${lossPct.toFixed(1)}%, low pasca-crash ${low.toPrecision(6)}, bounce +${bouncePct.toFixed(2)}% terkonfirmasi, skor mentah ${signal.rawScore.toFixed(2)} ≥ ${entryScore.toFixed(2)}`,
+  };
+}
+
 async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> {
   /* Patch K — tick admission is a compare-and-swap on lastTickAt. Cron and
      the page heartbeat (or a manual "Run now" landing mid-cron) used to be
@@ -1469,9 +1563,26 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   }
 
   /* ---- 3. Entry decision ---- */
+  let entryTag = "";
   if (!shouldEnter(signal, cfg.mode as BotMode)) {
-    await touchConfig(cfg.id, price);
-    return { userId: cfg.userId, symbol: cfg.symbol, paper: cfg.paper, action: "HOLD", reason: `score ${signal.score.toFixed(2)} < entry ${preset.entryScore.toFixed(2)}`, score: signal.score };
+    /* Patch T — the score gate failed. Before giving up this tick, give the
+       recovery window (if armed by a recent crash SL) one structured shot:
+       full-strength RAW score plus a confirmed bounce off the post-crash
+       low. null / go:false → plain HOLD, with the recovery progress note
+       surfaced so the user can see the bot is watching the bounce. */
+    const rec = await recoveryEntryCheck(cfg, signal, price, tf, preset.entryScore);
+    if (!rec?.go) {
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: cfg.paper,
+        action: "HOLD",
+        reason: `score ${signal.score.toFixed(2)} < entry ${preset.entryScore.toFixed(2)}${rec ? `; ${rec.note}` : ""}`,
+        score: signal.score,
+      };
+    }
+    entryTag = ` [${rec.note}]`;
   }
 
   /* ---- 3b. v2 phase 2 — entry-line gate (AND-scored with the score gate).
@@ -1491,10 +1602,33 @@ async function tickOne(cfg: BotConfigRow, force: boolean): Promise<TickOutcome> 
   }
 
   const sizeUsdt = Math.max(cfg.orderSizeUsdt, minUsdt > 0 ? minUsdt : FALLBACK_MIN_USDT);
+
+  /* ---- 3c. Patch T — liquidity guard (fail-open). Thin books are where
+     flash crashes live; the UAIUSDT −40%-in-minutes wick was a microcap
+     print. Skip the entry while 24h USDT turnover sits below the floor —
+     applies to market, limit-armed and recovery entries alike. A ticker
+     error never blocks trading. */
+  try {
+    const stats = await fetchTickerStats(cfg.symbol);
+    if (stats.quoteVol24h > 0 && stats.quoteVol24h < LIQUIDITY_MIN_QUOTE_VOL) {
+      await touchConfig(cfg.id, price);
+      return {
+        userId: cfg.userId,
+        symbol: cfg.symbol,
+        paper: cfg.paper,
+        action: "HOLD",
+        reason: `entry skip — likuiditas rendah: volume 24h ${(stats.quoteVol24h / 1e6).toFixed(2)}M USDT < ${LIQUIDITY_MIN_QUOTE_VOL / 1e6}M (koin tipis rawan flash crash)${entryTag}`,
+        score: signal.score,
+      };
+    }
+  } catch {
+    /* stats unavailable — never block trading on a ticker hiccup */
+  }
+
   const clampNote = sizeUsdt > cfg.orderSizeUsdt ? ` (clamped to exchange min ${minUsdt})` : "";
   const volNote = vol ? ` [VOL σ${vol.sigmaPct.toFixed(2)}%: TP +${effTpPct.toFixed(2)}%/SL −${effSlPct.toFixed(2)}%]` : "";
   const lineNote = line != null ? ` [line ${line.toPrecision(6)} touched]` : "";
-  const entryReason = `score ${signal.score.toFixed(2)} ≥ entry ${preset.entryScore.toFixed(2)}${clampNote}${volNote}${lineNote}`;
+  const entryReason = `score ${signal.score.toFixed(2)} ≥ entry ${preset.entryScore.toFixed(2)}${clampNote}${volNote}${lineNote}${entryTag}`;
 
   if (cfg.paper) {
     /* Paper wallet: entries are funded from capital + realized PnL − open

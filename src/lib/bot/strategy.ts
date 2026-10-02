@@ -63,6 +63,8 @@ export const MODE_PRESETS: Record<BotMode, ModePreset> = {
 
 export interface BotSignal {
   score: number;
+  /** Score BEFORE the chaos filter (Patch T recovery re-entry gate). */
+  rawScore: number;
   trend: number;
   momentum: number;
   cycle: number;
@@ -147,11 +149,18 @@ export function computeBotSignal(closes: number[], barsPerYear: number = BARS_PE
   const volAnnPct = sd * Math.sqrt(barsPerYear) * 100;
 
   let score = 0.4 * trend + 0.3 * momentum + 0.15 * cycle + 0.15 * drift;
+  /* Patch T — expose the pre-chaos conviction. After a crash stop-loss the
+     chaos filter halves `score` for hours, which is exactly when a confirmed
+     bounce is most worth catching; the recovery re-entry path re-checks the
+     RAW score so conviction is NOT weakened — only the panic discount is
+     waived, and only with structural confirmation (bounce + stabilization). */
+  const rawScore = clamp(score, -1, 1);
   if (volAnnPct > 400) score *= 0.5; // chaos filter — halve conviction
   score = clamp(score, -1, 1);
 
   return {
     score: Math.round(score * 1000) / 1000,
+    rawScore: Math.round(rawScore * 1000) / 1000,
     trend: Math.round(trend * 1000) / 1000,
     momentum: Math.round(momentum * 1000) / 1000,
     cycle: Math.round(cycle * 1000) / 1000,

@@ -143,6 +143,34 @@ export async function fetchTickerPrice(symbol: string): Promise<number> {
   return last;
 }
 
+export interface TickerStats {
+  last: number;
+  /** 24h quote turnover in USDT (0 when the row omits it). */
+  quoteVol24h: number;
+}
+
+/**
+ * GET /api/v2/spot/market/tickers — price plus 24h USDT turnover in one
+ * call. Patch T liquidity guard: thin books are where flash crashes live
+ * (UAIUSDT −40% in minutes, 2026-10); the engine skips entries on coins
+ * whose 24h turnover is below its floor. Callers fail open on throw.
+ */
+export async function fetchTickerStats(symbol: string): Promise<TickerStats> {
+  const path = `/api/v2/spot/market/tickers?symbol=${encodeURIComponent(symbol)}`;
+  const res = await signedFetch(`${BASE}${path}`, { method: "GET" });
+  if (!res.ok) throw new Error(`bitget ticker HTTP ${res.status}`);
+  const body = (await res.json()) as {
+    code?: unknown;
+    data?: { lastPr?: unknown; usdtVolume?: unknown }[] | null;
+  };
+  if (body.code !== "00000" || !Array.isArray(body.data) || body.data.length === 0) {
+    throw new Error("bitget ticker bad payload");
+  }
+  const last = toNum(body.data[0]?.lastPr);
+  if (last <= 0) throw new Error("bitget ticker no price");
+  return { last, quoteVol24h: toNum(body.data[0]?.usdtVolume) };
+}
+
 export interface SpotProductRules {
   minOrderUsdt: number;
   quantityPrecision: number;
