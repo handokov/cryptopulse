@@ -2057,3 +2057,19 @@ Work Log:
 Stage Summary:
 - Setelah push: koin dgn volume 24 jam 1M-3M USDT kembali buyable; penjaga <1M tetap aktif; posisi berjalan, exit, recovery tidak berubah
 - Perlu PAT ke-12 dari user utk push (commit 55666e6 + worklog)
+
+---
+Task ID: 64 (push result Task 63 — origin/main = e40faff sementara; PAT ke-12)
+Agent: main (Super Z)
+Task: User kirim PAT kedua belas → push 4 commit tertunda (auto-commit test script 8042a7d + mode-bit cbcde9e + tuning 1M 55666e6 + wl63 e40faff)
+
+Work Log:
+- Pre-push: kedua commit UUID diaudit — hanya scripts/test-patcht-rawscore.ts (23 baris test buatan sendiri + mode-bit), commit otomatis tooling container, tanpa kode asing
+- git fetch origin refs/heads/main dulu; push 7d9dd78..e40faff via URL one-shot + sed redaksi; token tak pernah ditulis ke file/commit
+- Push wl64 ini mengikuti di commit berikutnya (satu putaran sama)
+- User diingatkan revoke PAT ke-12 segera setelah push sukses
+
+Stage Summary:
+- Ambang likuiditas LIVE di 1M USDT/24h (koin 1M-3M buyable lagi, <1M tetap ditolak)
+- Patch T lengkap di produksi: recovery re-entry pasca-crash SL + liquidity guard 1M
+- Pemakaian PAT: ke-11 revoke user sendiri (terverifikasi 401) — pola revoke setelah pakai berjalan baik
