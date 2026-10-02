@@ -1986,3 +1986,4 @@ Work Log:
 Stage Summary:
 - Pasca-deploy Patch R: kartu rekap menampilkan 2 kolom PAPER vs LIVE terpisah (hari ini + sepanjang waktu + jumlah trade per mode), total gabungan tetap tersedia sebagai baris kecil; tiap simbol di daftar per-bot diberi badge mode
 - Uji langsung pertanyaan user: "sebenarnya profit/loss mode live berapa" sekarang terlihat eksplisit tanpa tercemar riwayat paper
+- Push: PAT kesepuluh dari user; checklist (tree bersih, scan 0, remote = 122a02d); push 122a02d..f99b6d6 (Patch R ea3f63f + wl59 f99b6d6) via URL one-shot + sed redaksi — token tak pernah ditulis ke file/commit; origin/main = f99b6d6; user diingatkan revoke PAT ke-8/9/10 (semuanya pernah plaintext di chat); commit worklog ini lokal menunggu PAT berikutnya
