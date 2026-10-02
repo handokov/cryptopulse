@@ -73,8 +73,11 @@ const RECOVERY_BOUNCE_PCT = 3;            // price must clear the post-crash low
 const RECOVERY_STABLE_MIN = 15;           // low bar must have closed ≥ this long ago
 /* Patch T — liquidity floor for NEW entries (24h quote turnover, USDT).
    Thin books are where flash crashes live: majors clear 100M+, mid-caps
-   10M+, true microcaps live below 3M. Fail-open when the ticker errors. */
-const LIQUIDITY_MIN_QUOTE_VOL = 3_000_000;
+   10M+. Originally 3M; the user tuned it down to 1M to widen the tradeable
+   set on a small account — below that even on Bitget the book is thin
+   enough that a single print can wick tens of percent. Fail-open when the
+   ticker errors. */
+const LIQUIDITY_MIN_QUOTE_VOL = 1_000_000;
 
 export interface TickOutcome {
   userId: string;
