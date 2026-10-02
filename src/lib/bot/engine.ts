@@ -948,6 +948,45 @@ async function liveEngineExit(
   exitKind: string
 ): Promise<TickOutcome> {
   const base = { userId: cfg.userId, symbol: cfg.symbol, paper: false, score: signal.score };
+  /* Patch S — sellability gate BEFORE touching protection. The old order
+     (cancel OCO → read balance → market-sell) let Bitget's unfreeze lag
+     produce a dust sellable qty: every retry was rejected with 400 [45110]
+     "less than the minimum" (UAIUSDT 2026-10-02, four ticks in a row)
+     while the position sat UNPROTECTED after the cancel. Now the balance
+     is read first: only when the sellable notional clears the exchange
+     minimum do we cancel the OCO and sell. Dust/zero balance → reconcile
+     the OCO fill instead, protection left untouched. */
+  const rules = await productRules(cfg.symbol);
+  const minNotional = rules.minOrderUsdt > 0 ? rules.minOrderUsdt : FALLBACK_MIN_USDT;
+  const preQtyStr = await liveSellQty(creds, pos);
+  if (!preQtyStr || Number(preQtyStr) <= 0) {
+    /* nothing sellable — the OCO probably fired already; reconcile WITHOUT
+       cancelling anything (an armed OCO stays armed: exchange-owned exit) */
+    const fill = await findOcoExitFill(creds, cfg, pos).catch(() => null);
+    if (fill) {
+      const { pnl, fee, note } = netPnlOf(pos, fill.price, fill.feeUsdt);
+      await closePosition(pos.id, fill.price, pnl, `${exitReason} (reconciled from OCO fill)${note}`);
+      await logTrade(cfg, {
+        action: "SELL",
+        status: "SUBMITTED",
+        sizeUsdt: pos.sizeUsdt,
+        qty: fill.qty,
+        price: fill.price,
+        reason: `${exitReason} (OCO fill reconciled)${note}`,
+        pnlUsdt: pnl,
+        detail: detailJson(signal, { exit: exitKind, reconciled: true, grossPnl: Number(((fill.price - pos.entryPrice) / pos.entryPrice) * pos.sizeUsdt), feeUsdt: fee }),
+      });
+      return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)${note}`, pnlUsdt: pnl };
+    }
+    return { ...base, action: "HOLD", reason: `${exitKind} skipped — no sellable balance and no OCO fill found yet (proteksi tidak disentuh)` };
+  }
+  if (Number(preQtyStr) * fallbackPrice < minNotional) {
+    return {
+      ...base,
+      action: "HOLD",
+      reason: `${exitKind} skipped — sellable ${preQtyStr} × ${fallbackPrice.toPrecision(6)} di bawah minimum exchange ${minNotional} USDT (koin mungkin masih frozen); OCO/proteksi tidak dibatalkan, coba tick berikutnya`,
+    };
+  }
   const oco = await cancelOcoPlansFor(creds, pos);
   if (oco.failed > 0) {
     return {
@@ -977,6 +1016,12 @@ async function liveEngineExit(
         return { ...base, action: "SELL", reason: `${exitReason} (OCO fill reconciled)${note}`, pnlUsdt: pnl };
       }
       return { ...base, action: "HOLD", reason: `${exitKind} skipped — no sellable balance and no OCO fill found yet` };
+    }
+    /* Patch S — rare race: the sellable balance shrank right after the
+       cancel (unfreeze still settling). A below-minimum order is doomed;
+       hold instead of burning the attempt. */
+    if (Number(qtyStr) * fallbackPrice < minNotional) {
+      return { ...base, action: "HOLD", reason: `${exitKind} skipped — sellable balance below the exchange minimum right after the OCO cancel; waiting for unfreeze, retry next tick` };
     }
     const placed = await placeSpotMarketOrder(creds, { symbol: cfg.symbol, side: "sell", quantity: qtyStr });
     const fill = await fetchOrderFill(creds, cfg.symbol, placed.orderId);
@@ -1915,6 +1960,13 @@ export async function manualClosePositions(
        balance-clamped quantity; if the OCO already exited on the exchange,
        reconcile the real fill instead of selling nothing. */
     try {
+      /* Patch S — never place a sell below the exchange minimum: after the
+         OCO cancel Bitget may lag unfreezing, so the sellable qty can be
+         dust (the 400 [45110] loop, UAIUSDT 2026-10). Manual close still
+         cancels protection FIRST (explicit user intent to exit now), but
+         the doomed order is skipped with a clear, actionable message. */
+      const rules = await productRules(cfg.symbol);
+      const minNotional = rules.minOrderUsdt > 0 ? rules.minOrderUsdt : FALLBACK_MIN_USDT;
       if (pos.tpslArmed) {
         const oco = await cancelOcoPlansFor(creds!, pos);
         if (oco.failed > 0) {
@@ -1946,6 +1998,13 @@ export async function manualClosePositions(
           continue;
         }
         const emsg = "manual close skipped — no sellable base balance and no OCO fill found";
+        await logTrade(cfg, { action: "SELL", status: "FAILED", reason: emsg });
+        out.ok = false;
+        out.results.push({ positionId: pos.id, price: null, pnlUsdt: null, error: emsg });
+        continue;
+      }
+      if (Number(qtyStr) * (ticker ?? pos.entryPrice) < minNotional) {
+        const emsg = `manual close skipped — sellable ${qtyStr} × ${(ticker ?? pos.entryPrice).toPrecision(6)} di bawah minimum exchange ${minNotional} USDT (koin mungkin masih unfreeze); coba lagi beberapa saat`;
         await logTrade(cfg, { action: "SELL", status: "FAILED", reason: emsg });
         out.ok = false;
         out.results.push({ positionId: pos.id, price: null, pnlUsdt: null, error: emsg });
