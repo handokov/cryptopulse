@@ -135,9 +135,17 @@ interface TradeHistoryRow {
 
 interface PortfolioPerBot {
   symbol: string;
+  paper?: boolean;
   totalUsdt: number;
   todayUsdt: number;
   closed: number;
+}
+
+interface PortfolioModeStat {
+  totalUsdt: number;
+  todayUsdt: number;
+  closedCount: number;
+  todayCount: number;
 }
 
 interface Portfolio {
@@ -147,6 +155,7 @@ interface Portfolio {
   todayUsdt: number;
   closedCount: number;
   todayCount: number;
+  perMode?: { paper: PortfolioModeStat; live: PortfolioModeStat };
   perBot: PortfolioPerBot[];
   wallet?: { capitalUsdt: number; equityUsdt: number; pnlUsdt: number; hasMark: boolean } | null;
 }
@@ -600,32 +609,76 @@ export function BotSection() {
             </p>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfToday")}</p>
-              <p className={`tnum mt-0.5 text-xl font-bold ${portfolio.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
-                {portfolio.todayUsdt >= 0 ? "+" : ""}{portfolio.todayUsdt.toFixed(2)} $
-              </p>
-              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("pfTodayCount", { count: portfolio.todayCount })}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("pfAllTime")}</p>
-              <p className={`tnum mt-0.5 text-xl font-bold ${portfolio.totalUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
-                {portfolio.totalUsdt >= 0 ? "+" : ""}{portfolio.totalUsdt.toFixed(2)} $
-              </p>
-              <p className="tnum mt-0.5 text-[10px] text-muted-foreground">{t("pfClosedCount", { count: portfolio.closedCount })}</p>
-            </div>
+            {(["paper", "live"] as const).map((mode) => {
+              const stat = portfolio.perMode
+                ? portfolio.perMode[mode]
+                : mode === "live"
+                  ? { totalUsdt: portfolio.totalUsdt, todayUsdt: portfolio.todayUsdt, closedCount: portfolio.closedCount, todayCount: portfolio.todayCount }
+                  : { totalUsdt: 0, todayUsdt: 0, closedCount: 0, todayCount: 0 };
+              return (
+                <div key={mode} className="rounded-lg border border-border bg-background/40 px-3 py-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {mode === "paper" ? t("pfModePaper") : t("pfModeLive")}
+                    </p>
+                    <span
+                      className={`rounded px-1 py-px text-[9px] font-bold tracking-wide ${
+                        mode === "live" ? "bg-amber-500/15 text-amber-500" : "border border-border text-muted-foreground"
+                      }`}
+                    >
+                      {mode === "live" ? "LIVE" : "PAPER"}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground">{t("pfToday")}</span>
+                    <span className={`tnum text-base font-bold ${stat.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                      {stat.todayUsdt >= 0 ? "+" : ""}{stat.todayUsdt.toFixed(2)} $
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground">{t("pfAllTime")}</span>
+                    <span className={`tnum text-base font-bold ${stat.totalUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+                      {stat.totalUsdt >= 0 ? "+" : ""}{stat.totalUsdt.toFixed(2)} $
+                    </span>
+                  </div>
+                  <p className="tnum mt-1 text-[10px] text-muted-foreground">
+                    {t("pfTodayCount", { count: stat.todayCount })} · {t("pfClosedCount", { count: stat.closedCount })}
+                  </p>
+                </div>
+              );
+            })}
           </div>
+          <p className="mt-2 flex flex-wrap items-center justify-end gap-x-2 text-[10px] text-muted-foreground">
+            <span>{t("pfCombined")}:</span>
+            <span className={`tnum ${portfolio.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+              {portfolio.todayUsdt >= 0 ? "+" : ""}{portfolio.todayUsdt.toFixed(2)} $
+            </span>
+            <span>·</span>
+            <span className={`tnum font-semibold ${portfolio.totalUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
+              {portfolio.totalUsdt >= 0 ? "+" : ""}{portfolio.totalUsdt.toFixed(2)} $
+            </span>
+            <span className="tnum">({t("pfClosedCount", { count: portfolio.closedCount })})</span>
+          </p>
           {portfolio.perBot.length > 0 && (
             <div className="mt-3 flex flex-col gap-1 border-t border-border pt-2">
-              {portfolio.perBot.map((r) => (
+              {portfolio.perBot.map((r, i) => (
                 <button
-                  key={r.symbol}
+                  key={`${r.symbol}-${r.paper === false ? "live" : "paper"}-${i}`}
                   type="button"
                   onClick={() => selectBot(r.symbol)}
                   className="flex items-center justify-between rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-foreground/5"
                   title={t("pfJumpTo")}
                 >
-                  <span className="font-mono font-semibold">{r.symbol}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-mono font-semibold">{r.symbol}</span>
+                    <span
+                      className={`rounded px-1 py-px text-[9px] font-bold tracking-wide ${
+                        r.paper === false ? "bg-amber-500/15 text-amber-500" : "border border-border text-muted-foreground"
+                      }`}
+                    >
+                      {r.paper === false ? "LIVE" : "PAPER"}
+                    </span>
+                  </span>
                   <span className="flex items-center gap-3">
                     <span className={`tnum w-20 text-right ${r.todayUsdt >= 0 ? "text-primary" : "text-destructive"}`}>
                       {r.todayUsdt >= 0 ? "+" : ""}{r.todayUsdt.toFixed(2)}

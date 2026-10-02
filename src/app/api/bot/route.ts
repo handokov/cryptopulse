@@ -195,29 +195,35 @@ export async function GET(req: NextRequest) {
     maxLive: MAX_LIVE_BOTS,
   };
 
-  /* ---- portfolio aggregate across ALL bots of this user ---- */
+  /* ---- portfolio aggregate across ALL bots of this user, SPLIT per mode ---- */
   const allIds = configs.map((c) => c.id);
   const [allClosed, allTodaySells] = await Promise.all([
     allIds.length
       ? db.botPosition.findMany({
           where: { configId: { in: allIds }, status: "CLOSED" },
-          select: { configId: true, realizedPnlUsdt: true },
+          select: { configId: true, realizedPnlUsdt: true, paper: true },
         })
-      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null }[]),
+      : Promise.resolve([] as { configId: string; realizedPnlUsdt: number | null; paper: boolean }[]),
     allIds.length
       ? db.botTrade.findMany({
           where: { configId: { in: allIds }, createdAt: { gte: dayStart }, action: "SELL", status: { in: ["PAPER", "SUBMITTED"] } },
-          select: { configId: true, pnlUsdt: true },
+          select: { configId: true, pnlUsdt: true, paper: true },
         })
-      : Promise.resolve([] as { configId: string; pnlUsdt: number | null }[]),
+      : Promise.resolve([] as { configId: string; pnlUsdt: number | null; paper: boolean }[]),
   ]);
-  const perBotMap = new Map<string, { symbol: string; totalUsdt: number; todayUsdt: number; closed: number }>();
-  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, totalUsdt: 0, todayUsdt: 0, closed: 0 });
+  const perBotMap = new Map<string, { symbol: string; paper: boolean; totalUsdt: number; todayUsdt: number; closed: number }>();
+  for (const c of configs) perBotMap.set(c.id, { symbol: c.symbol, paper: c.paper, totalUsdt: 0, todayUsdt: 0, closed: 0 });
+  const emptyMode = () => ({ totalUsdt: 0, todayUsdt: 0, closedCount: 0, todayCount: 0 });
+  const paperMode = emptyMode();
+  const liveMode = emptyMode();
   let pfTotal = 0;
   let pfToday = 0;
   for (const p of allClosed) {
     const amt = p.realizedPnlUsdt ?? 0;
     pfTotal += amt;
+    const m = p.paper ? paperMode : liveMode;
+    m.totalUsdt += amt;
+    m.closedCount += 1;
     const row = perBotMap.get(p.configId);
     if (row) {
       row.totalUsdt += amt;
@@ -227,6 +233,9 @@ export async function GET(req: NextRequest) {
   for (const tr of allTodaySells) {
     const amt = tr.pnlUsdt ?? 0;
     pfToday += amt;
+    const m = tr.paper ? paperMode : liveMode;
+    m.todayUsdt += amt;
+    m.todayCount += 1;
     const row = perBotMap.get(tr.configId);
     if (row) row.todayUsdt += amt;
   }
@@ -237,6 +246,7 @@ export async function GET(req: NextRequest) {
     todayUsdt: pfToday,
     closedCount: allClosed.length,
     todayCount: allTodaySells.length,
+    perMode: { paper: paperMode, live: liveMode },
     perBot: [...perBotMap.values()].sort((a, b) => b.totalUsdt - a.totalUsdt),
   };
 
