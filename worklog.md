@@ -2042,3 +2042,18 @@ Stage Summary:
 - Pasca-deploy Patch T: (a) koin tipis (<3M USDT/hari) tidak lagi di-entry — pencegahan flash crash di sumbernya; (b) setelah SL crash, bot TIDAK mati — status "recovery menunggu" memantau low + bounce, dan masuk kembali saat bounce +3% terkonfirmasi dgn skor mentah penuh (mendekati keinginan user: "masuk lagi di harga terendah")
 - Catatan utk user: ambang 3M bisa diturunkan/naikkan; jika bot ARX/UAI/ROBO berhenti entry dgn alasan likuiditas, itu fitur — bukan bug
 - Ekspektasi PnL (keinginan user mengukur): kartu Patch R per mode (PAPER vs LIVE) + badge per bot sudah menampilkan pemisahan; live PnL berjalan mulai dari posisi baru pasca-patch
+
+---
+Task ID: 63 (PATCH T tune — ambang likuiditas diturunkan 3M → 1M USDT per pilihan user)
+Agent: main (Super Z)
+Task: User pilih "turunkan 1M" dari tawaran tuning ambang liquidity guard
+
+Work Log:
+- engine.ts: LIQUIDITY_MIN_QUOTE_VOL 3_000_000 → 1_000_000 + komentar konteks (koin 1M-3M buyable lagi; <1M tetap ditolak; fail-open tetap)
+- Reason string otomatis menampilkan "1M" (dihitung dari konstanta, tanpa perubahan lain)
+- eslint engine.ts = 0 error; commit 55666e6
+- Kejadian tercatat: (1) commit otomatis container cbcde9e (pesan UUID) menyisip di antara push Task 62 dan commit ini — isi hanya mode-bit 644→755 pada scripts/test-patcht-rawscore.ts, tanpa perubahan konten, dianggap无害 dan dibiarkan; (2) push GAGAL — PAT kesebelas HTTP 401 (sudah di-revoke user, sesuai reminder berulang) → commit tuning + worklog ini LOKAL menunggu PAT kedua belas
+
+Stage Summary:
+- Setelah push: koin dgn volume 24 jam 1M-3M USDT kembali buyable; penjaga <1M tetap aktif; posisi berjalan, exit, recovery tidak berubah
+- Perlu PAT ke-12 dari user utk push (commit 55666e6 + worklog)
