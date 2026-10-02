@@ -2022,3 +2022,23 @@ Stage Summary:
 - Patch S tedeploy di origin/main 55e8531: engine exit + manual close tidak pernah lagi menaruh order jual di bawah minimum exchange; OCO tidak dibatalkan selama koin belum sellable; akhir baris FAILED [45110] berulang tiap 5 menit
 - Efek terlihat user: saat trail-stop menyentuh koin frozen/dust, log berisi HOLD informatif "koin mungkin masih frozen; proteksi tidak dibatalkan" alih-alih SELL FAILED merah 4×
 - Commit worklog ini lokal menunggu PAT berikutnya; opsi A-D (recovery re-entry / dip-buy / sizing / pair likuid) tetap menunggu pilihan user
+
+---
+Task ID: 62 (PATCH T — recovery re-entry pasca-crash SL [opsi A] + liquidity guard [opsi D]; user: "jalankan yang terbaik menurut kamu")
+Agent: main (Super Z)
+Task: User setujui pilihan bebas dari opsi A-D: "oke, jalankan yang terbaik menurut kamu, buat saya, saya mencoba di saldo agar bisa tahu sejauh mana profit/loss dari bot" — dipilih A+D (sisi entry saja; mesin exit/proteksi Patch S tidak disentuh)
+
+Work Log:
+- Desain: recovery window DITURUNKAN dari log trade (tanpa migrasi skema) — SELL terakhir mode-matching dalam 24 jam dgn pnl ≤ −5% (crash-class; manual close dikecualikan via reason NOT contains "manual close"); rawScore (skor pra-chaos) diekspos dari computeBotSignal (field additif BotSignal)
+- strategy.ts: BotSignal.rawScore = clamp skor sebelum chaos filter; score tetap ×0.5 saat volAnnPct > 400 (perilaku lama utuh)
+- bitget-trade.ts: fetchTickerStats() — endpoint tickers sama dgn fetchTickerPrice, parse usdtVolume (24h quote turnover), 1 panggilan API
+- engine.ts: (1) recoveryEntryCheck() — null jika tak ada struktur bullish penuh/rawScore < entry; baca lastSell → lossPct → fetchCandles(tf,60,40) → low pasca-crash (bar ≥ crashAt−60s, fallback 12 bar) → stabilisasi: bar low sudah CLOSED ≥ 15 mnt → bounce ≥ +3% → go dgn note informatif; (2) hook di gate entry: shouldEnter gagal → probe recovery → HOLD "score < entry; recovery menunggu — low …, bounce …" (terlihat di lastTick UI) atau entryTag [recovery re-entry: crash SL −x%, low …, bounce +y%, skor mentah …]; (3) liquidity gate 3c — quoteVol24h < 3M USDT → HOLD "entry skip — likuiditas rendah …" (fail-open saat ticker error; berlaku utk market/limit/recovery, paper & live)
+- Konstanta: RECOVERY_WINDOW_MS 24h, RECOVERY_LOSS_PCT 5, RECOVERY_BOUNCE_PCT 3, RECOVERY_STABLE_MIN 15, LIQUIDITY_MIN_QUOTE_VOL 3.000.000 — mudah di-tune
+- Semua gate lain tetap berlaku utk recovery: cooldown TF, max/hari, daily loss limit, entry line, sizing, min order; conviction TIDAK dilemahkan (raw score bar = bar normal, cuma diskon panik yang di-waive)
+- Verifikasi: tsc src/ = 4 error pre-existing (0 baru); eslint 3 file = 0; uji tsx scripts/test-patcht-rawscore.ts — calm: score=rawScore; wild vol 670%: score=rawScore×0.5 (pembulatan 3 desimal) OK
+- Push: reuse PAT kesebelas (masih berlaku, sesi sama); push 48fd2c6..b4ae6d1 via URL one-shot + sed redaksi; origin/main = b4ae6d1
+
+Stage Summary:
+- Pasca-deploy Patch T: (a) koin tipis (<3M USDT/hari) tidak lagi di-entry — pencegahan flash crash di sumbernya; (b) setelah SL crash, bot TIDAK mati — status "recovery menunggu" memantau low + bounce, dan masuk kembali saat bounce +3% terkonfirmasi dgn skor mentah penuh (mendekati keinginan user: "masuk lagi di harga terendah")
+- Catatan utk user: ambang 3M bisa diturunkan/naikkan; jika bot ARX/UAI/ROBO berhenti entry dgn alasan likuiditas, itu fitur — bukan bug
+- Ekspektasi PnL (keinginan user mengukur): kartu Patch R per mode (PAPER vs LIVE) + badge per bot sudah menampilkan pemisahan; live PnL berjalan mulai dari posisi baru pasca-patch
