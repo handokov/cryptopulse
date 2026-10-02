@@ -1968,3 +1968,21 @@ Stage Summary:
 - PASCA-DEPLOY Patch Q: posisi baru ber-OCO tak bisa tersapu (frozen dihitung + umur ≥60 mnt + skip saat baca gagal); trailing tidak lagi menembus proteksi saat API gagal (fail-safe Patch L hidup); state OCO tak terbaca selalu HOLD
 - Jawaban "0.00" = bug sapuan (diperbaiki), bukan setting TP/SL; resep FIXED + TP 3-4 / SL 1.5-2 / TF 1H utk gerak lebih lambat
 - Push: PAT kesembilan dari user; checklist (tree bersih, scan token 0, ls-remote origin = c4d8b83); push c4d8b83..122a02d (Patch Q 122a02d + wl57 fill 2c1eba0) via URL one-shot + sed redaksi — token tak pernah ditulis ke file/commit; origin/main = 122a02d; user diingatkan revoke PAT ke-8 & ke-9 (keduanya pernah plaintext di chat); commit worklog ini lokal menunggu PAT berikutnya
+
+---
+Task ID: 59 (PATCH R — rekap PnL dipisah Paper vs Live: user minta profit paper & live tidak dicampur di kartu "PNL GABUNGAN")
+Agent: main (Super Z)
+Task: User kirim screenshot kartu rekap (SEPANJANG WAKTU +8.51$, 130 trade) + pesan "profit sepanjang waktu ini khan campuran antara profit mode paper dan mode live, saya mau pisahkan profit antara mode paper dan live"
+
+Work Log:
+- Verifikasi schema: BotPosition.paper & BotTrade.paper Boolean @default(true) ada sejak awal → split bisa dikelompokkan per baris trade (mode saat trade dibuka), bukan mode bot sekarang — semantik benar utk riwayat campuran
+- Backend (api/bot/route.ts): select +paper di allClosed & allTodaySells; agregator emptyMode() → paperMode/liveMode (totalUsdt, todayUsdt, closedCount, todayCount); portfolio.perMode {paper, live} baru; perBot rows +paper flag; total gabungan (pfTotal/pfToday/closedCount/todayCount) DIPERTAHANKAN utk kompatibilitas
+- Frontend (bot-section.tsx): tipe PortfolioModeStat + Portfolio.perMode? (opsional, fallback respons lama → live=gabungan); grid 2 kotak HARI INI/SEPANJANG WAKTU diganti 2 kartu mode (PAPER border-muted / LIVE badge amber, masing-masing: hari ini + sepanjang waktu + "n trade hari ini · n tertutup"); baris kecil "Gabungan: hari ini x$ · total y$ (n)" di bawah grid; per-bot list + chip LIVE/PAPER per simbol + key komposit symbol-mode-index (antisipasi 2 bot sama simbol beda mode)
+- i18n 6 bahasa: pfTotal→"PnL per mode" (en/id/zh/ja/es/pt: "分模式盈亏"/"モード別損益"/"por modo"); key baru pfModePaper/pfModeLive/pfCombined
+- Verifikasi: eslint bot-section + route = 0 error; tsc src/ = 4 error pre-existing pola lama (close×2, news, trailStopPrice), 0 baru (555 error di examples/+scripts/ pre-existing, di luar src)
+- Catatan: baris 0.00 hasil sapuan lama (5× ARX) tetap terhitung di closedCount live dgn PnL 0 — data historis, tak bisa dibedakan dari trade sah; PnL live saat ini dominan = UAI +13.13 / ROBO -4.48 / ARX -0.14
+- Commit ea3f63f LOKAL — push menunggu PAT kesepuluh (kesembilan dipakai push Patch Q)
+
+Stage Summary:
+- Pasca-deploy Patch R: kartu rekap menampilkan 2 kolom PAPER vs LIVE terpisah (hari ini + sepanjang waktu + jumlah trade per mode), total gabungan tetap tersedia sebagai baris kecil; tiap simbol di daftar per-bot diberi badge mode
+- Uji langsung pertanyaan user: "sebenarnya profit/loss mode live berapa" sekarang terlihat eksplisit tanpa tercemar riwayat paper
