@@ -2090,3 +2090,20 @@ Work Log:
 Stage Summary:
 - Ambang 1M memberi bot 2.812 pair (85% pasar) — jauh dari "hanya halaman 1"
 - ARX/ROBO keluar dari jangkauan bot di ambang 1M; keputusan turunkan/lanjut di tangan user; tidak ada perubahan kode di putaran ini
+
+---
+Task ID: 66 (permintaan user: ambang tetap 1M + rekap TP/SL modal $1.2; PAT ketiga belas)
+Agent: main (Super Z)
+Task: User kirim PAT ke-13 + "tetap 1M saja" + minta rekap hasil TP/SL bot live selama berjalan dgn modal $1.2 sebelum menambah saldo
+
+Work Log:
+- Tidak ada perubahan kode — keputusan ambang 1M dipertahankan (Task 65: 1M = 2.812 pair / 85% pasar)
+- Pre-check rekap: DB lokal db/custom.db KOSONG utk botConfig/botTrade (data live user hanya di Turso produksi); /api/bot wajib session (401 tanpa login); /api/bot/tick butuh BOT_TICK_SECRET (hanya di Vercel env); jalur tunggal = token Turso user-supplied (pola terbukti Task turso-apply-schema)
+- PAT-13 diverifikasi (login handokov) → push 21e5fb4..ec6135b (worklog Task 65 tertunda) via URL one-shot + sed redaksi
+- INSIDEN investilasi singkat: grep/cat-A menampilkan "MODE_PRESETSode]" — diduga korupsi; od -c + git show origin/main membuktikan file ASLI sehat "MODE_PRESETS[mode]" → artefak rendering tool (urutan "[m" di tengah teks dimakan renderer; hati-hati saat grep pola dgn [m)
+- Menunggu token Turso (disarankan read-only + expiration pendek) utk eksekusi rekap: hitungan TP/SL, win rate, net PnL vs modal, per-koin, per-hari
+
+Stage Summary:
+- origin/main = ec6135b (sinkron penuh); ambang likuiditas resmi TETAP 1M
+- Preset TP/SL dari kode (strategy.ts MODE_PRESETS): MODERATE TP +1.8% / SL -1.2%, entry >= 0.55, maks 4/hari, cooldown 45 mnt; AGGRESSIVE TP +2.6% / SL -1.8%, entry >= 0.40, maks 8/hari, cooldown 15 mnt; exitStyle VOLATILITY menskala band + trailing stop; override takeProfitPct/stopLossPct bisa mengubah preset — konfigurasi aktual bot $1.2 baru pasti setelah baca DB
+- PAT ke-13 terpakai; reminder revoke disampaikan ke user
